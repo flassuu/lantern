@@ -16,9 +16,17 @@ const props = withDefaults(
     interactive?: boolean
     /** Set when the card itself is the control, so it must be a real button. */
     as?: string
+    /**
+     * Drops the top corners and the top border, so the card can sit directly
+     * under a tab strip: the open tab hangs into the gap and its fill runs into
+     * the card's, which is what makes the tab read as the top of the panel
+     * rather than a label floating above it. A border across that seam is what
+     * made the two look like separate boxes.
+     */
+    flushTop?: boolean
     class?: string
   }>(),
-  { tone: 'surface', padding: 'md', interactive: false, as: 'div' },
+  { tone: 'surface', padding: 'md', interactive: false, as: 'div', flushTop: false },
 )
 
 const TONES = {
@@ -36,7 +44,7 @@ const PADDING = {
 
 const classes = computed(() =>
   [
-    'rounded-2xl',
+    props.flushTop ? 'rounded-b-2xl border-t-0' : 'rounded-2xl',
     TONES[props.tone],
     PADDING[props.padding],
     // Interactive cards lift a little: M3 Expressive uses motion to point at

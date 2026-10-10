@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   CircleCheck,
@@ -16,7 +16,6 @@ import {
   QrCode,
   Radio,
   Square,
-  Timer,
   TriangleAlert,
   Trophy,
   UserCheck,
@@ -43,6 +42,7 @@ import QrCodeCard from '../common/QrCode.vue'
 import SkeletonList from '../common/SkeletonList.vue'
 import TestPicker from './TestPicker.vue'
 import TagInput from './TagInput.vue'
+import RunTimer from './RunTimer.vue'
 import SessionTabs from './SessionTabs.vue'
 import SessionLibraryDialog from './SessionLibraryDialog.vue'
 import SessionSettingsFields from './SessionSettingsFields.vue'
@@ -90,14 +90,6 @@ const exporting = ref(false)
 const channel = useSessionChannel()
 const participants = channel.participants
 const boardStatus = channel.status
-
-/**
- * A wall clock the elapsed and remaining labels are derived from. The server
- * measures the time limit against `startedAt` and the wall clock too, so pausing
- * does not stop the count - and neither does this.
- */
-const now = ref(Date.now())
-let clock: number | undefined
 
 /** The address students are being sent to, and whether they can open it. */
 const joinOrigin = computed(() => effectiveBaseUrl())
@@ -153,33 +145,6 @@ const progressPercent = computed(() =>
   joinedCount.value === 0 ? 0 : Math.round((submittedCount.value / joinedCount.value) * 100),
 )
 
-/** Time since the session started, frozen at the finish mark once it is over. */
-const elapsedSeconds = computed(() => {
-  const session = selected.value
-  if (!session) return 0
-  // A lobby has no start mark yet, so it has no elapsed time either.
-  if (session.startedAt === null) return 0
-  const start = Date.parse(session.startedAt)
-  if (Number.isNaN(start)) return 0
-  const end = session.finishedAt ? Date.parse(session.finishedAt) : now.value
-  return Math.max(0, Math.floor((end - start) / 1000))
-})
-const remainingSeconds = computed(() => {
-  const limit = selected.value?.timeLimitSec
-  if (limit == null) return null
-  return limit - elapsedSeconds.value
-})
-const timeIsShort = computed(() => remainingSeconds.value !== null && remainingSeconds.value <= 60)
-const timerLabel = computed(() => {
-  const remaining = remainingSeconds.value
-  if (remaining !== null && remaining <= 0) return t('teacher.live.timeUp')
-  return formatClock(remaining ?? elapsedSeconds.value)
-})
-const timerCaption = computed(() => {
-  if (boardStatus.value === 'finished') return t('teacher.live.duration')
-  return remainingSeconds.value !== null ? t('teacher.live.timeLeft') : t('teacher.live.elapsed')
-})
-
 const sortedParticipants = computed(() =>
   [...participants.value].sort((left, right) => {
     if (left.status === 'joined') return 1
@@ -207,14 +172,6 @@ const panel = ref<HTMLElement | null>(null)
 const cancelRef = ref<HTMLButtonElement | null>(null)
 useDialogFocus(() => showStart.value, () => closeStart(), panel, cancelRef)
 
-function formatClock(totalSeconds: number): string {
-  const seconds = Math.max(0, totalSeconds)
-  const hours = Math.floor(seconds / 3600)
-  const minutes = Math.floor((seconds % 3600) / 60)
-  const rest = seconds % 60
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(rest)}` : `${minutes}:${pad(rest)}`
-}
 
 function formatTime(iso: string | null | undefined): string {
   if (!iso) return ''
@@ -485,13 +442,6 @@ onMounted(() => {
   void load()
   void loadSettings()
   void loadRooms()
-  clock = window.setInterval(() => {
-    now.value = Date.now()
-  }, 1000)
-})
-
-onBeforeUnmount(() => {
-  if (clock !== undefined) window.clearInterval(clock)
 })
 </script>
 
@@ -545,15 +495,17 @@ onBeforeUnmount(() => {
           <p
             v-if="actionError"
             role="alert"
-            class="rounded-xl bg-error-container px-3 py-2 text-sm text-on-error-container"
+            class="mt-3 rounded-xl bg-error-container px-3 py-2 text-sm text-on-error-container"
           >
             {{ actionError }}
           </p>
 
 
       <template v-if="selected">
-        <!-- Who the session is, how long it has run, and how students get in. -->
-        <AppCard as="section">
+        <!-- Who the session is, how long it has run, and how students get in.
+             `flush-top`: this card is the panel the open tab belongs to, so it
+             has no top edge of its own for the tab to be cut by. -->
+        <AppCard as="section" flush-top>
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
@@ -609,30 +561,16 @@ onBeforeUnmount(() => {
               </p>
             </div>
 
-            <!-- A lobby has no clock to show; the tiles below are all zero anyway. -->
-            <div
+            <!-- A lobby has no clock to show; the tiles below are all zero
+                 anyway. The clock keeps its own second, so a run ticking does
+                 not re-render the rest of the board. -->
+            <RunTimer
               v-if="boardStatus !== 'lobby'"
-              class="flex shrink-0 items-center gap-2 rounded-2xl border border-outline-variant bg-surface-container-high px-3 py-2"
-            >
-              <span
-                class="grid size-9 place-items-center rounded-full bg-surface-container-highest text-on-surface-variant"
-              >
-                <Timer class="size-4" aria-hidden="true" />
-              </span>
-              <span class="leading-tight">
-                <span
-                  class="block text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant"
-                >
-                  {{ timerCaption }}
-                </span>
-                <span
-                  class="block font-mono text-base font-semibold tabular-nums"
-                  :class="timeIsShort ? 'text-error' : 'text-on-surface'"
-                >
-                  {{ timerLabel }}
-                </span>
-              </span>
-            </div>
+              :started-at="selected.startedAt"
+              :finished-at="selected.finishedAt"
+              :time-limit-sec="selected.timeLimitSec"
+              :status="boardStatus"
+            />
           </div>
 
           <div class="mt-4 rounded-2xl border border-outline-variant bg-surface-container-high p-3 sm:p-4">
@@ -1010,9 +948,13 @@ onBeforeUnmount(() => {
         </header>
 
         <div class="flex-1 space-y-4 overflow-y-auto p-4">
+          <!-- The chips under each test are what a run of it would do; picking
+               one loads those rules into the fields below, and what is sent is an
+               override for this run only. -->
           <TestPicker
             :tests="props.tests"
             :busy="starting"
+            show-settings
             @select="chooseTestForStart"
           />
 
@@ -1071,6 +1013,9 @@ onBeforeUnmount(() => {
           <div class="rounded-xl border border-outline-variant bg-surface p-3">
             <p class="text-xs font-semibold text-on-surface-variant">
               {{ t('teacher.sessionSettings.title') }}
+            </p>
+            <p class="mt-0.5 text-[11px] text-on-surface-variant">
+              {{ t('teacher.sessionSettings.forThisRun') }}
             </p>
             <div class="mt-3">
               <SessionSettingsFields v-model="sessionSettings" />

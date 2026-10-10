@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { ArrowDown, ArrowLeftRight, ArrowUp, Copy, Plus, X } from '@lucide/vue'
+import { ArrowDown, ArrowLeftRight, ArrowUp, ChevronDown, Copy, Plus, X } from '@lucide/vue'
 import { QUESTION_TYPES } from '../../api/types'
 import type { QuestionType } from '../../api/types'
 import type { QuestionForm } from './questionForm'
@@ -122,17 +122,28 @@ function removePair(index: number): void {
         its widest option, and "Коротка відповідь" is wider than a 320px phone.
         Clipping costs nothing here, because the type is already named in the
         card header above.
+
+        `appearance-none` with our own arrow: the browser's dropdown keeps the
+        platform's fill and its own arrow, which on a dark surface is a black box
+        with a grey edge - the one control on the screen that looked like it
+        came from somewhere else.
       -->
       <div class="flex items-center gap-2">
-        <select
-          v-model="question.type"
-          :aria-label="t('teacher.editor.typeLabel')"
-          class="min-w-0 flex-1 rounded-lg border border-outline bg-surface px-2 py-2 text-sm focus:border-primary sm:flex-none"
-        >
-          <option v-for="type in QUESTION_TYPES" :key="type" :value="type">
-            {{ typeLabel(type) }}
-          </option>
-        </select>
+        <div class="relative min-w-0 flex-1 sm:flex-none">
+          <select
+            v-model="question.type"
+            :aria-label="t('teacher.editor.typeLabel')"
+            class="h-[var(--control-md)] w-full min-w-0 appearance-none rounded-[var(--radius-control)] border border-outline-variant bg-surface-container-high pl-3 pr-9 text-sm text-on-surface focus:border-primary"
+          >
+            <option v-for="type in QUESTION_TYPES" :key="type" :value="type">
+              {{ typeLabel(type) }}
+            </option>
+          </select>
+          <ChevronDown
+            class="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant"
+            aria-hidden="true"
+          />
+        </div>
         <label class="flex shrink-0 items-center gap-1 text-xs text-on-surface-variant">
           {{ t('teacher.editor.points') }}
           <input

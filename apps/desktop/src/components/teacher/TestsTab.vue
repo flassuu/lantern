@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, BarChart3, CloudUpload, Copy, Download, Eye, FileQuestion, Plus, Search, Trash2, Upload, Users } from '@lucide/vue'
+import { ArrowLeft, BarChart3, ChevronDown, CloudUpload, Copy, Download, Eye, FileQuestion, Plus, Search, SlidersHorizontal, Trash2, Upload, Users } from '@lucide/vue'
 import { ApiError } from '../../api/client'
 import EmptyState from '../common/EmptyState.vue'
 import SkeletonList from '../common/SkeletonList.vue'
@@ -28,6 +28,7 @@ import {
 import QuestionEditor from './QuestionEditor.vue'
 import TagInput from './TagInput.vue'
 import SessionSettingsFields from './SessionSettingsFields.vue'
+import { changedSettings, SETTING_LABEL } from '../../utils/settings'
 import TestPreviewDialog from './TestPreviewDialog.vue'
 import TestResultsView from './TestResultsView.vue'
 import { useConfirm } from '../../composables/confirm'
@@ -75,6 +76,10 @@ const questionForms = ref<QuestionForm[]>([])
 const testTags = ref<string[]>([])
 /** The test's defaults for a run of it; a session copies them when it is created. */
 const testSettings = ref<TestSettings>(normalizeSettings(null))
+/** Folded: six switches are not what a teacher opens a test to look at. */
+const runDetailsOpen = ref(false)
+/** What this test does differently from the plain run, in one line. */
+const settingsSummary = computed(() => changedSettings(testSettings.value).map((key) => t(SETTING_LABEL[key])))
 const testRoomId = ref<string | null>(null)
 const rooms = getRoomsState()
 const busyId = ref('')
@@ -465,18 +470,47 @@ onMounted(async () => {
           <TagInput v-model="testTags" :label="t('teacher.tags.label')" />
         </div>
 
-        <!-- The run's defaults. A session copies these when it is created and
-             they can be changed in its lobby, so this is the starting point
-             rather than the rules for every future run. -->
-        <div class="sm:col-span-2 rounded-xl border border-outline-variant bg-surface p-3">
-          <p class="text-xs font-semibold text-on-surface-variant">
-            {{ t('teacher.sessionSettings.defaults') }}
-          </p>
-          <p class="mt-0.5 text-[11px] text-on-surface-variant">
-            {{ t('teacher.sessionSettings.defaultsHint') }}
-          </p>
-          <div class="mt-3">
-            <SessionSettingsFields v-model="testSettings" />
+        <!--
+          The run's defaults, folded. A session copies these when it is created
+          and can change them in its lobby, so this is the starting point rather
+          than the rules for every future run - which is exactly why it does not
+          deserve a sixth block of switches between the paper and its questions.
+          Folded, the row still says what it does: the chips name every setting
+          that is off the default, so nothing here is hidden.
+        -->
+        <div class="sm:col-span-2 overflow-hidden rounded-xl border border-outline-variant bg-surface">
+          <button
+            type="button"
+            class="state-layer flex w-full items-center gap-2 px-3 py-2.5 text-left"
+            :aria-expanded="runDetailsOpen"
+            @click="runDetailsOpen = !runDetailsOpen"
+          >
+            <SlidersHorizontal class="size-4 shrink-0 text-on-surface-variant" aria-hidden="true" />
+            <span class="shrink-0 text-xs font-semibold text-on-surface-variant">
+              {{ t('teacher.tests.runDetails') }}
+            </span>
+            <span v-if="settingsSummary.length" class="flex min-w-0 flex-wrap items-center gap-1">
+              <span
+                v-for="label in settingsSummary"
+                :key="label"
+                class="truncate rounded-full bg-secondary-container px-2 py-0.5 text-[10px] font-semibold text-on-secondary-container"
+              >
+                {{ label }}
+              </span>
+            </span>
+            <ChevronDown
+              class="ml-auto size-4 shrink-0 text-on-surface-variant transition-transform duration-200"
+              :class="runDetailsOpen ? 'rotate-180' : ''"
+              aria-hidden="true"
+            />
+          </button>
+          <div v-show="runDetailsOpen" class="border-t border-outline-variant p-3">
+            <p class="text-[11px] text-on-surface-variant">
+              {{ t('teacher.sessionSettings.defaultsHint') }}
+            </p>
+            <div class="mt-3">
+              <SessionSettingsFields v-model="testSettings" />
+            </div>
           </div>
         </div>
       </div>

@@ -3,13 +3,21 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { CheckCircle2, Search } from '@lucide/vue'
 import type { TestSummary } from '../../api/types'
+import { changedSettings, SETTING_LABEL } from '../../utils/settings'
 
 const props = withDefaults(
   defineProps<{
     tests: TestSummary[]
     busy?: boolean
+    /**
+     * Whether to say, under each test, what a run of it would do differently.
+     * Only the start dialog wants it - there the teacher is about to open a
+     * lobby with these rules and needs to know which paper behaves unlike the
+     * rest. In the course picker the same line would be noise.
+     */
+    showSettings?: boolean
   }>(),
-  { busy: false },
+  { busy: false, showSettings: false },
 )
 
 const emit = defineEmits<{ select: [testId: string] }>()
@@ -21,6 +29,23 @@ const filtered = computed(() => {
   const needle = query.value.trim().toLowerCase()
   if (!needle) return props.tests
   return props.tests.filter((test) => test.title.toLowerCase().includes(needle))
+})
+
+/**
+ * What each test does that the plain run does not, by id.
+ *
+ * Computed rather than called per row: the chips name the settings that are off
+ * the default, and a test at its defaults says nothing at all - which is the
+ * truth for most of them, and the reason the line stays short.
+ */
+const summaries = computed(() => {
+  const map = new Map<string, string[]>()
+  if (!props.showSettings) return map
+  for (const test of filtered.value) {
+    const labels = changedSettings(test.settings).map((key) => t(SETTING_LABEL[key]))
+    if (labels.length > 0) map.set(test.id, labels)
+  }
+  return map
 })
 </script>
 
@@ -69,6 +94,25 @@ const filtered = computed(() => {
               {{ t('teacher.tests.questionCount', { count: test.questionCount }) }}
               <span v-if="test.timeLimitSec">
                 · {{ test.timeLimitSec / 60 }} {{ t('teacher.tests.minutes') }}
+              </span>
+            </span>
+            <!--
+              The line is always there when the settings matter, and says so when
+              they are ordinary: a blank space under a test would read as "not
+              shown", and the teacher is here to find out what a run will do.
+            -->
+            <span v-if="showSettings" class="mt-1 flex flex-wrap items-center gap-1">
+              <template v-if="summaries.get(test.id)">
+                <span
+                  v-for="label in summaries.get(test.id)"
+                  :key="label"
+                  class="rounded-full bg-secondary-container px-2 py-0.5 text-[10px] font-semibold text-on-secondary-container"
+                >
+                  {{ label }}
+                </span>
+              </template>
+              <span v-else class="text-[11px] text-on-surface-variant">
+                {{ t('teacher.live.standardRun') }}
               </span>
             </span>
           </span>

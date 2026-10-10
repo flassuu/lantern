@@ -262,6 +262,7 @@ export default {
       startTitle: 'Start a session from a test',
       startHint: 'Students join with the code below. The test can still be edited afterwards.',
       startRun: 'Start',
+      standardRun: 'Standard run',
       runName: 'Run name',
       runNamePlaceholder: 'Monday revision',
       runRoom: 'Room',
@@ -335,6 +336,7 @@ export default {
       library: {
         title: 'Session library',
         hint: 'Every run you have started, with the tools to find one.',
+        filters: 'Search and filters',
         search: 'Search by name or test',
         statusAny: 'Any status',
         test: 'Test',
@@ -431,6 +433,8 @@ export default {
       pages: 'Questions per page',
       pagesAll: 'All on one page',
       pagesOne: 'One at a time',
+      backOff: 'No going back',
+      forThisRun: 'For this run only - the test keeps its own defaults.',
       releaseAction: 'Release results',
       released: 'Results are out',
       held: 'Results are held',
@@ -509,6 +513,7 @@ export default {
       created: 'Test created.',
       updated: 'Test updated.',
       deleted: 'Test deleted.',
+      runDetails: 'Run details',
       questionCount: '{count} questions',
       totalPoints: '{count} pts',
       preview: 'Preview',
@@ -593,6 +598,9 @@ export default {
     },
     errors: {
       generic: 'Something went wrong. Please try again.',
+      serverTooOld: 'This server is older than the app',
+      serverTooOldHint:
+        'Rooms arrived in a later build, so this server does not answer for them. Rebuild the server and restart the app — nothing is lost.',
       network: 'Server unreachable.',
       validation: 'Please check the form fields.',
       conflict: 'That item already exists.',

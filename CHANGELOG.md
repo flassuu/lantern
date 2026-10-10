@@ -6,6 +6,34 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### The board sits still, and a run's rules fit on one screen
+
+- **The session tabs sit on the board.** The first tab's left edge lines up with
+  the board card's border, the open tab's fill runs into the card instead of
+  stopping at a line across it, and **All sessions** is built like the tabs it
+  sits among rather than as a pill glued to the bottom of the strip.
+- **The library folds its filters away.** Search and filters are behind one
+  button that counts what is active, and the list - which is what the dialog is
+  for - is what is on screen when it opens.
+- **A question's type is drawn like the app's other fields.** The browser's own
+  dropdown kept the platform's fill and arrow, which on a container surface read
+  as a black box with a grey edge.
+- **Run details folded in the test editor**, with every setting a test changes
+  named on the row, and the **start dialog says, under each test, what a run of
+  it would do**: those chips are that test's rules, choosing it loads them into
+  the fields, and what is sent applies to that run only.
+- **Rooms says what is actually wrong.** A server that does not know the route
+  answers "this server is older than the app", and what to do about it, instead
+  of "something went wrong" - which sent the teacher looking for a network
+  problem they did not have.
+- **The board stopped repainting for nothing.** The safety poll re-reads every
+  twenty seconds and the socket pushes the whole participant list on every
+  change; both used to hand the tab a fresh array and re-render every tile for
+  data identical to what was already on screen. The clock that ticks every
+  second lived in that tab too, so a run in progress re-rendered the whole board
+  once a second - it has a component of its own now, and nothing else on the
+  board changes with it.
+
 ### Rooms, tags, and runs that can be named
 
 A class and a course were doing two jobs under one word: *who* is in the group

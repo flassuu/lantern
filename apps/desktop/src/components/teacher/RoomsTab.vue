@@ -103,21 +103,31 @@ async function load(): Promise<void> {
       pending.value = []
     }
   } catch (error) {
-    errorKey.value = error instanceof ApiError ? error.code : ''
+    errorKey.value = loadErrorKey(error)
   } finally {
     loading.value = false
   }
 }
 
-function errorKeyOf(error: unknown): string {
-  if (!(error instanceof ApiError)) return 'generic'
-  if (error.code === 'NETWORK') return 'network'
-  if (error.status === 400) return 'validation'
+/**
+ * What to tell the teacher about a failure, as a key under `teacher.errors`.
+ *
+ * A 404 on this tab is not a missing room: rooms arrived in a later build, so a
+ * server that answers "not found" for the whole list is older than the app and no
+ * retry will fix it. Saying "something went wrong" there sends the teacher
+ * looking for a network problem they do not have.
+ */
+function loadErrorKey(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.isNetwork) return 'network'
+    if (error.status === 404) return 'serverTooOld'
+    if (error.status === 400) return 'validation'
+  }
   return 'generic'
 }
 
 function report(error: unknown): void {
-  toast.error(t(`teacher.errors.${errorKeyOf(error)}`))
+  toast.error(t(`teacher.errors.${loadErrorKey(error)}`))
 }
 
 function openCreate(): void {
@@ -370,12 +380,29 @@ onMounted(() => {
       </div>
     </AppCard>
 
+    <!--
+      Not a red line: a server that cannot answer this tab at all needs an
+      instruction, not an apology. Anything smaller keeps the red line.
+    -->
+    <div
+      v-if="errorKey === 'serverTooOld'"
+      role="alert"
+      class="rounded-xl border border-outline-variant bg-surface-container p-4"
+    >
+      <p class="text-sm font-semibold text-on-surface">
+        {{ t('teacher.errors.serverTooOld') }}
+      </p>
+      <p class="mt-1 text-xs text-on-surface-variant">
+        {{ t('teacher.errors.serverTooOldHint') }}
+      </p>
+    </div>
+
     <p
-      v-if="errorKey"
+      v-else-if="errorKey"
       role="alert"
       class="rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container"
     >
-      {{ t(`teacher.errors.${errorKey === 'NETWORK' ? 'network' : 'generic'}`) }}
+      {{ t(`teacher.errors.${errorKey}`) }}
     </p>
 
     <SkeletonList v-else-if="loading" :rows="2" />

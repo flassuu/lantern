@@ -35,6 +35,8 @@ export function useSessionChannel(): SessionChannel {
 
   let socket: WebSocket | null = null
   let sessionId = ''
+  /** What the board already shows, so an unchanged push costs nothing. */
+  let shownSignature = ''
   let retryDelay = 1000
   let retryTimer: number | undefined
   let fallbackTimer: number | undefined
@@ -52,12 +54,30 @@ export function useSessionChannel(): SessionChannel {
     safetyTimer = undefined
   }
 
+  /**
+   * Put a board on screen only if it is not the one already there.
+   *
+   * The safety poll re-reads every twenty seconds whether or not anything
+   * happened, and a socket pushes the whole list on every change. Assigning a
+   * fresh array each time re-renders the tiles, every participant row and the
+   * code block for data that is byte-identical to what is on screen - and a
+   * window repainting when nothing changed is the one thing that turns a smooth
+   * board into a stuttering one. The comparison is a stringify of a short list;
+   * the render it avoids is the whole tab.
+   */
+  function applyParticipants(next: ParticipantEntry[]): void {
+    const signature = JSON.stringify(next)
+    if (signature === shownSignature) return
+    shownSignature = signature
+    participants.value = next
+  }
+
   async function refresh(): Promise<void> {
     if (!sessionId) return
     try {
       const board = await getParticipants(sessionId)
-      participants.value = board.participants
-      status.value = board.session.status
+      applyParticipants(board.participants)
+      if (board.session.status !== status.value) status.value = board.session.status
     } catch {
       // A failed read keeps the last known board; the next tick retries.
     }
@@ -93,8 +113,8 @@ export function useSessionChannel(): SessionChannel {
       if (typeof message !== 'object' || message === null) return
       const payload = message as { type?: string; participants?: ParticipantEntry[]; status?: LiveSessionStatus }
       if (payload.type === 'participants' && Array.isArray(payload.participants)) {
-        participants.value = payload.participants
-      } else if (payload.type === 'status' && payload.status) {
+        applyParticipants(payload.participants)
+      } else if (payload.type === 'status' && payload.status && payload.status !== status.value) {
         status.value = payload.status
       }
     }
@@ -138,6 +158,7 @@ export function useSessionChannel(): SessionChannel {
     sessionId = id
     if (!id) return
     participants.value = []
+    shownSignature = ''
     open()
     // Even on a healthy socket, a slow refresh catches anything a dropped
     // message would have hidden.

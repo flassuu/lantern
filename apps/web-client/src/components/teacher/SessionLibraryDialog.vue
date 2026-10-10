@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowDownAZ, ArrowLeft, ArrowRight, ArrowUpAZ, ChevronDown, Search, X } from '@lucide/vue'
+import {
+  ArrowDownAZ,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUpAZ,
+  ChevronDown,
+  Search,
+  SlidersHorizontal,
+  X,
+} from '@lucide/vue'
 import { ApiError } from '../../api/client'
 import {
   listSessionPage,
@@ -67,6 +76,8 @@ const from = ref('')
 const to = ref('')
 const sort = ref<SessionSort>('created')
 const dir = ref<'asc' | 'desc'>('desc')
+/** Folded by default: the list is what this dialog is for, not the filters. */
+const filtersOpen = ref(false)
 const offset = ref(0)
 
 const sessions = ref<SessionSummary[]>([])
@@ -90,6 +101,14 @@ const hasFilters = computed(
     tagId.value !== '' ||
     from.value !== '' ||
     to.value !== '',
+)
+
+/** How many filters are narrowing the list; the folded button shows this. */
+const filterCount = computed(
+  () =>
+    [query.value.trim(), testId.value, status.value, roomId.value, tagId.value, from.value, to.value]
+      .filter((value) => value !== '')
+      .length,
 )
 
 function errorKeyOf(error: unknown): string {
@@ -209,142 +228,172 @@ defineExpose({ load })
         </AppButton>
       </header>
 
-      <div class="space-y-3 border-b border-outline-variant p-4">
-        <div class="relative">
-          <Search
-            class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant"
+      <!--
+        The filters fold away. On a phone they were a wall of selects and date
+        fields standing between the teacher and the runs, and that wall was the
+        first thing on the screen even when nothing was filtered - the search
+        box and the list are what a teacher opens this for. The button keeps the
+        count of what is active, so a folded block is never a hidden filter.
+      -->
+      <div class="border-b border-outline-variant p-4">
+        <AppButton
+          variant="secondary"
+          class="w-full"
+          :aria-expanded="filtersOpen"
+          @click="filtersOpen = !filtersOpen"
+        >
+          <SlidersHorizontal class="size-4" aria-hidden="true" />
+          <span class="flex-1 text-left">{{ t('teacher.live.library.filters') }}</span>
+          <span
+            v-if="filterCount > 0"
+            class="rounded-full bg-primary px-2 py-0.5 text-[11px] font-semibold text-on-primary"
+          >
+            {{ filterCount }}
+          </span>
+          <ChevronDown
+            class="size-4 transition-transform duration-200"
+            :class="filtersOpen ? 'rotate-180' : ''"
             aria-hidden="true"
           />
-          <AppInput
-            v-model="query"
-            type="search"
-            class="pl-9"
-            :placeholder="t('teacher.live.library.search')"
-            :aria-label="t('teacher.live.library.search')"
-          />
-        </div>
+        </AppButton>
 
-        <div class="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            class="inline-flex h-8 items-center rounded-full border px-3 text-[11px] font-semibold"
-            :class="
-              status === ''
-                ? 'border-transparent bg-primary text-on-primary'
-                : 'border-outline-variant bg-surface-container-high text-on-surface-variant'
-            "
-            @click="status = ''"
-          >
-            {{ t('teacher.live.library.statusAny') }}
-          </button>
-          <button
-            v-for="option in (['lobby', 'active', 'paused', 'finished'] as const)"
-            :key="option"
-            type="button"
-            class="inline-flex h-8 items-center rounded-full border px-3 text-[11px] font-semibold"
-            :class="
-              status === option
-                ? 'border-transparent bg-primary text-on-primary'
-                : 'border-outline-variant bg-surface-container-high text-on-surface-variant'
-            "
-            @click="status = option"
-          >
-            {{ t(`teacher.live.status.${option}`) }}
-          </button>
-        </div>
+        <div v-show="filtersOpen" class="mt-3 space-y-3">
+          <div class="relative">
+            <Search
+              class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant"
+              aria-hidden="true"
+            />
+            <AppInput
+              v-model="query"
+              type="search"
+              class="pl-9"
+              :placeholder="t('teacher.live.library.search')"
+              :aria-label="t('teacher.live.library.search')"
+            />
+          </div>
 
-        <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <label class="block">
-            <span class="text-[11px] font-semibold text-on-surface-variant">
-              {{ t('teacher.live.library.test') }}
-            </span>
-            <div class="relative mt-1">
-              <select v-model="testId" :class="SELECT">
-                <option value="">{{ t('teacher.live.library.testAny') }}</option>
-                <option v-for="test in props.tests" :key="test.id" :value="test.id">
-                  {{ test.title }}
-                </option>
-              </select>
-              <ChevronDown class="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" aria-hidden="true" />
-            </div>
-          </label>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              class="inline-flex h-8 items-center rounded-full border px-3 text-[11px] font-semibold"
+              :class="
+                status === ''
+                  ? 'border-transparent bg-primary text-on-primary'
+                  : 'border-outline-variant bg-surface-container-high text-on-surface-variant'
+              "
+              @click="status = ''"
+            >
+              {{ t('teacher.live.library.statusAny') }}
+            </button>
+            <button
+              v-for="option in (['lobby', 'active', 'paused', 'finished'] as const)"
+              :key="option"
+              type="button"
+              class="inline-flex h-8 items-center rounded-full border px-3 text-[11px] font-semibold"
+              :class="
+                status === option
+                  ? 'border-transparent bg-primary text-on-primary'
+                  : 'border-outline-variant bg-surface-container-high text-on-surface-variant'
+              "
+              @click="status = option"
+            >
+              {{ t(`teacher.live.status.${option}`) }}
+            </button>
+          </div>
 
-          <label class="block">
-            <span class="text-[11px] font-semibold text-on-surface-variant">
-              {{ t('teacher.live.library.room') }}
-            </span>
-            <div class="relative mt-1">
-              <select v-model="roomId" :class="SELECT">
-                <option value="">{{ t('teacher.live.library.roomAny') }}</option>
-                <option v-for="room in rooms.rooms" :key="room.id" :value="room.id">
-                  {{ room.name }}
-                </option>
-              </select>
-              <ChevronDown class="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" aria-hidden="true" />
-            </div>
-          </label>
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <label class="block">
+              <span class="text-[11px] font-semibold text-on-surface-variant">
+                {{ t('teacher.live.library.test') }}
+              </span>
+              <div class="relative mt-1">
+                <select v-model="testId" :class="SELECT">
+                  <option value="">{{ t('teacher.live.library.testAny') }}</option>
+                  <option v-for="test in props.tests" :key="test.id" :value="test.id">
+                    {{ test.title }}
+                  </option>
+                </select>
+                <ChevronDown class="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" aria-hidden="true" />
+              </div>
+            </label>
 
-          <label class="block">
-            <span class="text-[11px] font-semibold text-on-surface-variant">
-              {{ t('teacher.live.library.tag') }}
-            </span>
-            <div class="relative mt-1">
-              <select v-model="tagId" :class="SELECT">
-                <option value="">{{ t('teacher.live.library.tagAny') }}</option>
-                <option v-for="tag in tags" :key="tag.id" :value="tag.id">{{ tag.name }}</option>
-              </select>
-              <ChevronDown class="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" aria-hidden="true" />
-            </div>
-          </label>
-        </div>
+            <label class="block">
+              <span class="text-[11px] font-semibold text-on-surface-variant">
+                {{ t('teacher.live.library.room') }}
+              </span>
+              <div class="relative mt-1">
+                <select v-model="roomId" :class="SELECT">
+                  <option value="">{{ t('teacher.live.library.roomAny') }}</option>
+                  <option v-for="room in rooms.rooms" :key="room.id" :value="room.id">
+                    {{ room.name }}
+                  </option>
+                </select>
+                <ChevronDown class="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" aria-hidden="true" />
+              </div>
+            </label>
 
-        <div class="grid grid-cols-2 gap-2">
-          <label class="block">
-            <span class="text-[11px] font-semibold text-on-surface-variant">
-              {{ t('teacher.live.library.from') }}
-            </span>
-            <input v-model="from" type="date" :class="FIELD" class="mt-1" />
-          </label>
-          <label class="block">
-            <span class="text-[11px] font-semibold text-on-surface-variant">
-              {{ t('teacher.live.library.to') }}
-            </span>
-            <input v-model="to" type="date" :class="FIELD" class="mt-1" />
-          </label>
-        </div>
+            <label class="block">
+              <span class="text-[11px] font-semibold text-on-surface-variant">
+                {{ t('teacher.live.library.tag') }}
+              </span>
+              <div class="relative mt-1">
+                <select v-model="tagId" :class="SELECT">
+                  <option value="">{{ t('teacher.live.library.tagAny') }}</option>
+                  <option v-for="tag in tags" :key="tag.id" :value="tag.id">{{ tag.name }}</option>
+                </select>
+                <ChevronDown class="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" aria-hidden="true" />
+              </div>
+            </label>
+          </div>
 
-        <div class="flex flex-wrap items-end gap-2">
-          <label class="block">
-            <span class="text-[11px] font-semibold text-on-surface-variant">
-              {{ t('teacher.live.library.sort') }}
-            </span>
-            <div class="relative mt-1 w-44">
-              <select v-model="sort" :class="SELECT">
-                <option value="created">{{ t('teacher.live.library.sortCreated') }}</option>
-                <option value="name">{{ t('teacher.live.library.sortName') }}</option>
-                <option value="status">{{ t('teacher.live.library.sortStatus') }}</option>
-                <option value="submitted">{{ t('teacher.live.library.sortSubmitted') }}</option>
-              </select>
-              <ChevronDown class="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" aria-hidden="true" />
-            </div>
-          </label>
-          <AppButton
-            variant="secondary"
-            :aria-label="dir === 'asc' ? t('teacher.live.library.ascending') : t('teacher.live.library.descending')"
-            @click="toggleDir"
-          >
-            <ArrowUpAZ v-if="dir === 'asc'" class="size-4" aria-hidden="true" />
-            <ArrowDownAZ v-else class="size-4" aria-hidden="true" />
-          </AppButton>
-          <AppButton
-            v-if="hasFilters"
-            variant="ghost"
-            size="sm"
-            class="ml-auto"
-            @click="clearFilters"
-          >
-            {{ t('teacher.live.library.clear') }}
-          </AppButton>
+          <div class="grid grid-cols-2 gap-2">
+            <label class="block">
+              <span class="text-[11px] font-semibold text-on-surface-variant">
+                {{ t('teacher.live.library.from') }}
+              </span>
+              <input v-model="from" type="date" :class="FIELD" class="mt-1" />
+            </label>
+            <label class="block">
+              <span class="text-[11px] font-semibold text-on-surface-variant">
+                {{ t('teacher.live.library.to') }}
+              </span>
+              <input v-model="to" type="date" :class="FIELD" class="mt-1" />
+            </label>
+          </div>
+
+          <div class="flex flex-wrap items-end gap-2">
+            <label class="block">
+              <span class="text-[11px] font-semibold text-on-surface-variant">
+                {{ t('teacher.live.library.sort') }}
+              </span>
+              <div class="relative mt-1 w-44">
+                <select v-model="sort" :class="SELECT">
+                  <option value="created">{{ t('teacher.live.library.sortCreated') }}</option>
+                  <option value="name">{{ t('teacher.live.library.sortName') }}</option>
+                  <option value="status">{{ t('teacher.live.library.sortStatus') }}</option>
+                  <option value="submitted">{{ t('teacher.live.library.sortSubmitted') }}</option>
+                </select>
+                <ChevronDown class="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" aria-hidden="true" />
+              </div>
+            </label>
+            <AppButton
+              variant="secondary"
+              :aria-label="dir === 'asc' ? t('teacher.live.library.ascending') : t('teacher.live.library.descending')"
+              @click="toggleDir"
+            >
+              <ArrowUpAZ v-if="dir === 'asc'" class="size-4" aria-hidden="true" />
+              <ArrowDownAZ v-else class="size-4" aria-hidden="true" />
+            </AppButton>
+            <AppButton
+              v-if="hasFilters"
+              variant="ghost"
+              size="sm"
+              class="ml-auto"
+              @click="clearFilters"
+            >
+              {{ t('teacher.live.library.clear') }}
+            </AppButton>
+          </div>
         </div>
       </div>
 
