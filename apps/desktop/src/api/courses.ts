@@ -1,28 +1,33 @@
 import { apiFetch, apiUrl, ApiError, getToken } from './client'
+import { normalizeCourse } from './normalize'
 import type { CourseDetails, CourseInput, CourseSummary, Material } from './types'
 
 /** Teacher/admin: own courses (admin sees all). */
 export async function listCourses(): Promise<CourseSummary[]> {
   const result = await apiFetch<{ courses: CourseSummary[] }>('/api/courses')
-  return result.courses
+  return result.courses.map(normalizeCourse)
 }
 
 export async function getCourse(id: string): Promise<CourseDetails> {
-  return apiFetch<CourseDetails>(`/api/courses/${id}`)
+  return normalizeCourse(await apiFetch<CourseDetails>(`/api/courses/${id}`))
 }
 
 export async function createCourse(input: CourseInput): Promise<CourseDetails> {
-  return apiFetch<CourseDetails>('/api/courses', {
-    method: 'POST',
-    body: JSON.stringify(input),
-  })
+  return normalizeCourse(
+    await apiFetch<CourseDetails>('/api/courses', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  )
 }
 
 export async function updateCourse(id: string, input: CourseInput): Promise<CourseDetails> {
-  return apiFetch<CourseDetails>(`/api/courses/${id}`, {
-    method: 'PATCH',
-    body: JSON.stringify(input),
-  })
+  return normalizeCourse(
+    await apiFetch<CourseDetails>(`/api/courses/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    }),
+  )
 }
 
 export async function deleteCourse(id: string): Promise<void> {
@@ -30,10 +35,12 @@ export async function deleteCourse(id: string): Promise<void> {
 }
 
 export async function enrollStudent(courseId: string, username: string): Promise<CourseDetails> {
-  return apiFetch<CourseDetails>(`/api/courses/${courseId}/enrollments`, {
-    method: 'POST',
-    body: JSON.stringify({ username }),
-  })
+  return normalizeCourse(
+    await apiFetch<CourseDetails>(`/api/courses/${courseId}/enrollments`, {
+      method: 'POST',
+      body: JSON.stringify({ username }),
+    }),
+  )
 }
 
 export async function unenrollStudent(courseId: string, userId: string): Promise<void> {
@@ -41,10 +48,12 @@ export async function unenrollStudent(courseId: string, userId: string): Promise
 }
 
 export async function attachTest(courseId: string, testId: string): Promise<CourseDetails> {
-  return apiFetch<CourseDetails>(`/api/courses/${courseId}/tests`, {
-    method: 'POST',
-    body: JSON.stringify({ testId }),
-  })
+  return normalizeCourse(
+    await apiFetch<CourseDetails>(`/api/courses/${courseId}/tests`, {
+      method: 'POST',
+      body: JSON.stringify({ testId }),
+    }),
+  )
 }
 
 export async function detachTest(courseId: string, testId: string): Promise<void> {

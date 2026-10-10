@@ -1,4 +1,5 @@
 import { apiFetch } from './client'
+import { normalizeSession } from './normalize'
 import type { Tag } from './types'
 
 export type LiveSessionStatus = 'active' | 'paused' | 'finished'
@@ -136,7 +137,7 @@ function filterQuery(filter: SessionFilter): string {
 /** Teacher only: their own sessions (an admin sees every teacher's). */
 export async function listSessions(filter: SessionFilter = {}): Promise<SessionSummary[]> {
   const result = await apiFetch<{ sessions: SessionSummary[] }>(`/api/sessions${filterQuery(filter)}`)
-  return result.sessions
+  return result.sessions.map(normalizeSession)
 }
 
 /** Teacher only: starts a run of one of their tests. */
@@ -148,7 +149,7 @@ export async function startSession(
     method: 'POST',
     body: JSON.stringify({ testId, ...input }),
   })
-  return result.session
+  return normalizeSession(result.session)
 }
 
 /** Teacher only. */
@@ -156,7 +157,10 @@ export async function getParticipants(sessionId: string): Promise<{
   session: LiveSession
   participants: ParticipantEntry[]
 }> {
-  return apiFetch(`/api/sessions/${sessionId}/participants`)
+  const result = await apiFetch<{ session: LiveSession; participants: ParticipantEntry[] }>(
+    `/api/sessions/${sessionId}/participants`,
+  )
+  return { session: normalizeSession(result.session), participants: result.participants }
 }
 
 /** Teacher only: pauses, resumes or finishes. */
@@ -168,7 +172,7 @@ export async function setSessionStatus(
     method: 'PATCH',
     body: JSON.stringify({ status }),
   })
-  return result.session
+  return normalizeSession(result.session)
 }
 
 /** Student only. The code is normalised server-side, so case and spaces are fine. */

@@ -1,15 +1,16 @@
 import { ApiError, apiFetch, downloadFile } from './client'
+import { normalizeTest } from './normalize'
 import type { TestDetails, TestInput, TestSummary } from './types'
 
 /** Teacher/admin: own tests (admin sees all). */
 export async function listTests(): Promise<TestSummary[]> {
   const result = await apiFetch<{ tests: TestSummary[] }>('/api/tests')
-  return result.tests
+  return result.tests.map(normalizeTest)
 }
 
 export async function getTest(id: string): Promise<TestDetails> {
   const result = await apiFetch<{ test: TestDetails }>(`/api/tests/${id}`)
-  return result.test
+  return normalizeTest(result.test)
 }
 
 export async function createTest(input: TestInput): Promise<TestDetails> {
@@ -17,7 +18,7 @@ export async function createTest(input: TestInput): Promise<TestDetails> {
     method: 'POST',
     body: JSON.stringify(input),
   })
-  return result.test
+  return normalizeTest(result.test)
 }
 
 /** Replaces the test and all of its questions. */
@@ -26,7 +27,7 @@ export async function updateTest(id: string, input: TestInput): Promise<TestDeta
     method: 'PUT',
     body: JSON.stringify(input),
   })
-  return result.test
+  return normalizeTest(result.test)
 }
 
 export async function deleteTest(id: string): Promise<void> {
@@ -38,7 +39,7 @@ export async function duplicateTest(id: string): Promise<TestDetails> {
   const result = await apiFetch<{ test: TestDetails }>(`/api/tests/${id}/duplicate`, {
     method: 'POST',
   })
-  return result.test
+  return normalizeTest(result.test)
 }
 
 /** A filename both the browser and a person can live with. */
@@ -71,7 +72,7 @@ export async function importTestFile(file: File): Promise<TestDetails> {
     method: 'POST',
     body: JSON.stringify(document),
   })
-  return result.test
+  return normalizeTest(result.test)
 }
 
 /** One row of the grade journal: a student's record for one test. */

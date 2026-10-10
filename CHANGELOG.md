@@ -34,6 +34,14 @@ and everything else follows from taking that seriously.
   The Live board shows the name, the room and the labels.
 - **The session list takes filters** - room, test, status, date range, word and
   tag - so the archive has something to search once 6.2 gives it a screen.
+- **The client copes with a server older than itself.** A server that has not
+  been restarted since 6.1 answers without `name`, `roomId` or `tags`, and one
+  read of `session.tags.length` threw while the Live board rendered - which did
+  not blank a card, it aborted the render of the page, so the whole workbench
+  froze and every tab looked like the Live tab. The gaps are now filled at the
+  network edge, where the client is the only side that knows it is talking to a
+  server it does not control. Restart the server (or rebuild the desktop
+  sidecar) to get the rooms and labels themselves.
 
 ### The teacher's Live tab, rebuilt around the run in progress
 
