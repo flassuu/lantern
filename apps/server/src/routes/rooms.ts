@@ -1,19 +1,20 @@
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify'
 import type { DatabaseSync } from 'node:sqlite'
 import {
-  createClassroom,
-  deleteClassroom,
-  findActiveClassroomByKey,
-  findClassroomById,
-  getClassroom,
-  listClassroomMembers,
-  listClassrooms,
-  regenerateClassroomKey,
-  renameClassroom,
-  revokeClassroom,
-  setClassroomCourse,
-  toClassPreview,
-} from '../lib/classrooms'
+  createRoom,
+  deleteRoom,
+  findActiveRoomByKey,
+  findRoomById,
+  getRoom,
+  listRoomCourses,
+  listRoomMembers,
+  listRooms,
+  regenerateRoomKey,
+  renameRoom,
+  revokeRoom,
+  setRoomCourses,
+  toRoomPreview,
+} from '../lib/rooms'
 import { normalizeCode } from '../lib/codes'
 import { findCourseRow } from '../lib/courses'
 import type { Database } from '../lib/db'
@@ -21,7 +22,7 @@ import { sendError } from '../lib/http'
 import { requireRoles } from '../plugins/auth'
 import type { Session } from '../lib/tokens'
 
-export interface ClassroomDeps {
+export interface RoomDeps {
   database: Database
 }
 
@@ -38,17 +39,16 @@ const createSchema = {
   additionalProperties: false,
   properties: {
     name: { type: 'string', minLength: 1, maxLength: 60 },
-    courseId: { type: ['string', 'null'], maxLength: 36 },
+    courseIds: { type: 'array', items: { type: 'string', maxLength: 36 }, maxItems: 20 },
   },
 } as const
 
 const renameSchema = {
   type: 'object',
-  required: ['name'],
   additionalProperties: false,
   properties: {
     name: { type: 'string', minLength: 1, maxLength: 60 },
-    courseId: { type: ['string', 'null'], maxLength: 36 },
+    courseIds: { type: 'array', items: { type: 'string', maxLength: 36 }, maxItems: 20 },
   },
 } as const
 
@@ -60,176 +60,178 @@ const previewQuerySchema = {
 } as const
 
 /**
- * Ownership. A class belongs to the teacher who made it: an admin may see and
+ * Ownership. A room belongs to the teacher who made it: an admin may see and
  * manage everything, another teacher may see nothing. There is deliberately no
- * way for one teacher to touch another's class - that is the boundary this
+ * way for one teacher to touch another's room - that is the boundary this
  * whole feature exists to draw.
  */
 function mayManage(session: Session, ownerId: string): boolean {
   return session.role === 'admin' || session.userId === ownerId
 }
 
-export const classroomRoutes: FastifyPluginAsync<ClassroomDeps> = async (
+export const roomRoutes: FastifyPluginAsync<RoomDeps> = async (
   app: FastifyInstance,
-  { database }: ClassroomDeps,
+  { database }: RoomDeps,
 ) => {
   const db: DatabaseSync = database.raw
 
   /**
-   * What a class key leads to, without signing anything up. Public on purpose:
+   * What a room key leads to, without signing anything up. Public on purpose:
    * the register screen is the one screen nobody is signed in on, and a student
    * deserves to see "Class 9A · Olena M." before typing a password.
    *
    * A wrong key and a revoked key answer the same way, so a key cannot be used
-   * to find out which classes existed.
+   * to find out which rooms existed.
    */
   app.get(
-    '/api/classrooms/preview',
+    '/api/rooms/preview',
     { schema: { querystring: previewQuerySchema } },
     async (request, reply) => {
       const query = request.query as { key: string }
       const key = normalizeCode(query.key)
-      const row = key ? findActiveClassroomByKey(db, key) : null
-      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'no such class key')
-      return { preview: toClassPreview(db, row) }
+      const row = key ? findActiveRoomByKey(db, key) : null
+      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'no such room key')
+      return { preview: toRoomPreview(db, row) }
     },
   )
 
   app.get(
-    '/api/classrooms',
+    '/api/rooms',
     { preHandler: requireRoles('admin', 'teacher') },
     async (request) => {
       const session = request.session!
       // A teacher sees their own rooms; an admin sees every room in the school.
       const ownerId = session.role === 'admin' ? null : session.userId
-      return { classrooms: listClassrooms(db, ownerId) }
+      return { rooms: listRooms(db, ownerId) }
     },
   )
 
   app.post(
-    '/api/classrooms',
+    '/api/rooms',
     { preHandler: requireRoles('admin', 'teacher'), schema: { body: createSchema } },
     async (request, reply) => {
       const session = request.session!
-      const body = request.body as { name: string; courseId?: string | null }
+      const body = request.body as { name: string; courseIds?: string[] }
       const name = body.name.trim()
-      if (name === '') return sendError(reply, 400, 'VALIDATION', 'class name is required')
-      const courseId = checkCourse(db, body.courseId ?? null, session)
-      if (courseId === undefined) {
-        return sendError(reply, 400, 'VALIDATION', 'no such course')
-      }
-      const classroom = createClassroom(db, { ownerId: session.userId, name, courseId })
-      return reply.code(201).send({ classroom })
+      if (name === '') return sendError(reply, 400, 'VALIDATION', 'room name is required')
+      const courseIds = checkCourses(db, body.courseIds ?? [], session)
+      if (!courseIds) return sendError(reply, 400, 'VALIDATION', 'no such course')
+      const room = createRoom(db, { ownerId: session.userId, name, courseIds })
+      return reply.code(201).send({ room })
     },
   )
 
   app.get(
-    '/api/classrooms/:id',
+    '/api/rooms/:id',
     { preHandler: requireRoles('admin', 'teacher'), schema: { params: idParamsSchema } },
     async (request, reply) => {
       const session = request.session!
       const params = request.params as { id: string }
-      const row = findClassroomById(db, params.id)
-      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'class not found')
+      const row = findRoomById(db, params.id)
+      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'room not found')
       if (!mayManage(session, row.owner_id)) {
         return sendError(reply, 403, 'FORBIDDEN', 'insufficient role')
       }
       return {
-        classroom: getClassroom(db, row.id),
-        members: listClassroomMembers(db, row.id),
+        room: getRoom(db, row.id),
+        members: listRoomMembers(db, row.id),
+        courses: listRoomCourses(db, row.id),
       }
     },
   )
 
   app.patch(
-    '/api/classrooms/:id',
-    { preHandler: requireRoles('admin', 'teacher'), schema: { params: idParamsSchema, body: renameSchema } },
+    '/api/rooms/:id',
+    {
+      preHandler: requireRoles('admin', 'teacher'),
+      schema: { params: idParamsSchema, body: renameSchema },
+    },
     async (request, reply) => {
       const session = request.session!
       const params = request.params as { id: string }
-      const row = findClassroomById(db, params.id)
-      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'class not found')
+      const row = findRoomById(db, params.id)
+      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'room not found')
       if (!mayManage(session, row.owner_id)) {
         return sendError(reply, 403, 'FORBIDDEN', 'insufficient role')
       }
-      const body = request.body as { name: string; courseId?: string | null }
-      const name = body.name.trim()
-      if (name === '') return sendError(reply, 400, 'VALIDATION', 'class name is required')
-      if (body.courseId !== undefined) {
-        const courseId = checkCourse(db, body.courseId, session)
-        if (courseId === undefined) {
-          return sendError(reply, 400, 'VALIDATION', 'no such course')
-        }
-        setClassroomCourse(db, row.id, courseId)
+      const body = request.body as { name?: string; courseIds?: string[] }
+      if (body.courseIds !== undefined) {
+        const courseIds = checkCourses(db, body.courseIds, session)
+        if (!courseIds) return sendError(reply, 400, 'VALIDATION', 'no such course')
+        setRoomCourses(db, row.id, courseIds)
       }
-      renameClassroom(db, row.id, name)
-      return { classroom: getClassroom(db, row.id) }
+      if (body.name !== undefined) {
+        const name = body.name.trim()
+        if (name === '') return sendError(reply, 400, 'VALIDATION', 'room name is required')
+        renameRoom(db, row.id, name)
+      }
+      return { room: getRoom(db, row.id), courses: listRoomCourses(db, row.id) }
     },
   )
 
   app.post(
-    '/api/classrooms/:id/revoke',
+    '/api/rooms/:id/revoke',
     { preHandler: requireRoles('admin', 'teacher'), schema: { params: idParamsSchema } },
     async (request, reply) => {
       const session = request.session!
       const params = request.params as { id: string }
-      const row = findClassroomById(db, params.id)
-      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'class not found')
+      const row = findRoomById(db, params.id)
+      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'room not found')
       if (!mayManage(session, row.owner_id)) {
         return sendError(reply, 403, 'FORBIDDEN', 'insufficient role')
       }
-      revokeClassroom(db, row.id)
-      return { classroom: getClassroom(db, row.id) }
+      revokeRoom(db, row.id)
+      return { room: getRoom(db, row.id) }
     },
   )
 
   /** A new key for a room someone photographed and posted on a wall. */
   app.post(
-    '/api/classrooms/:id/key',
+    '/api/rooms/:id/key',
     { preHandler: requireRoles('admin', 'teacher'), schema: { params: idParamsSchema } },
     async (request, reply) => {
       const session = request.session!
       const params = request.params as { id: string }
-      const row = findClassroomById(db, params.id)
-      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'class not found')
+      const row = findRoomById(db, params.id)
+      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'room not found')
       if (!mayManage(session, row.owner_id)) {
         return sendError(reply, 403, 'FORBIDDEN', 'insufficient role')
       }
-      const key = regenerateClassroomKey(db, row.id)
-      return { key, classroom: getClassroom(db, row.id) }
+      const key = regenerateRoomKey(db, row.id)
+      return { key, room: getRoom(db, row.id) }
     },
   )
 
   app.delete(
-    '/api/classrooms/:id',
+    '/api/rooms/:id',
     { preHandler: requireRoles('admin', 'teacher'), schema: { params: idParamsSchema } },
     async (request, reply) => {
       const session = request.session!
       const params = request.params as { id: string }
-      const row = findClassroomById(db, params.id)
-      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'class not found')
+      const row = findRoomById(db, params.id)
+      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'room not found')
       if (!mayManage(session, row.owner_id)) {
         return sendError(reply, 403, 'FORBIDDEN', 'insufficient role')
       }
-      deleteClassroom(db, row.id)
+      deleteRoom(db, row.id)
       return reply.code(204).send()
     },
   )
 }
 
 /**
- * Validates an optional course link. `undefined` means "not usable", which the
- * caller turns into a 400; a course the requester cannot attach is rejected the
- * same way as a missing one rather than silently ignored.
+ * Validates the courses a room is attached to. Returns null when any of them
+ * cannot be used, which the caller turns into a 400 — a course the requester
+ * cannot attach is rejected the same way as a missing one, rather than silently
+ * dropped, because a teacher who thinks a group takes algebra should find out
+ * now rather than at enrolment.
  */
-function checkCourse(
-  db: DatabaseSync,
-  courseId: string | null,
-  session: Session,
-): string | null | undefined {
-  if (courseId === null) return null
-  const course = findCourseRow(db, courseId)
-  if (!course) return undefined
-  if (!mayManage(session, course.owner_id)) return undefined
-  return course.id
+function checkCourses(db: DatabaseSync, courseIds: string[], session: Session): string[] | null {
+  const unique = [...new Set(courseIds)]
+  for (const courseId of unique) {
+    const course = findCourseRow(db, courseId)
+    if (!course) return null
+    if (!mayManage(session, course.owner_id)) return null
+  }
+  return unique
 }

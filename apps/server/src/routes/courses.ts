@@ -23,6 +23,7 @@ import {
 } from '../lib/courses'
 import { findUserByUsername } from '../lib/users'
 import { findTestRow } from '../lib/tests'
+import { listEntityTags, setEntityTags, tagsByEntity } from '../lib/tags'
 import { requireRoles } from '../plugins/auth'
 import type { Session } from '../lib/tokens'
 
@@ -57,6 +58,7 @@ const courseBodySchema = {
   properties: {
     title: { type: 'string', minLength: 1, maxLength: 200 },
     description: { type: 'string', maxLength: 2000 },
+    tags: { type: 'array', items: { type: 'string', maxLength: 40 }, maxItems: 20 },
   },
 } as const
 
@@ -155,6 +157,7 @@ export const courseRoutes: FastifyPluginAsync<CoursesDeps> = async (
       materialsCount: 0,
       testsCount: testRows.length,
       studentsCount: studentRows.length,
+      tags: listEntityTags(db, 'course', courseId),
       materials: listMaterials(db, courseId),
       tests: testRows,
       students: forStudent
@@ -172,11 +175,13 @@ export const courseRoutes: FastifyPluginAsync<CoursesDeps> = async (
     { preHandler: requireRoles('admin', 'teacher', 'student') },
     async (request) => {
       const session = request.session!
+      const courses =
+        session.role === 'student'
+          ? listEnrolledCourses(db, session.userId)
+          : listCourseRows(db, session.userId, session.role === 'admin')
+      const byCourse = tagsByEntity(db, 'course', courses.map((course) => course.id))
       return {
-        courses:
-          session.role === 'student'
-            ? listEnrolledCourses(db, session.userId)
-            : listCourseRows(db, session.userId, session.role === 'admin'),
+        courses: courses.map((course) => ({ ...course, tags: byCourse.get(course.id) ?? [] })),
       }
     },
   )
@@ -189,11 +194,14 @@ export const courseRoutes: FastifyPluginAsync<CoursesDeps> = async (
     },
     async (request, reply) => {
       const session = request.session!
-      const body = request.body as { title: string; description?: string }
+      const body = request.body as { title: string; description?: string; tags?: string[] }
       const created = createCourse(db, session.userId, {
         title: body.title,
         description: body.description ?? '',
       })
+      if (body.tags !== undefined) {
+        setEntityTags(db, session.userId, 'course', created.id, body.tags)
+      }
       return reply.code(201).send(courseDetails(created.id))
     },
   )
@@ -230,11 +238,14 @@ export const courseRoutes: FastifyPluginAsync<CoursesDeps> = async (
     async (request, reply) => {
       const session = request.session!
       const params = request.params as { id: string }
-      const body = request.body as { title: string; description?: string }
+      const body = request.body as { title: string; description?: string; tags?: string[] }
       const course = findCourseRow(db, params.id)
       if (!course) return sendError(reply, 404, 'NOT_FOUND', 'course not found')
       if (!canManage(session, course.owner_id)) {
         return sendError(reply, 403, 'FORBIDDEN', 'insufficient role')
+      }
+      if (body.tags !== undefined) {
+        setEntityTags(db, session.userId, 'course', course.id, body.tags)
       }
       const updated = updateCourse(db, course, {
         title: body.title,

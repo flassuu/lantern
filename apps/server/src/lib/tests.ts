@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import { nowIso } from './db'
+import type { Tag } from './tags'
 
 export type QuestionType =
   | 'single_choice'
@@ -51,6 +52,8 @@ export interface TestRow {
   description: string
   time_limit_sec: number | null
   passing_percent: number | null
+  /** The group this test was written for, or null when it is not tied to one. */
+  room_id: string | null
   created_at: string
   updated_at: string
 }
@@ -62,6 +65,7 @@ export interface Test {
   description: string
   timeLimitSec: number | null
   passingPercent: number | null
+  roomId: string | null
   questionCount: number
   createdAt: string
   updatedAt: string
@@ -69,6 +73,8 @@ export interface Test {
 
 export interface TestWithQuestions extends Omit<Test, 'questionCount'> {
   questions: Question[]
+  /** The teacher's own labels; a test carries them wherever it goes. */
+  tags: Tag[]
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -203,6 +209,7 @@ export function toTest(row: TestRow, questionCount: number): Test {
     description: row.description,
     timeLimitSec: row.time_limit_sec,
     passingPercent: row.passing_percent,
+    roomId: row.room_id,
     questionCount,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -212,6 +219,11 @@ export function toTest(row: TestRow, questionCount: number): Test {
 export function findTestRow(db: DatabaseSync, id: string): TestRow | null {
   const row = db.prepare('SELECT * FROM tests WHERE id = ?').get(id)
   return (row as TestRow | undefined) ?? null
+}
+
+/** Which group a test belongs to, or none. Never changes the test itself. */
+export function setTestRoom(db: DatabaseSync, id: string, roomId: string | null): void {
+  db.prepare('UPDATE tests SET room_id = ?, updated_at = ? WHERE id = ?').run(roomId, new Date().toISOString(), id)
 }
 
 interface TestWithCountRow extends TestRow {

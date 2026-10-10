@@ -17,7 +17,8 @@ import { testRoutes } from './routes/tests'
 import { courseRoutes } from './routes/courses'
 import { sessionRoutes } from './routes/sessions'
 import { adminRoutes } from './routes/admin'
-import { classroomRoutes } from './routes/classrooms'
+import { roomRoutes } from './routes/rooms'
+import { tagRoutes } from './routes/tags'
 import { settingsRoutes } from './routes/settings'
 import { attachAuth } from './plugins/auth'
 import { APP_VERSION } from './version'
@@ -140,7 +141,9 @@ export function buildApp(options: AppOptions): TestingApp {
   void app.register(settingsRoutes, { database, port: options.port })
 
   // Phase 5.2: class keys, so a teacher can seat a class without an admin.
-  void app.register(classroomRoutes, { database })
+  void app.register(roomRoutes, { database })
+
+  void app.register(tagRoutes, { database })
 
   // Phase 5.3: the same log stream the console prints, over HTTP and WebSocket.
   void app.register(logRoutes, { database, logs })

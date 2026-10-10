@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify'
+import type { DatabaseSync } from 'node:sqlite'
 import type { Database } from '../lib/db'
 import { sendError } from '../lib/http'
 import {
@@ -9,6 +10,7 @@ import {
   findTestRow,
   listQuestions,
   listTestRows,
+  setTestRoom,
   updateTest,
   validateExchange,
   validateQuestion,
@@ -16,6 +18,8 @@ import {
   type QuestionInput,
   type TestWithQuestions,
 } from '../lib/tests'
+import { findRoomById } from '../lib/rooms'
+import { listEntityTags, setEntityTags, tagsByEntity } from '../lib/tags'
 import { requireRoles } from '../plugins/auth'
 import { testResults } from '../lib/results'
 import type { Session } from '../lib/tokens'
@@ -49,6 +53,8 @@ const testBodySchema = {
     description: { type: 'string', maxLength: 2000 },
     timeLimitSec: { type: ['integer', 'null'], minimum: 1 },
     passingPercent: { type: ['integer', 'null'], minimum: 0, maximum: 100 },
+    roomId: { type: ['string', 'null'], maxLength: 36 },
+    tags: { type: 'array', items: { type: 'string', maxLength: 40 }, maxItems: 20 },
     questions: { type: 'array', maxItems: 200, items: questionSchema },
   },
 } as const
@@ -65,6 +71,8 @@ interface TestInput {
   description?: string
   timeLimitSec?: number | null
   passingPercent?: number | null
+  roomId?: string | null
+  tags?: string[]
   questions?: QuestionInput[]
 }
 
@@ -83,7 +91,8 @@ function parseQuestions(questions: QuestionInput[] | undefined): QuestionInput[]
 }
 
 function fullTest(
-  row: { id: string; owner_id: string; title: string; description: string; time_limit_sec: number | null; passing_percent: number | null; created_at: string; updated_at: string },
+  db: DatabaseSync,
+  row: { id: string; owner_id: string; title: string; description: string; time_limit_sec: number | null; passing_percent: number | null; room_id: string | null; created_at: string; updated_at: string },
   questions: Question[],
 ): TestWithQuestions {
   return {
@@ -93,10 +102,40 @@ function fullTest(
     description: row.description,
     timeLimitSec: row.time_limit_sec,
     passingPercent: row.passing_percent,
+    roomId: row.room_id,
+    tags: listEntityTags(db, 'test', row.id),
     questions,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
+}
+
+/**
+ * Puts the test in a room and gives it its labels, in one place because both are
+ * optional extras that arrive in the same body and have to fail the same way: a
+ * room that is not the requester's is refused rather than quietly ignored.
+ */
+function applyRoomAndTags(
+  db: DatabaseSync,
+  session: Session,
+  testId: string,
+  roomId: string | null | undefined,
+  tags: string[] | undefined,
+): boolean {
+  if (roomId !== undefined) {
+    if (roomId === null) {
+      setTestRoom(db, testId, null)
+    } else {
+      const room = findRoomById(db, roomId)
+      if (!room) return false
+      if (!canAccess(session, room.owner_id)) return false
+      setTestRoom(db, testId, room.id)
+    }
+  }
+  if (tags !== undefined) {
+    setEntityTags(db, session.userId, 'test', testId, tags)
+  }
+  return true
 }
 
 export const testRoutes: FastifyPluginAsync<TestsDeps> = async (
@@ -110,9 +149,11 @@ export const testRoutes: FastifyPluginAsync<TestsDeps> = async (
     { preHandler: requireRoles('admin', 'teacher') },
     async (request) => {
       const session = request.session!
-      const tests = listTestRows(db, session.userId, session.role === 'admin').map(
-        ({ test }) => test,
-      )
+      const rows = listTestRows(db, session.userId, session.role === 'admin')
+      // One query for the whole list: each card shows its labels, and a request
+      // per card would be a request per card on the screen a teacher opens most.
+      const byTest = tagsByEntity(db, 'test', rows.map(({ test }) => test.id))
+      const tests = rows.map(({ test }) => ({ ...test, tags: byTest.get(test.id) ?? [] }))
       return { tests }
     },
   )
@@ -141,8 +182,11 @@ export const testRoutes: FastifyPluginAsync<TestsDeps> = async (
         },
         questions,
       )
+      if (!applyRoomAndTags(db, session, created.id, body.roomId, body.tags)) {
+        return sendError(reply, 400, 'VALIDATION', 'no such room')
+      }
       return reply.code(201).send({
-        test: fullTest(created, listQuestions(db, created.id)),
+        test: fullTest(db, created, listQuestions(db, created.id)),
       })
     },
   )
@@ -161,7 +205,7 @@ export const testRoutes: FastifyPluginAsync<TestsDeps> = async (
       if (!canAccess(session, test.owner_id)) {
         return sendError(reply, 403, 'FORBIDDEN', 'insufficient role')
       }
-      return { test: fullTest(test, listQuestions(db, test.id)) }
+      return { test: fullTest(db, test, listQuestions(db, test.id)) }
     },
   )
 
@@ -206,7 +250,16 @@ export const testRoutes: FastifyPluginAsync<TestsDeps> = async (
         return sendError(reply, 403, 'FORBIDDEN', 'insufficient role')
       }
       const copy = duplicateTest(db, session.userId, test)
-      return reply.code(201).send({ test: fullTest(copy, listQuestions(db, copy.id)) })
+      // A copy is the same paper for the same class: the group and the labels
+      // travel with it, or the copy is a stranger that has to be set up again.
+      applyRoomAndTags(
+        db,
+        session,
+        copy.id,
+        test.room_id,
+        listEntityTags(db, 'test', test.id).map((tag) => tag.name),
+      )
+      return reply.code(201).send({ test: fullTest(db, copy, listQuestions(db, copy.id)) })
     },
   )
 
@@ -234,7 +287,7 @@ export const testRoutes: FastifyPluginAsync<TestsDeps> = async (
         },
         document.questions,
       )
-      return reply.code(201).send({ test: fullTest(created, listQuestions(db, created.id)) })
+      return reply.code(201).send({ test: fullTest(db, created, listQuestions(db, created.id)) })
     },
   )
 
@@ -287,7 +340,10 @@ export const testRoutes: FastifyPluginAsync<TestsDeps> = async (
         },
         questions,
       )
-      return { test: fullTest(updated, listQuestions(db, updated.id)) }
+      if (!applyRoomAndTags(db, session, updated.id, body.roomId, body.tags)) {
+        return sendError(reply, 400, 'VALIDATION', 'no such room')
+      }
+      return { test: fullTest(db, updated, listQuestions(db, updated.id)) }
     },
   )
 

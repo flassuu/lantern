@@ -3,14 +3,8 @@ import type { FastifyInstance, FastifyPluginAsync } from 'fastify'
 import type { Database } from '../lib/db'
 import { nowIso } from '../lib/db'
 import { sendError } from '../lib/http'
-import {
-  addClassroomMember,
-  findActiveClassroomByKey,
-  toClassPreview,
-  type ClassroomRow,
-} from '../lib/classrooms'
+import { addRoomMember, findActiveRoomByKey, toRoomPreview, type RoomRow } from '../lib/rooms'
 import { normalizeCode } from '../lib/codes'
-import { enrollStudent, findCourseRow, isEnrolled } from '../lib/courses'
 import { hashPassword, verifyPassword } from '../lib/passwords'
 import { createSession, deleteSession, deleteSessionByHash } from '../lib/tokens'
 import {
@@ -35,7 +29,7 @@ const registerSchema = {
     fullName: { type: 'string', minLength: 1, maxLength: 100 },
     // Optional: a key a teacher handed out. It approves the account, and it
     // never grants anything but a student role.
-    classKey: { type: 'string', maxLength: 16 },
+    roomKey: { type: 'string', maxLength: 16 },
   },
 } as const
 
@@ -84,7 +78,7 @@ export const authRoutes: FastifyPluginAsync<AuthDeps> = async (
         username: string
         password: string
         fullName: string
-        classKey?: string
+        roomKey?: string
       }
       if (findUserByUsername(db, body.username)) {
         return sendError(reply, 409, 'CONFLICT', 'username already taken')
@@ -92,13 +86,13 @@ export const authRoutes: FastifyPluginAsync<AuthDeps> = async (
 
       // A key that was typed but is not usable is an error the student can fix,
       // so nothing is created: no half-registered account to explain later.
-      const typedKey = (body.classKey ?? '').trim()
-      let classroom: ClassroomRow | null = null
+      const typedKey = (body.roomKey ?? '').trim()
+      let room: RoomRow | null = null
       if (typedKey !== '') {
         const key = normalizeCode(typedKey)
-        classroom = key ? findActiveClassroomByKey(db, key) : null
-        if (!classroom) {
-          return sendError(reply, 400, 'INVALID_CLASS_KEY', 'no such class key')
+        room = key ? findActiveRoomByKey(db, key) : null
+        if (!room) {
+          return sendError(reply, 400, 'INVALID_ROOM_KEY', 'no such room key')
         }
       }
 
@@ -110,7 +104,7 @@ export const authRoutes: FastifyPluginAsync<AuthDeps> = async (
       ).run(
         userId,
         'student',
-        classroom ? 'approved' : 'pending',
+        room ? 'approved' : 'pending',
         body.username,
         hashPassword(body.password),
         body.fullName,
@@ -118,22 +112,16 @@ export const authRoutes: FastifyPluginAsync<AuthDeps> = async (
         now,
       )
 
-      let viaClass: { className: string; teacherName: string } | null = null
-      if (classroom) {
-        addClassroomMember(db, classroom.id, userId)
-        // A class can be tied to a course: arriving at the class is then enough
-        // to be on the course roll as well.
-        if (classroom.course_id) {
-          const course = findCourseRow(db, classroom.course_id)
-          if (course && !isEnrolled(db, course.id, userId)) {
-            enrollStudent(db, course.id, userId)
-          }
-        }
-        viaClass = toClassPreview(db, classroom)
+      let viaRoom: { roomName: string; teacherName: string } | null = null
+      if (room) {
+        // Membership, and with it enrolment in every course the room is
+        // attached to: arriving at the group is enough to be on the course roll.
+        addRoomMember(db, room.id, userId)
+        viaRoom = toRoomPreview(db, room)
       }
 
       const user = findUserByUsername(db, body.username) as UserRow
-      return reply.code(201).send({ user: toPublicUser(user), viaClass })
+      return reply.code(201).send({ user: toPublicUser(user), viaRoom })
     },
   )
 

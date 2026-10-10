@@ -14,19 +14,19 @@ interface ErrorBody {
   error: { code: string; message: string }
 }
 
-interface ClassroomBody {
-  classroom: {
+interface RoomBody {
+  room: {
     id: string
     name: string
     key: string
     status: 'active' | 'revoked'
-    courseId: string | null
+    courseIds: string[]
     membersCount: number
   }
 }
 
 interface ListBody {
-  classrooms: ClassroomBody['classroom'][]
+  rooms: RoomBody['room'][]
 }
 
 let app: TestingApp
@@ -67,25 +67,25 @@ async function makeTeacher(username: string): Promise<string> {
   return tokenOf(username, 'teacher-pass-1')
 }
 
-async function createClass(token: string, name: string, courseId?: string) {
+async function createRoom(token: string, name: string, courseIds: string[] = []) {
   return app.server.inject({
     method: 'POST',
-    url: '/api/classrooms',
+    url: '/api/rooms',
     headers: bearer(token),
-    payload: courseId ? { name, courseId } : { name },
+    payload: { name, courseIds },
   })
 }
 
 async function registerStudent(
   username: string,
-  classKey?: string,
+  roomKey?: string,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const payload: Record<string, string> = {
     username,
     password: 'student-pass-1',
     fullName: `Student ${username}`,
   }
-  if (classKey !== undefined) payload.classKey = classKey
+  if (roomKey !== undefined) payload.roomKey = roomKey
   const res = await app.server.inject({
     method: 'POST',
     url: '/api/auth/register',
@@ -112,8 +112,8 @@ async function approve(username: string): Promise<string> {
   return tokenOf(username, 'student-pass-1')
 }
 
-describe('class keys', () => {
-  tmpDir = mkdtempSync(join(tmpdir(), 'testsys-classrooms-'))
+describe('room keys', () => {
+  tmpDir = mkdtempSync(join(tmpdir(), 'testsys-rooms-'))
   app = buildApp({
     host: '127.0.0.1',
     port: 0,
@@ -129,7 +129,7 @@ describe('class keys', () => {
   })
 
   it('runs the new migration', () => {
-    expect(SCHEMA_VERSION).toBe(5)
+    expect(SCHEMA_VERSION).toBe(6)
   })
 
   it('generates keys from the join-code alphabet, with no 0/O or 1/I', async () => {
@@ -139,15 +139,15 @@ describe('class keys', () => {
 
     const keys: string[] = []
     for (let index = 0; index < 12; index += 1) {
-      const res = await createClass(teacherA, `Class ${index}`)
-      const key = (res.json() as ClassroomBody).classroom.key
+      const res = await createRoom(teacherA, `Room ${index}`)
+      const key = (res.json() as RoomBody).room.key
       expect(key).toHaveLength(CODE_LENGTH)
       for (const glyph of key) expect(CODE_ALPHABET).toContain(glyph)
       expect(key).not.toMatch(/[01OI]/)
       keys.push(key)
     }
     // Uniqueness is a property of the column, but a collision would mean two
-    // classes share a door; 12 random draws must not collide.
+    // rooms share a door; 12 random draws must not collide.
     expect(new Set(keys).size).toBe(keys.length)
   })
 
@@ -170,85 +170,85 @@ describe('class keys', () => {
     expect(normalizeCode(null)).toBe('')
   })
 
-  it('lists only the teacher\'s own classes', async () => {
+  it('lists only the teacher\'s own rooms', async () => {
     const mine = await app.server.inject({
       method: 'GET',
-      url: '/api/classrooms',
+      url: '/api/rooms',
       headers: bearer(teacherB),
     })
     expect(mine.statusCode).toBe(200)
-    expect((mine.json() as ListBody).classrooms).toHaveLength(0)
+    expect((mine.json() as ListBody).rooms).toHaveLength(0)
 
     const all = await app.server.inject({
       method: 'GET',
-      url: '/api/classrooms',
+      url: '/api/rooms',
       headers: bearer(adminToken),
     })
-    expect((all.json() as ListBody).classrooms.length).toBe(12)
+    expect((all.json() as ListBody).rooms.length).toBe(12)
   })
 
-  it('does not let a teacher see, rename or delete another teacher\'s class', async () => {
-    const created = await createClass(teacherA, 'Physics 9B')
-    const id = (created.json() as ClassroomBody).classroom.id
+  it('does not let a teacher see, rename or delete another teacher\'s room', async () => {
+    const created = await createRoom(teacherA, 'Physics 9B')
+    const id = (created.json() as RoomBody).room.id
 
     for (const call of [
       app.server.inject({
         method: 'GET',
-        url: `/api/classrooms/${id}`,
+        url: `/api/rooms/${id}`,
         headers: bearer(teacherB),
       }),
       app.server.inject({
         method: 'PATCH',
-        url: `/api/classrooms/${id}`,
+        url: `/api/rooms/${id}`,
         headers: bearer(teacherB),
         payload: { name: 'Stolen' },
       }),
       app.server.inject({
         method: 'POST',
-        url: `/api/classrooms/${id}/revoke`,
+        url: `/api/rooms/${id}/revoke`,
         headers: bearer(teacherB),
       }),
       app.server.inject({
         method: 'POST',
-        url: `/api/classrooms/${id}/key`,
+        url: `/api/rooms/${id}/key`,
         headers: bearer(teacherB),
       }),
       app.server.inject({
         method: 'DELETE',
-        url: `/api/classrooms/${id}`,
+        url: `/api/rooms/${id}`,
         headers: bearer(teacherB),
       }),
     ]) {
       expect((await call).statusCode).toBe(403)
     }
 
-    // ...and the class is untouched.
+    // ...and the room is untouched.
     const check = await app.server.inject({
       method: 'GET',
-      url: `/api/classrooms/${id}`,
+      url: `/api/rooms/${id}`,
       headers: bearer(teacherA),
     })
-    const body = check.json() as { classroom: ClassroomBody['classroom'] }
-    expect(body.classroom.name).toBe('Physics 9B')
-    expect(body.classroom.status).toBe('active')
+    const body = check.json() as { room: RoomBody['room'] }
+    expect(body.room.name).toBe('Physics 9B')
+    expect(body.room.status).toBe('active')
   })
 
-  it('does not let a student touch classes at all', async () => {
-    const created = await createClass(teacherA, 'History 10A')
-    const id = (created.json() as ClassroomBody).classroom.id
+  it('does not let a student touch rooms at all', async () => {
+    const created = await createRoom(teacherA, 'History 10A')
+    const id = (created.json() as RoomBody).room.id
     await registerStudent('stuKeys')
     const studentToken = await approve('stuKeys')
 
     const list = await app.server.inject({
       method: 'GET',
-      url: '/api/classrooms',
+      url: '/api/rooms',
       headers: bearer(studentToken),
     })
     expect(list.statusCode).toBe(403)
 
     const create = await app.server.inject({
       method: 'POST',
-      url: '/api/classrooms',
+      url: '/api/rooms',
       headers: bearer(studentToken),
       payload: { name: 'Mine now' },
     })
@@ -257,39 +257,39 @@ describe('class keys', () => {
   })
 
   it('previews a key to anyone, so a student can see who is waiting', async () => {
-    const created = await createClass(teacherA, 'Biology 8B')
-    const key = (created.json() as ClassroomBody).classroom.key
+    const created = await createRoom(teacherA, 'Biology 8B')
+    const key = (created.json() as RoomBody).room.key
 
     const res = await app.server.inject({
       method: 'GET',
-      url: `/api/classrooms/preview?key=${key}`,
+      url: `/api/rooms/preview?key=${key}`,
     })
     expect(res.statusCode).toBe(200)
     expect((res.json() as { preview: Record<string, string> }).preview).toEqual({
-      className: 'Biology 8B',
+      roomName: 'Biology 8B',
       teacherName: 'Teacher A',
     })
   })
 
   it('answers a wrong key and a revoked key the same way', async () => {
-    const created = await createClass(teacherA, 'Geography 7A')
-    const id = (created.json() as ClassroomBody).classroom.id
-    const key = (created.json() as ClassroomBody).classroom.key
+    const created = await createRoom(teacherA, 'Geography 7A')
+    const id = (created.json() as RoomBody).room.id
+    const key = (created.json() as RoomBody).room.key
 
     const wrong = await app.server.inject({
       method: 'GET',
-      url: '/api/classrooms/preview?key=ZZZZZZ',
+      url: '/api/rooms/preview?key=ZZZZZZ',
     })
     expect(wrong.statusCode).toBe(404)
 
     await app.server.inject({
       method: 'POST',
-      url: `/api/classrooms/${id}/revoke`,
+      url: `/api/rooms/${id}/revoke`,
       headers: bearer(teacherA),
     })
     const revoked = await app.server.inject({
       method: 'GET',
-      url: `/api/classrooms/preview?key=${key}`,
+      url: `/api/rooms/preview?key=${key}`,
     })
     expect(revoked.statusCode).toBe(404)
     expect((revoked.json() as ErrorBody).error.message).toBe(
@@ -297,22 +297,22 @@ describe('class keys', () => {
     )
   })
 
-  it('registers a student straight into the class, without an admin', async () => {
-    const created = await createClass(teacherA, 'Math 9A')
-    const key = (created.json() as ClassroomBody).classroom.key
+  it('registers a student straight into the room, without an admin', async () => {
+    const created = await createRoom(teacherA, 'Math 9A')
+    const key = (created.json() as RoomBody).room.key
 
     const { status, body } = await registerStudent('stuMath', key.toLowerCase())
     expect(status).toBe(201)
     expect((body.user as { role: string; status: string }).status).toBe('approved')
-    expect(body.viaClass).toEqual({ className: 'Math 9A', teacherName: 'Teacher A' })
+    expect(body.viaRoom).toEqual({ roomName: 'Math 9A', teacherName: 'Teacher A' })
 
     // The account can sign in immediately: that is the whole feature.
     expect((await login('stuMath', 'student-pass-1')).statusCode).toBe(200)
   })
 
   it('never lets a key produce anything but a student', async () => {
-    const created = await createClass(teacherA, 'Math 9B')
-    const key = (created.json() as ClassroomBody).classroom.key
+    const created = await createRoom(teacherA, 'Math 9B')
+    const key = (created.json() as RoomBody).room.key
     const { body } = await registerStudent('stuRole', key)
     expect((body.user as { role: string }).role).toBe('student')
 
@@ -324,7 +324,7 @@ describe('class keys', () => {
         username: 'stuRole2',
         password: 'student-pass-1',
         fullName: 'Forced',
-        classKey: key,
+        roomKey: key,
         role: 'admin',
         status: 'approved',
       },
@@ -338,7 +338,7 @@ describe('class keys', () => {
   it('creates nothing when the key is wrong: a 400, not a half-registered account', async () => {
     const { status, body } = await registerStudent('stuBadKey', 'ZZZZZZ')
     expect(status).toBe(400)
-    expect((body.error as { code: string }).code).toBe('INVALID_CLASS_KEY')
+    expect((body.error as { code: string }).code).toBe('INVALID_ROOM_KEY')
     // No account exists, so the name is still free.
     expect((await login('stuBadKey', 'student-pass-1')).statusCode).toBe(401)
     const again = await registerStudent('stuBadKey')
@@ -350,7 +350,7 @@ describe('class keys', () => {
     const { status, body } = await registerStudent('stuPlain')
     expect(status).toBe(201)
     expect((body.user as { status: string }).status).toBe('pending')
-    expect(body.viaClass).toBeNull()
+    expect(body.viaRoom).toBeNull()
     // Pending means pending: no sign-in until an admin approves.
     const attempt = await login('stuPlain', 'student-pass-1')
     expect(attempt.statusCode).toBe(403)
@@ -359,66 +359,94 @@ describe('class keys', () => {
   })
 
   it('counts the students who came through a key', async () => {
-    const created = await createClass(teacherA, 'Physics 9C')
-    const id = (created.json() as ClassroomBody).classroom.id
-    const key = (created.json() as ClassroomBody).classroom.key
+    const created = await createRoom(teacherA, 'Physics 9C')
+    const id = (created.json() as RoomBody).room.id
+    const key = (created.json() as RoomBody).room.key
 
     await registerStudent('stuPhys1', key)
     await registerStudent('stuPhys2', ` ${key.toLowerCase()} `)
 
     const detail = await app.server.inject({
       method: 'GET',
-      url: `/api/classrooms/${id}`,
+      url: `/api/rooms/${id}`,
       headers: bearer(teacherA),
     })
     const body = detail.json() as {
-      classroom: ClassroomBody['classroom']
+      room: RoomBody['room']
       members: Array<{ username: string }>
     }
-    expect(body.classroom.membersCount).toBe(2)
+    expect(body.room.membersCount).toBe(2)
     expect(body.members.map((m) => m.username)).toEqual(['stuPhys1', 'stuPhys2'])
   })
 
-  it('enrols into the linked course, and does not enrol twice', async () => {
-    const course = await app.server.inject({
+  it('enrols every member in every linked course, whichever way the link was made', async () => {
+    const first = await app.server.inject({
       method: 'POST',
       url: '/api/courses',
       headers: bearer(teacherA),
       payload: { title: 'Algebra 9' },
     })
-    const courseId = (course.json() as { id: string }).id
-    const created = await createClass(teacherA, 'Algebra group', courseId)
-    const key = (created.json() as ClassroomBody).classroom.key
+    const second = await app.server.inject({
+      method: 'POST',
+      url: '/api/courses',
+      headers: bearer(teacherA),
+      payload: { title: 'Geometry 9' },
+    })
+    const firstId = (first.json() as { id: string }).id
+    const secondId = (second.json() as { id: string }).id
+
+    // One course when the room is created; the second is attached afterwards.
+    const created = await createRoom(teacherA, 'Algebra group', [firstId])
+    const roomId = (created.json() as RoomBody).room.id
+    const key = (created.json() as RoomBody).room.key
 
     const { status, body } = await registerStudent('stuAlg', key)
     expect(status).toBe(201)
     const studentId = (body.user as { id: string }).id
 
-    const studentToken = await tokenOf('stuAlg', 'student-pass-1')
-    const courses = await app.server.inject({
-      method: 'GET',
-      url: '/api/courses',
-      headers: bearer(studentToken),
-    })
-    const list = courses.json() as { courses: Array<{ id: string }> }
-    expect(list.courses.filter((c) => c.id === courseId)).toHaveLength(1)
+    async function coursesOf(username: string): Promise<string[]> {
+      const token = await tokenOf(username, 'student-pass-1')
+      const res = await app.server.inject({
+        method: 'GET',
+        url: '/api/courses',
+        headers: bearer(token),
+      })
+      return (res.json() as { courses: Array<{ id: string }> }).courses.map((c) => c.id)
+    }
 
-    // Enrolling again must not add a second row.
-    const enroll = await app.server.inject({
-      method: 'POST',
-      url: `/api/courses/${courseId}/enrollments`,
+    expect(await coursesOf('stuAlg')).toEqual([firstId])
+
+    // A course attached after the students arrived still catches them up.
+    const linked = await app.server.inject({
+      method: 'PATCH',
+      url: `/api/rooms/${roomId}`,
       headers: bearer(teacherA),
-      payload: { username: 'stuAlg' },
+      payload: { courseIds: [firstId, secondId] },
     })
-    expect(enroll.statusCode).toBe(409)
+    expect(linked.statusCode).toBe(200)
+    expect(await coursesOf('stuAlg')).toEqual(expect.arrayContaining([firstId, secondId]))
 
+    // And a student who arrives after both links lands in both of them.
+    await registerStudent('stuGeo', key)
+    expect(await coursesOf('stuGeo')).toEqual(expect.arrayContaining([firstId, secondId]))
+
+    // Catching up must not double anyone: the roll still lists them once, and
+    // enrolling a member by hand afterwards is refused as a duplicate.
     const detail = await app.server.inject({
       method: 'GET',
-      url: `/api/courses/${courseId}`,
+      url: `/api/courses/${firstId}`,
       headers: bearer(teacherA),
     })
     const students = (detail.json() as { students: Array<{ id: string }> }).students
     expect(students.filter((s) => s.id === studentId)).toHaveLength(1)
+
+    const enroll = await app.server.inject({
+      method: 'POST',
+      url: `/api/courses/${firstId}/enrollments`,
+      headers: bearer(teacherA),
+      payload: { username: 'stuAlg' },
+    })
+    expect(enroll.statusCode).toBe(409)
   })
 
   it('refuses a course the teacher does not own', async () => {
@@ -430,29 +458,31 @@ describe('class keys', () => {
     })
     const courseId = (course.json() as { id: string }).id
 
-    const res = await createClass(teacherA, 'Biology group', courseId)
+    const res = await createRoom(teacherA, 'Biology group', [courseId])
     expect(res.statusCode).toBe(400)
     expect((res.json() as ErrorBody).error.code).toBe('VALIDATION')
   })
 
   it('refuses a course that does not exist', async () => {
-    const res = await createClass(teacherA, 'Ghost group', '00000000-0000-4000-8000-000000000000')
+    const res = await createRoom(teacherA, 'Ghost group', [
+      '00000000-0000-4000-8000-000000000000',
+    ])
     expect(res.statusCode).toBe(400)
   })
 
   it('hands out a new key and retires the old one', async () => {
-    const created = await createClass(teacherA, 'Chemistry 10B')
-    const id = (created.json() as ClassroomBody).classroom.id
-    const oldKey = (created.json() as ClassroomBody).classroom.key
+    const created = await createRoom(teacherA, 'Chemistry 10B')
+    const id = (created.json() as RoomBody).room.id
+    const oldKey = (created.json() as RoomBody).room.key
 
     const res = await app.server.inject({
       method: 'POST',
-      url: `/api/classrooms/${id}/key`,
+      url: `/api/rooms/${id}/key`,
       headers: bearer(teacherA),
     })
-    const body = res.json() as { key: string; classroom: ClassroomBody['classroom'] }
+    const body = res.json() as { key: string; room: RoomBody['room'] }
     expect(body.key).not.toBe(oldKey)
-    expect(body.classroom.key).toBe(body.key)
+    expect(body.room.key).toBe(body.key)
 
     // The old poster on the wall stops working; the new one works.
     const old = await registerStudent('stuOldKey', oldKey)
@@ -461,32 +491,32 @@ describe('class keys', () => {
     expect(fresh.status).toBe(201)
   })
 
-  it('renames a class without touching its key or its students', async () => {
-    const created = await createClass(teacherA, 'Old name')
-    const id = (created.json() as ClassroomBody).classroom.id
-    const key = (created.json() as ClassroomBody).classroom.key
+  it('renames a room without touching its key or its students', async () => {
+    const created = await createRoom(teacherA, 'Old name')
+    const id = (created.json() as RoomBody).room.id
+    const key = (created.json() as RoomBody).room.key
     await registerStudent('stuRename', key)
 
     const res = await app.server.inject({
       method: 'PATCH',
-      url: `/api/classrooms/${id}`,
+      url: `/api/rooms/${id}`,
       headers: bearer(teacherA),
       payload: { name: 'New name' },
     })
     expect(res.statusCode).toBe(200)
-    const body = res.json() as { classroom: ClassroomBody['classroom'] }
-    expect(body.classroom.name).toBe('New name')
-    expect(body.classroom.key).toBe(key)
-    expect(body.classroom.membersCount).toBe(1)
+    const body = res.json() as { room: RoomBody['room'] }
+    expect(body.room.name).toBe('New name')
+    expect(body.room.key).toBe(key)
+    expect(body.room.membersCount).toBe(1)
   })
 
   it('refuses an empty name, in either place a name can be set', async () => {
-    const created = await createClass(teacherA, 'Named')
-    const id = (created.json() as ClassroomBody).classroom.id
+    const created = await createRoom(teacherA, 'Named')
+    const id = (created.json() as RoomBody).room.id
 
     const create = await app.server.inject({
       method: 'POST',
-      url: '/api/classrooms',
+      url: '/api/rooms',
       headers: bearer(teacherA),
       payload: { name: '   ' },
     })
@@ -494,29 +524,29 @@ describe('class keys', () => {
 
     const rename = await app.server.inject({
       method: 'PATCH',
-      url: `/api/classrooms/${id}`,
+      url: `/api/rooms/${id}`,
       headers: bearer(teacherA),
       payload: { name: '  ' },
     })
     expect(rename.statusCode).toBe(400)
   })
 
-  it('deletes a class and forgets its members, but keeps the students', async () => {
-    const created = await createClass(teacherA, 'Temporary')
-    const id = (created.json() as ClassroomBody).classroom.id
-    const key = (created.json() as ClassroomBody).classroom.key
+  it('deletes a room and forgets its members, but keeps the students', async () => {
+    const created = await createRoom(teacherA, 'Temporary')
+    const id = (created.json() as RoomBody).room.id
+    const key = (created.json() as RoomBody).room.key
     await registerStudent('stuTemp', key)
 
     const res = await app.server.inject({
       method: 'DELETE',
-      url: `/api/classrooms/${id}`,
+      url: `/api/rooms/${id}`,
       headers: bearer(teacherA),
     })
     expect(res.statusCode).toBe(204)
 
     const preview = await app.server.inject({
       method: 'GET',
-      url: `/api/classrooms/preview?key=${key}`,
+      url: `/api/rooms/preview?key=${key}`,
     })
     expect(preview.statusCode).toBe(404)
 
@@ -524,10 +554,10 @@ describe('class keys', () => {
     expect((await login('stuTemp', 'student-pass-1')).statusCode).toBe(200)
   })
 
-  it('answers 404 for a class that never existed', async () => {
+  it('answers 404 for a room that never existed', async () => {
     const res = await app.server.inject({
       method: 'GET',
-      url: '/api/classrooms/00000000-0000-4000-8000-000000000000',
+      url: '/api/rooms/00000000-0000-4000-8000-000000000000',
       headers: bearer(teacherA),
     })
     expect(res.statusCode).toBe(404)

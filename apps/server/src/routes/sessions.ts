@@ -3,6 +3,8 @@ import type { Database } from '../lib/db'
 import { sendError } from '../lib/http'
 import { scoreSubmission, type ScoredQuestion } from '../lib/scoring'
 import { findTestRow, listQuestions } from '../lib/tests'
+import { findRoomById } from '../lib/rooms'
+import { entityIdsWithTag, findTagById, setEntityTags, tagsByEntity } from '../lib/tags'
 import {
   findParticipation,
   createSession,
@@ -53,7 +55,31 @@ const createBodySchema = {
   type: 'object',
   required: ['testId'],
   additionalProperties: false,
-  properties: { testId: { type: 'string', minLength: 36, maxLength: 36 } },
+  properties: {
+    testId: { type: 'string', minLength: 36, maxLength: 36 },
+    name: { type: ['string', 'null'], maxLength: 120 },
+    roomId: { type: ['string', 'null'], maxLength: 36 },
+    tags: { type: 'array', items: { type: 'string', maxLength: 40 }, maxItems: 20 },
+  },
+} as const
+
+/**
+ * What a session list can be narrowed by. All optional: a request with none of
+ * them is the plain newest-first list, which is what the Live tab asks for.
+ */
+const listQuerySchema = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    room: { type: 'string', maxLength: 36 },
+    test: { type: 'string', maxLength: 36 },
+    status: { type: 'string', enum: ['active', 'paused', 'finished'] },
+    from: { type: 'string', maxLength: 40 },
+    to: { type: 'string', maxLength: 40 },
+    q: { type: 'string', maxLength: 120 },
+    tag: { type: 'string', maxLength: 36 },
+    limit: { type: 'integer', minimum: 1, maximum: 200 },
+  },
 } as const
 
 const answersBodySchema = {
@@ -65,6 +91,21 @@ const answersBodySchema = {
 
 interface CreateBody {
   testId: string
+  name?: string | null
+  roomId?: string | null
+  tags?: string[]
+}
+
+/** The list query, after validation. */
+interface ListQuery {
+  room?: string
+  test?: string
+  status?: LiveSessionStatus
+  from?: string
+  to?: string
+  q?: string
+  tag?: string
+  limit?: number
 }
 
 interface CodeBody {
@@ -188,10 +229,43 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
   // ---------------------------------------------------------------- teacher
 
   /** Session list: a teacher sees their own, an admin sees every teacher's. */
-  app.get('/api/sessions', { preHandler: requireRoles('admin', 'teacher') }, async (request) => {
-    const isAdmin = request.session?.role === 'admin'
-    return { sessions: listSessions(db, isAdmin ? undefined : request.session?.userId) }
-  })
+  app.get(
+    '/api/sessions',
+    {
+      preHandler: requireRoles('admin', 'teacher'),
+      schema: { querystring: listQuerySchema },
+    },
+    async (request, reply) => {
+      const session = request.session!
+      const query = request.query as ListQuery
+      // A tag is a label on the entity, so the filter resolves it to ids first
+      // and the list narrows on those: one shape of filtering, not two.
+      let ids: string[] | null = null
+      if (query.tag) {
+        const tag = findTagById(db, query.tag)
+        if (!tag) return reply.code(200).send({ sessions: [] })
+        ids = entityIdsWithTag(db, tag.id, 'session')
+      }
+      const sessions = listSessions(db, {
+        ownerId: session.role === 'admin' ? null : session.userId,
+        roomId: query.room ?? null,
+        testId: query.test ?? null,
+        status: query.status ?? null,
+        from: query.from ?? null,
+        to: query.to ?? null,
+        query: query.q ?? null,
+        ids,
+        limit: query.limit,
+      })
+      const bySession = tagsByEntity(db, 'session', sessions.map((entry) => entry.id))
+      return {
+        sessions: sessions.map((entry) => ({
+          ...entry,
+          tags: bySession.get(entry.id) ?? [],
+        })),
+      }
+    },
+  )
 
   /** Starts a live run of one of the teacher's own tests. */
   app.post(
@@ -201,7 +275,8 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
       schema: { body: createBodySchema },
     },
     async (request, reply) => {
-      const { testId } = request.body as CreateBody
+      const body = request.body as CreateBody
+      const { testId } = body
       const test = findTestRow(db, testId)
       if (!test) {
         return sendError(reply, 404, 'NOT_FOUND', 'test not found')
@@ -212,12 +287,32 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
       if (listQuestions(db, testId).length === 0) {
         return sendError(reply, 400, 'VALIDATION', 'add questions before starting a session')
       }
+      // A run inherits the test's group unless the teacher says otherwise: most
+      // of the time the paper was written for one class and that is who is here.
+      let roomId = test.room_id
+      if (body.roomId !== undefined) {
+        if (body.roomId === null) {
+          roomId = null
+        } else {
+          const room = findRoomById(db, body.roomId)
+          if (!room) return sendError(reply, 400, 'VALIDATION', 'no such room')
+          if (room.owner_id !== request.session?.userId && request.session?.role !== 'admin') {
+            return sendError(reply, 403, 'FORBIDDEN', 'that room belongs to another teacher')
+          }
+          roomId = room.id
+        }
+      }
       const created = createSession(db, {
         testId,
         ownerId: test.owner_id,
         timeLimitSec: test.time_limit_sec,
         passingPercent: test.passing_percent,
+        name: body.name ?? null,
+        roomId,
       })
+      if (body.tags !== undefined) {
+        setEntityTags(db, request.session!.userId, 'session', created.id, body.tags)
+      }
       return reply.code(201).send(sessionPayload(created))
     },
   )

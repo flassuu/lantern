@@ -12,7 +12,7 @@ export function nowIso(): string {
   return new Date().toISOString()
 }
 
-export const SCHEMA_VERSION = 5
+export const SCHEMA_VERSION = 6
 
 const MIGRATIONS: Array<{ version: number; up: string }> = [
   {
@@ -193,6 +193,68 @@ const MIGRATIONS: Array<{ version: number; up: string }> = [
         UNIQUE (classroom_id, user_id)
       );
       CREATE INDEX IF NOT EXISTS idx_classroom_members_class ON classroom_members(classroom_id);
+    `,
+  },
+  {
+    version: 6,
+    up: `
+      -- A room is who and a course is what. The class table becomes rooms, a room
+      -- and a course link many-to-many (a group takes several subjects, a subject
+      -- is taken by several groups), tests and sessions can be pointed at a room,
+      -- and a free label - subject or topic - hangs off all three.
+      --
+      -- Renames go through ALTER TABLE rather than a copy: SQLite rewrites the
+      -- referencing foreign keys itself, and a rebuild would have to remember to
+      -- rebuild every one of them by hand.
+      ALTER TABLE classrooms RENAME TO rooms;
+      ALTER TABLE classroom_members RENAME TO room_members;
+      ALTER TABLE room_members RENAME COLUMN classroom_id TO room_id;
+
+      -- The indexes kept the old names; they describe columns that no longer have
+      -- those names, and nobody greps for them again once they are gone.
+      DROP INDEX IF EXISTS idx_classrooms_owner;
+      DROP INDEX IF EXISTS idx_classroom_members_class;
+      CREATE INDEX IF NOT EXISTS idx_rooms_owner ON rooms(owner_id);
+      CREATE INDEX IF NOT EXISTS idx_room_members_room ON room_members(room_id);
+
+      -- A join table with a composite key, like a relation rather than a row: it
+      -- is never addressed on its own, only as "this room in this course".
+      CREATE TABLE IF NOT EXISTS course_rooms (
+        course_id  TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        room_id    TEXT NOT NULL REFERENCES rooms(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (course_id, room_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_course_rooms_room ON course_rooms(room_id);
+
+      -- The single optional course a room used to carry becomes one link of many.
+      INSERT OR IGNORE INTO course_rooms (course_id, room_id, created_at)
+      SELECT course_id, id, created_at FROM rooms WHERE course_id IS NOT NULL;
+      ALTER TABLE rooms DROP COLUMN course_id;
+
+      ALTER TABLE tests ADD COLUMN room_id TEXT REFERENCES rooms(id) ON DELETE SET NULL;
+      ALTER TABLE live_sessions ADD COLUMN room_id TEXT REFERENCES rooms(id) ON DELETE SET NULL;
+      ALTER TABLE live_sessions ADD COLUMN name TEXT;
+
+      CREATE TABLE IF NOT EXISTS tags (
+        id         TEXT PRIMARY KEY,
+        owner_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name       TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      -- Case-insensitive uniqueness: "Algebra" and "algebra" are one tag, and a
+      -- filter that returned both would look like a bug.
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_owner_name ON tags(owner_id, lower(name));
+
+      CREATE TABLE IF NOT EXISTS entity_tags (
+        id          TEXT PRIMARY KEY,
+        tag_id      TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+        entity_type TEXT NOT NULL CHECK (entity_type IN ('test', 'session', 'course')),
+        entity_id   TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        UNIQUE (tag_id, entity_type, entity_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_entity_tags_entity ON entity_tags(entity_type, entity_id);
     `,
   },
 ]

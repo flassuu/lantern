@@ -15,6 +15,10 @@ export interface LiveSessionRow {
   status: LiveSessionStatus
   time_limit_sec: number | null
   passing_percent: number | null
+  /** What the teacher called this run, when they called it anything. */
+  name: string | null
+  /** The group this run is for; it defaults to the test's own room. */
+  room_id: string | null
   created_at: string
   started_at: string
   finished_at: string | null
@@ -28,6 +32,8 @@ export interface LiveSession {
   status: LiveSessionStatus
   timeLimitSec: number | null
   passingPercent: number | null
+  name: string | null
+  roomId: string | null
   startedAt: string
   finishedAt: string | null
 }
@@ -165,6 +171,8 @@ export function toSession(row: LiveSessionRow): LiveSession {
     status: row.status,
     timeLimitSec: row.time_limit_sec,
     passingPercent: row.passing_percent,
+    name: row.name,
+    roomId: row.room_id,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
   }
@@ -211,14 +219,23 @@ export function findSessionByCode(db: DatabaseSync, code: string): LiveSessionRo
 
 export function createSession(
   db: DatabaseSync,
-  input: { testId: string; ownerId: string; timeLimitSec: number | null; passingPercent: number | null },
+  input: {
+    testId: string
+    ownerId: string
+    timeLimitSec: number | null
+    passingPercent: number | null
+    /** What the teacher called this run; null falls back to the test's title. */
+    name?: string | null
+    /** The group this run is for; null inherits the test's own room. */
+    roomId?: string | null
+  },
 ): LiveSession {
   const id = randomUUID()
   const timestamp = nowIso()
   db.prepare(
     `INSERT INTO live_sessions
-       (id, test_id, owner_id, join_code, status, time_limit_sec, passing_percent, created_at, started_at)
-     VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)`,
+       (id, test_id, owner_id, join_code, status, time_limit_sec, passing_percent, name, room_id, created_at, started_at)
+     VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     input.testId,
@@ -226,6 +243,8 @@ export function createSession(
     generateJoinCode(db),
     input.timeLimitSec,
     input.passingPercent,
+    input.name?.trim() ? input.name.trim() : null,
+    input.roomId ?? null,
     timestamp,
     timestamp,
   )
@@ -286,22 +305,84 @@ export interface SessionSummary extends LiveSession {
 }
 
 /**
- * Sessions newest first, with the counts the board needs. Pass an owner id to
- * scope it to one teacher, or nothing for every teacher's sessions.
+ * What a session list can be narrowed by. Every field is optional and the
+ * clauses are ANDed: a teacher who filters by "finished, this week, algebra"
+ * gets exactly that, and one who filters by nothing gets their last 50.
+ *
+ * `ids` is the odd one out: it is what a tag filter resolves to before the
+ * query runs, so a tag does not need its own join in here.
  */
-export function listSessions(db: DatabaseSync, ownerId?: string): SessionSummary[] {
-  const rows = db
-    .prepare(
-      `SELECT s.*, t.title AS title,
+export interface SessionFilter {
+  ownerId?: string | null
+  roomId?: string | null
+  testId?: string | null
+  status?: LiveSessionStatus | null
+  /** ISO date; sessions created on or after it. */
+  from?: string | null
+  /** ISO date; sessions created at or before it. */
+  to?: string | null
+  /** Matched against the session name and the test title. */
+  query?: string | null
+  ids?: string[] | null
+  limit?: number
+}
+
+/**
+ * Sessions newest first, with the counts the board needs. Pass a filter to
+ * narrow it; pass nothing for the owner's own last 50.
+ */
+export function listSessions(db: DatabaseSync, filter: SessionFilter = {}): SessionSummary[] {
+  const where: string[] = []
+  const values: Array<string | null> = []
+
+  if (filter.ownerId) {
+    where.push('s.owner_id = ?')
+    values.push(filter.ownerId)
+  }
+  if (filter.roomId) {
+    where.push('s.room_id = ?')
+    values.push(filter.roomId)
+  }
+  if (filter.testId) {
+    where.push('s.test_id = ?')
+    values.push(filter.testId)
+  }
+  if (filter.status) {
+    where.push('s.status = ?')
+    values.push(filter.status)
+  }
+  if (filter.from) {
+    where.push('s.created_at >= ?')
+    values.push(filter.from)
+  }
+  if (filter.to) {
+    where.push('s.created_at <= ?')
+    values.push(filter.to)
+  }
+  if (filter.query) {
+    where.push('(COALESCE(s.name, \'\') LIKE ? OR t.title LIKE ?)')
+    const like = `%${filter.query}%`
+    values.push(like, like)
+  }
+  if (filter.ids) {
+    if (filter.ids.length === 0) return []
+    where.push(`s.id IN (${filter.ids.map(() => '?').join(', ')})`)
+    values.push(...filter.ids)
+  }
+
+  const limit = Math.min(Math.max(filter.limit ?? 50, 1), 200)
+  const sql = `
+      SELECT s.*, t.title AS title,
               (SELECT COUNT(*) FROM participations p WHERE p.session_id = s.id) AS joined_count,
               (SELECT COUNT(*) FROM participations p WHERE p.session_id = s.id AND p.status != 'joined') AS submitted_count
          FROM live_sessions s
          JOIN tests t ON t.id = s.test_id
-        WHERE (? IS NULL OR s.owner_id = ?)
+        ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
         ORDER BY s.created_at DESC
-        LIMIT 50`,
-    )
-    .all(ownerId ?? null, ownerId ?? null) as unknown as Array<
+        LIMIT ${limit}`
+  const rows = db
+    .prepare(sql)
+    .all(...values) as unknown as Array<
     LiveSessionRow & { title: string; joined_count: number; submitted_count: number }
   >
   return rows.map((row) => ({

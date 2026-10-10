@@ -79,13 +79,13 @@ describe('a lone teacher with no admin', () => {
   it('lets that teacher create a class and read its key', async () => {
     const res = await app.server.inject({
       method: 'POST',
-      url: '/api/classrooms',
+      url: '/api/rooms',
       headers: bearer(teacher),
       payload: { name: 'Class 9A' },
     })
     expect(res.statusCode).toBe(201)
-    const classroom = (res.json() as { classroom: { id: string; key: string } }).classroom
-    expect(classroom.key).toMatch(/^[A-Z0-9]{6}$/)
+    const room = (res.json() as { room: { id: string; key: string } }).room
+    expect(room.key).toMatch(/^[A-Z0-9]{6}$/)
   })
 
   it('approves a pending student who registered without a class key', async () => {
@@ -161,13 +161,13 @@ describe('a lone teacher with no admin', () => {
   })
 
   it('runs a whole class with no admin ever created', async () => {
-    const classroom = await app.server.inject({
+    const room = await app.server.inject({
       method: 'POST',
-      url: '/api/classrooms',
+      url: '/api/rooms',
       headers: bearer(teacher),
       payload: { name: 'Physics 1' },
     })
-    const key = (classroom.json() as { classroom: { key: string } }).classroom.key
+    const key = (room.json() as { room: { key: string } }).room.key
 
     const created = await app.server.inject({
       method: 'POST',
@@ -216,7 +216,7 @@ describe('a lone teacher with no admin', () => {
         username: 'withkey',
         password: 'student-pass-1',
         fullName: 'With Key',
-        classKey: key,
+        roomKey: key,
       },
     })
     const studentUser = (reg.json() as { user: PublicUser }).user

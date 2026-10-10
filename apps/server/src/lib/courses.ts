@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import { nowIso } from './db'
+import type { Tag } from './tags'
 
 export interface CourseRow {
   id: string
@@ -27,6 +28,8 @@ export interface CourseWithRelations extends Course {
   materials: Material[]
   tests: Array<{ id: string; title: string }>
   students: Array<{ id: string; username: string; fullName: string }>
+  /** The teacher's own labels; a course carries them wherever it goes. */
+  tags: Tag[]
 }
 
 export interface MaterialRow {
