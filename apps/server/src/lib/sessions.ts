@@ -4,7 +4,7 @@ import type { DatabaseSync } from 'node:sqlite'
 import { nowIso } from './db'
 import type { QuestionType } from './tests'
 
-export type LiveSessionStatus = 'active' | 'paused' | 'finished'
+export type LiveSessionStatus = 'lobby' | 'active' | 'paused' | 'finished'
 export type ParticipationStatus = 'joined' | 'submitted' | 'auto_submitted'
 
 export interface LiveSessionRow {
@@ -19,8 +19,11 @@ export interface LiveSessionRow {
   name: string | null
   /** The group this run is for; it defaults to the test's own room. */
   room_id: string | null
+  /** While set, nobody new may join; the students already in are untouched. */
+  entry_locked: number
   created_at: string
-  started_at: string
+  /** Null until the teacher starts the run; the lobby has no clock. */
+  started_at: string | null
   finished_at: string | null
 }
 
@@ -34,7 +37,8 @@ export interface LiveSession {
   passingPercent: number | null
   name: string | null
   roomId: string | null
-  startedAt: string
+  entryLocked: boolean
+  startedAt: string | null
   finishedAt: string | null
 }
 
@@ -76,6 +80,15 @@ export interface ParticipantEntry {
   passed: boolean | null
   joinedAt: string
   submittedAt: string | null
+  /**
+   * The live half, filled in only when a board is being watched: whether a
+   * socket is open, whether the window is on screen, and how far they have got.
+   * Absent on a list read straight from the database, where none of it exists.
+   */
+  online?: boolean
+  active?: boolean | null
+  questionIndex?: number | null
+  answered?: number | null
 }
 
 /** A question as the student sees it: no correct answers, no other question's payload. */
@@ -173,6 +186,7 @@ export function toSession(row: LiveSessionRow): LiveSession {
     passingPercent: row.passing_percent,
     name: row.name,
     roomId: row.room_id,
+    entryLocked: row.entry_locked === 1,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
   }
@@ -234,8 +248,8 @@ export function createSession(
   const timestamp = nowIso()
   db.prepare(
     `INSERT INTO live_sessions
-       (id, test_id, owner_id, join_code, status, time_limit_sec, passing_percent, name, room_id, created_at, started_at)
-     VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)`,
+       (id, test_id, owner_id, join_code, status, time_limit_sec, passing_percent, name, room_id, entry_locked, created_at, started_at)
+     VALUES (?, ?, ?, ?, 'lobby', ?, ?, ?, ?, 0, ?, NULL)`,
   ).run(
     id,
     input.testId,
@@ -246,11 +260,46 @@ export function createSession(
     input.name?.trim() ? input.name.trim() : null,
     input.roomId ?? null,
     timestamp,
-    timestamp,
   )
   const row = findSessionRow(db, id)
   if (!row) throw new Error('session insert failed')
   return toSession(row)
+}
+
+/**
+ * Starts the run: stamps the clock and opens the doors.
+ *
+ * Called once, from the lobby, when the teacher decides the room is ready. A
+ * session that is already past the lobby is left alone, so a double click does
+ * not restart a clock that is already running.
+ */
+export function startSession(db: DatabaseSync, id: string): LiveSession | null {
+  const row = findSessionRow(db, id)
+  if (!row) return null
+  if (row.status !== 'lobby') return toSession(row)
+  db.prepare("UPDATE live_sessions SET status = 'active', started_at = ? WHERE id = ?").run(
+    nowIso(),
+    id,
+  )
+  const started = findSessionRow(db, id)
+  return started ? toSession(started) : null
+}
+
+/** Closes or opens the door to new joiners. Whoever is already in is untouched. */
+export function setEntryLocked(db: DatabaseSync, id: string, locked: boolean): LiveSession | null {
+  db.prepare('UPDATE live_sessions SET entry_locked = ? WHERE id = ?').run(locked ? 1 : 0, id)
+  const row = findSessionRow(db, id)
+  return row ? toSession(row) : null
+}
+
+/** One row per visibility change, so leaving the window is recorded, not punished. */
+export function recordParticipationEvent(
+  db: DatabaseSync,
+  input: { sessionId: string; participationId: string; kind: 'visible' | 'hidden' },
+): void {
+  db.prepare(
+    'INSERT INTO participation_events (id, session_id, participation_id, kind, created_at) VALUES (?, ?, ?, ?, ?)',
+  ).run(randomUUID(), input.sessionId, input.participationId, input.kind, nowIso())
 }
 
 export function setSessionStatus(
@@ -645,6 +694,8 @@ export function isSessionOver(
   now: number = Date.now(),
 ): boolean {
   if (session.status === 'finished') return true
+  // A lobby has not started, so it has no clock; nothing can run out.
+  if (session.startedAt === null) return false
   if (session.timeLimitSec === null) return false
   return now >= Date.parse(session.startedAt) + session.timeLimitSec * 1000
 }

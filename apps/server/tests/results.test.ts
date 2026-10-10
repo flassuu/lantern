@@ -98,6 +98,12 @@ async function runSession(
     payload: { testId },
   })
   const { session } = started.json() as { session: { id: string; joinCode: string } }
+  // A run starts in the lobby; the helper is about answering, so it starts it.
+  await app.server.inject({
+    method: 'POST',
+    url: `/api/sessions/${session.id}/start`,
+    headers: bearer(teacherToken),
+  })
   const joined = await app.server.inject({
     method: 'POST',
     url: '/api/sessions/join',

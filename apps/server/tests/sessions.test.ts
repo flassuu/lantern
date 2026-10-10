@@ -24,6 +24,23 @@ async function login(username: string, password: string): Promise<string> {
   return (res.json() as { token: string }).token
 }
 
+
+/**
+ * Starts a run that was just created.
+ *
+ * A session is born in the lobby now, so a test that is about answering has to
+ * open it first - which is the same thing the teacher does, and the reason the
+ * lobby exists.
+ */
+async function startNow(token: string, sessionId: string): Promise<void> {
+  const res = await app.server.inject({
+    method: 'POST',
+    url: `/api/sessions/${sessionId}/start`,
+    headers: bearer(token),
+  })
+  expect(res.statusCode).toBe(200)
+}
+
 /** A test with all five question types, owned by the teacher. */
 async function seedTest(token: string): Promise<string> {
   const res = await app.server.inject({
@@ -201,7 +218,17 @@ describe('live sessions: teacher side', () => {
     expect(res.statusCode).toBe(201)
     const { session } = res.json() as SessionBody
     expect(session.joinCode).toMatch(/^[A-Z0-9]{6}$/)
-    expect(session.status).toBe('active')
+    // A run is born in the lobby now: it has a code and a paper, but no clock
+    // until the teacher starts it.
+    expect(session.status).toBe('lobby')
+
+    const started = await app.server.inject({
+      method: 'POST',
+      url: `/api/sessions/${session.id}/start`,
+      headers: bearer(teacherToken),
+    })
+    expect(started.statusCode).toBe(200)
+    expect((started.json() as SessionBody).session.status).toBe('active')
     expect(session.timeLimitSec).toBe(600)
     expect(session.passingPercent).toBe(50)
     expect(session.test.questionCount).toBe(5)
@@ -251,6 +278,7 @@ describe('live sessions: teacher side', () => {
       payload: { testId },
     })
     const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
 
     const paused = await app.server.inject({
       method: 'PATCH',
@@ -360,6 +388,7 @@ describe('live sessions: teacher side', () => {
       payload: { testId },
     })
     const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
 
     const ok = await app.server.inject({
       method: 'GET',
@@ -408,6 +437,7 @@ describe('live sessions: student side', () => {
       payload: { testId },
     })
     const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
     const studentToken = await approvedStudent('student01')
 
     const joined = await app.server.inject({
@@ -449,6 +479,7 @@ describe('live sessions: student side', () => {
       payload: { testId },
     })
     const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
     const studentToken = await approvedStudent('student02')
 
     const joined = await app.server.inject({
@@ -483,6 +514,7 @@ describe('live sessions: student side', () => {
       payload: { testId },
     })
     const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
     const studentToken = await approvedStudent('student03')
 
     const first = await app.server.inject({
@@ -522,6 +554,7 @@ describe('live sessions: student side', () => {
       payload: { testId },
     })
     const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
     await app.server.inject({
       method: 'PATCH',
       url: `/api/sessions/${session.id}`,
@@ -547,6 +580,7 @@ describe('live sessions: student side', () => {
       payload: { testId },
     })
     const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
     const res = await app.server.inject({
       method: 'POST',
       url: '/api/sessions/join',
@@ -566,6 +600,7 @@ describe('live sessions: student side', () => {
       payload: { testId },
     })
     const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
     const studentToken = await approvedStudent('student05')
     const joined = await app.server.inject({
       method: 'POST',
@@ -613,6 +648,7 @@ describe('live sessions: student side', () => {
       payload: { testId },
     })
     const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
     const studentToken = await approvedStudent('student06')
     const joined = await app.server.inject({
       method: 'POST',
@@ -643,6 +679,7 @@ describe('live sessions: student side', () => {
       payload: { testId },
     })
     const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
     const studentToken = await approvedStudent('student07')
 
     const withoutJoin = await app.server.inject({
@@ -684,6 +721,7 @@ describe('live sessions: student side', () => {
       payload: { testId },
     })
     const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
     const studentToken = await approvedStudent('student08')
     const joined = await app.server.inject({
       method: 'POST',
@@ -740,6 +778,7 @@ describe('live sessions: student side', () => {
       payload: { testId },
     })
     const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
     await approvedStudent('student09')
     const otherToken = await approvedStudent('student10')
     await app.server.inject({
@@ -784,6 +823,7 @@ describe('live sessions: teacher board', () => {
       payload: { testId },
     })
     const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
 
     const empty = await app.server.inject({
       method: 'GET',
@@ -864,6 +904,7 @@ describe('live sessions: teacher board', () => {
       payload: { testId },
     })
     const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
     await app.server.inject({
       method: 'POST',
       url: '/api/sessions/join',
@@ -920,6 +961,7 @@ describe('live sessions: teacher board', () => {
       payload: { testId },
     })
     const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
     const joined = await app.server.inject({
       method: 'POST',
       url: '/api/sessions/join',
@@ -950,6 +992,7 @@ describe('live sessions: teacher board', () => {
       payload: { testId },
     })
     const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
     const studentToken = await approvedStudentForList('historystudent')
 
     const empty = await app.server.inject({

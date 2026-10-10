@@ -12,7 +12,7 @@ export function nowIso(): string {
   return new Date().toISOString()
 }
 
-export const SCHEMA_VERSION = 6
+export const SCHEMA_VERSION = 7
 
 const MIGRATIONS: Array<{ version: number; up: string }> = [
   {
@@ -255,6 +255,64 @@ const MIGRATIONS: Array<{ version: number; up: string }> = [
         UNIQUE (tag_id, entity_type, entity_id)
       );
       CREATE INDEX IF NOT EXISTS idx_entity_tags_entity ON entity_tags(entity_type, entity_id);
+    `,
+  },
+  {
+    version: 7,
+    up: `
+      -- A session now opens in a lobby: it exists, students can walk in and see
+      -- the room assemble, and the clock does not start until the teacher presses
+      -- Start. So 'lobby' joins the statuses and started_at becomes nullable -
+      -- and SQLite cannot widen a CHECK in place, so the table is rebuilt.
+      --
+      -- defer_foreign_keys is what makes the rebuild safe inside this
+      -- transaction. participations points at live_sessions, and a rebuild has
+      -- to drop that table while its children exist; with the checks deferred,
+      -- they are resolved once at COMMIT, by which time the name is back.
+      -- foreign_keys itself cannot be toggled here - SQLite ignores it inside a
+      -- transaction - which is exactly why this pragma exists.
+      PRAGMA defer_foreign_keys = ON;
+
+      CREATE TABLE live_sessions_new (
+        id               TEXT PRIMARY KEY,
+        test_id          TEXT NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
+        owner_id         TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        join_code        TEXT NOT NULL UNIQUE,
+        status           TEXT NOT NULL CHECK (status IN ('lobby', 'active', 'paused', 'finished')),
+        -- Snapshots of the test settings, so editing the test mid-run is harmless.
+        time_limit_sec   INTEGER,
+        passing_percent  INTEGER,
+        name             TEXT,
+        room_id          TEXT REFERENCES rooms(id) ON DELETE SET NULL,
+        -- While set, nobody new may join; the students already in are untouched.
+        entry_locked     INTEGER NOT NULL DEFAULT 0,
+        created_at       TEXT NOT NULL,
+        started_at       TEXT,
+        finished_at      TEXT
+      );
+      INSERT INTO live_sessions_new
+        (id, test_id, owner_id, join_code, status, time_limit_sec, passing_percent,
+         name, room_id, entry_locked, created_at, started_at, finished_at)
+        SELECT id, test_id, owner_id, join_code, status, time_limit_sec, passing_percent,
+               name, room_id, 0, created_at, started_at, finished_at
+          FROM live_sessions;
+      DROP TABLE live_sessions;
+      ALTER TABLE live_sessions_new RENAME TO live_sessions;
+      CREATE INDEX IF NOT EXISTS idx_live_sessions_owner ON live_sessions(owner_id);
+      CREATE INDEX IF NOT EXISTS idx_live_sessions_status ON live_sessions(status);
+
+      -- Leaving the window is recorded, not punished: one row per visibility
+      -- change, so a teacher can see the shape of a run afterwards without the
+      -- student having been blocked or auto-submitted for walking away.
+      CREATE TABLE IF NOT EXISTS participation_events (
+        id               TEXT PRIMARY KEY,
+        session_id       TEXT NOT NULL REFERENCES live_sessions(id) ON DELETE CASCADE,
+        participation_id TEXT NOT NULL REFERENCES participations(id) ON DELETE CASCADE,
+        kind             TEXT NOT NULL CHECK (kind IN ('visible', 'hidden')),
+        created_at       TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_participation_events_session ON participation_events(session_id);
+      CREATE INDEX IF NOT EXISTS idx_participation_events_participation ON participation_events(participation_id);
     `,
   },
 ]

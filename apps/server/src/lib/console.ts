@@ -171,7 +171,7 @@ export async function executeCommand(
           session.status,
           `${session.submittedCount}/${session.joinedCount}`,
           session.title,
-          session.startedAt.slice(0, 16).replace('T', ' '),
+          session.startedAt ? session.startedAt.slice(0, 16).replace('T', ' ') : 'in lobby',
         ]),
       )
       return lines.length > 0 ? lines : ['no sessions yet']

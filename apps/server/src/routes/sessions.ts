@@ -15,6 +15,9 @@ import {
   listOpenParticipations,
   listParticipantEntries,
   listSessions,
+  recordParticipationEvent,
+  setEntryLocked,
+  startSession,
   listStudentResults,
   countSessions,
   findSessionSummary,
@@ -25,11 +28,24 @@ import {
   toSession,
   toStudentPayload,
   type LiveSession,
+  type ParticipantEntry,
   type ParticipationRow,
   type LiveSessionStatus,
   type Participation,
 } from '../lib/sessions'
-import { broadcast, joinRoom, leaveRoom, sendTo, type LiveClient } from '../lib/live'
+import {
+  addSocket,
+  broadcast,
+  clearPresence,
+  isOnline,
+  joinRoom,
+  leaveRoom,
+  presenceOf,
+  removeSocket,
+  sendTo,
+  setPresence,
+  type LiveClient,
+} from '../lib/live'
 import { requireRoles } from '../plugins/auth'
 import { resolveSession } from '../lib/tokens'
 import { sessionResultsCsv } from '../lib/results'
@@ -76,7 +92,7 @@ const listQuerySchema = {
   properties: {
     room: { type: 'string', maxLength: 36 },
     test: { type: 'string', maxLength: 36 },
-    status: { type: 'string', enum: ['active', 'paused', 'finished'] },
+    status: { type: 'string', enum: ['lobby', 'active', 'paused', 'finished'] },
     from: { type: 'string', maxLength: 40 },
     to: { type: 'string', maxLength: 40 },
     q: { type: 'string', maxLength: 120 },
@@ -136,7 +152,8 @@ interface ParticipationResponse {
     status: LiveSessionStatus
     timeLimitSec: number | null
     passingPercent: number | null
-    startedAt: string
+    /** Null while the run is still a lobby: there is no clock yet. */
+    startedAt: string | null
     serverNow: string
   }
   questions: Array<{
@@ -214,11 +231,34 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
     return setSessionStatus(db, session.id, 'finished') ?? session
   }
 
+  /**
+   * The board: the stored rows with the live half folded in.
+   *
+   * Presence is memory, not a table, so it is merged here - at the one place a
+   * board is assembled - rather than being taught to the database layer.
+   */
+  function boardEntries(sessionId: string): ParticipantEntry[] {
+    const live = presenceOf(sessionId)
+    return listParticipantEntries(db, sessionId).map((entry) => {
+      const presence = live.get(entry.userId)
+      return {
+        ...entry,
+        online: isOnline(sessionId, entry.userId),
+        active: presence ? presence.visible : null,
+        questionIndex: presence ? presence.questionIndex : null,
+        answered: presence ? presence.answered : null,
+      }
+    })
+  }
+
   /** Pushes the new state to everyone watching, and the board to the teachers. */
   function announce(session: LiveSession): void {
     const status: LiveSessionStatus = session.status
     broadcast(session.id, { type: 'status', status, serverNow: new Date().toISOString() })
-    broadcast(session.id, { type: 'participants', participants: listParticipantEntries(db, session.id) }, true)
+    broadcast(session.id, { type: 'participants', participants: boardEntries(session.id) }, true)
+    // A finished run has no room left to watch; the in-memory presence goes with
+    // it so a long-lived server does not accumulate sessions nobody can see.
+    if (status === 'finished') clearPresence(session.id)
   }
 
   function sessionPayload(session: LiveSession): SessionResponse {
@@ -371,7 +411,7 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
       if (session.status === 'finished' && row.status !== 'finished') announce(session)
       return {
         session,
-        participants: listParticipantEntries(db, session.id),
+        participants: boardEntries(session.id),
       }
     },
   )
@@ -385,27 +425,63 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
         params: idParamsSchema,
         body: {
           type: 'object',
-          required: ['status'],
           additionalProperties: false,
-          properties: { status: { type: 'string', enum: ['paused', 'active', 'finished'] } },
+          minProperties: 1,
+          properties: {
+            status: { type: 'string', enum: ['paused', 'active', 'finished'] },
+            entryLocked: { type: 'boolean' },
+          },
         },
       },
     },
     async (request, reply) => {
       const { id } = request.params as { id: string }
-      const { status } = request.body as { status: LiveSessionStatus }
+      const { status, entryLocked } = request.body as {
+        status?: LiveSessionStatus
+        entryLocked?: boolean
+      }
       const row = findSessionRow(db, id)
       if (!row) return sendError(reply, 404, 'NOT_FOUND', 'session not found')
-      const session = toSession(row)
+      let session = toSession(row)
       if (session.ownerId !== request.session?.userId && request.session?.role !== 'admin') {
         return sendError(reply, 403, 'FORBIDDEN', 'this session belongs to another teacher')
       }
-      if (session.status === 'finished') {
+      if (entryLocked !== undefined) {
+        session = setEntryLocked(db, id, entryLocked) ?? session
+      }
+      if (status !== undefined) {
+        if (session.status === 'finished') {
+          return sendError(reply, 409, 'CONFLICT', 'this session is already finished')
+        }
+        session = setSessionStatus(db, id, status) ?? session
+      }
+      announce(session)
+      return sessionPayload(session)
+    },
+  )
+
+  /**
+   * Opens the doors: stamps the clock and flips the lobby to a running session.
+   * Only meaningful from the lobby; starting a started run leaves it alone.
+   */
+  app.post(
+    '/api/sessions/:id/start',
+    { preHandler: requireRoles('admin', 'teacher'), schema: { params: idParamsSchema } },
+    async (request, reply) => {
+      const session = request.session!
+      const { id } = request.params as { id: string }
+      const row = findSessionRow(db, id)
+      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'session not found')
+      const current = toSession(row)
+      if (current.ownerId !== session.userId && session.role !== 'admin') {
+        return sendError(reply, 403, 'FORBIDDEN', 'this session belongs to another teacher')
+      }
+      if (current.status === 'finished') {
         return sendError(reply, 409, 'CONFLICT', 'this session is already finished')
       }
-      const updated = setSessionStatus(db, id, status) ?? session
-      announce(updated)
-      return sessionPayload(updated)
+      const started = startSession(db, id) ?? current
+      announce(started)
+      return sessionPayload(started)
     },
   )
 
@@ -477,6 +553,12 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
       }
       if (session.status === 'paused') {
         return sendError(reply, 409, 'CONFLICT', 'this session is paused')
+      }
+      // Locked means no *new* students; somebody already in keeps their seat, so
+      // a reload during a locked run does not throw them out of it.
+      const alreadyIn = findParticipation(db, session.id, request.session!.userId)
+      if (session.entryLocked && !alreadyIn) {
+        return sendError(reply, 409, 'ENTRY_LOCKED', 'this session is closed to new students')
       }
       const questions = listQuestions(db, session.testId)
       const participationRow = joinSession(
@@ -563,6 +645,12 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
       const participation = toParticipation(row)
       if (participation.status !== 'joined') {
         return sendError(reply, 409, 'CONFLICT', 'you already submitted this session')
+      }
+      // The paper does not exist yet in a lobby: the teacher has not started the
+      // run, and grading one early would score an empty sheet the student never
+      // saw.
+      if (session.status === 'lobby') {
+        return sendError(reply, 409, 'CONFLICT', 'the session has not started yet')
       }
       const questions = listQuestions(db, session.testId)
       const { order } = questionsFor(participation, session.testId)
@@ -690,11 +778,61 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
       isTeacher: authed.role !== 'student',
     }
     joinRoom(id, client)
+    addSocket(id, client.userId)
     sendTo(client, { type: 'status', status: session.status, serverNow: new Date().toISOString() })
     if (client.isTeacher) {
-      sendTo(client, { type: 'participants', participants: listParticipantEntries(db, id) })
+      sendTo(client, { type: 'participants', participants: boardEntries(id) })
     }
-    socket.on('close', () => leaveRoom(id, client))
-    socket.on('error', () => leaveRoom(id, client))
+
+    /**
+     * What a student tells the room about themselves, and nothing else: whether
+     * their window is on screen, and how far through the paper they are. A
+     * teacher socket has no business sending either, so it is ignored.
+     */
+    socket.on('message', (raw: unknown) => {
+      if (client.isTeacher) return
+      let message: { type?: string; visible?: unknown; questionIndex?: unknown; answered?: unknown }
+      try {
+        message = JSON.parse(String(raw)) as typeof message
+      } catch {
+        return
+      }
+      const participation = findParticipation(db, id, client.userId)
+      if (!participation) return
+      if (message.type === 'presence' && typeof message.visible === 'boolean') {
+        const before = presenceOf(id).get(client.userId)
+        setPresence(id, client.userId, { visible: message.visible })
+        // Only a change is an event: a heartbeat every few seconds would fill
+        // the record with rows that all say the same thing.
+        if (!before || before.visible !== message.visible) {
+          recordParticipationEvent(db, {
+            sessionId: id,
+            participationId: participation.id,
+            kind: message.visible ? 'visible' : 'hidden',
+          })
+        }
+      } else if (message.type === 'progress') {
+        setPresence(id, client.userId, {
+          ...(typeof message.questionIndex === 'number'
+            ? { questionIndex: message.questionIndex }
+            : {}),
+          ...(typeof message.answered === 'number' ? { answered: message.answered } : {}),
+        })
+      } else {
+        return
+      }
+      broadcast(id, { type: 'participants', participants: boardEntries(id) }, true)
+    })
+
+    const disconnect = (): void => {
+      leaveRoom(id, client)
+      // The last socket closing is when somebody is actually gone; a reload
+      // opens the next one before this fires.
+      if (removeSocket(id, client.userId)) {
+        broadcast(id, { type: 'participants', participants: boardEntries(id) }, true)
+      }
+    }
+    socket.on('close', disconnect)
+    socket.on('error', disconnect)
   })
 }

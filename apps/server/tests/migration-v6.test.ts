@@ -94,11 +94,11 @@ describe('migration v6', () => {
   })
 
   it('runs to the current version', () => {
-    expect(SCHEMA_VERSION).toBe(6)
+    expect(SCHEMA_VERSION).toBe(7)
     const version = db.raw
       .prepare("SELECT value FROM app_meta WHERE key = 'schema_version'")
       .get() as { value: string }
-    expect(version.value).toBe('6')
+    expect(version.value).toBe('7')
   })
 
   it('has rooms where classrooms used to be, with their keys intact', () => {
