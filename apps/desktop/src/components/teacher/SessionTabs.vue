@@ -118,11 +118,15 @@ watch(
 <template>
   <div
     ref="strip"
-    class="flex items-end gap-2 overflow-hidden px-3 pt-1.5"
+    class="flex items-end gap-2 px-3 pt-1.5"
   >
-    <!-- `flex-1` with `overflow-hidden`: the tabs own whatever is left after the
-         library button, and the ones that do not fit are clipped rather than
-         sliding under it. -->
+    <!--
+      The strip must not clip: the tabs hang below its box on purpose (see the
+      negative margin below), and `overflow-hidden` here cut them off mid-glyph,
+      leaving a black band between the tab and the board. This row is the one
+      that clips - the tabs own whatever is left after the library button, and
+      the ones that do not fit are cut here rather than sliding under it.
+    -->
     <div ref="row" class="flex min-w-0 flex-1 items-end gap-2 overflow-hidden">
       <!--
         `-mb-3` is what joins a tab to the board below it: the strip's divider
