@@ -103,6 +103,9 @@ export interface SessionSummary extends LiveSession {
   tags: Tag[]
 }
 
+/** The columns a session list can be ordered by; `created` unless asked. */
+export type SessionSort = 'created' | 'name' | 'status' | 'submitted'
+
 /** What a session list can be narrowed by; every field is optional. */
 export interface SessionFilter {
   roomId?: string | null
@@ -114,6 +117,10 @@ export interface SessionFilter {
   /** Matched against the session name and the test title. */
   query?: string | null
   tagId?: string | null
+  sort?: SessionSort
+  dir?: 'asc' | 'desc'
+  /** Rows to skip, for paging; the pair with `limit` makes a page. */
+  offset?: number
   limit?: number
 }
 
@@ -130,14 +137,45 @@ function filterQuery(filter: SessionFilter): string {
   add('to', filter.to)
   add('q', filter.query)
   add('tag', filter.tagId)
+  add('sort', filter.sort)
+  add('dir', filter.dir)
   add('limit', filter.limit)
+  add('offset', filter.offset)
   return parts.length > 0 ? `?${parts.join('&')}` : ''
+}
+
+/** A page of sessions and the size of the whole filtered set. */
+export interface SessionPage {
+  sessions: SessionSummary[]
+  total: number
+}
+
+/**
+ * One page of the list, with the total it was cut from.
+ *
+ * The total is what a library counts pages against, and an older server that
+ * does not send one falls back to the page length: a wrong total is a smaller
+ * problem than a screen that will not render.
+ */
+export async function listSessionPage(filter: SessionFilter = {}): Promise<SessionPage> {
+  const result = await apiFetch<{ sessions: SessionSummary[]; total?: number }>(
+    `/api/sessions${filterQuery(filter)}`,
+  )
+  const sessions = result.sessions.map(normalizeSession)
+  return { sessions, total: result.total ?? sessions.length }
 }
 
 /** Teacher only: their own sessions (an admin sees every teacher's). */
 export async function listSessions(filter: SessionFilter = {}): Promise<SessionSummary[]> {
-  const result = await apiFetch<{ sessions: SessionSummary[] }>(`/api/sessions${filterQuery(filter)}`)
-  return result.sessions.map(normalizeSession)
+  return (await listSessionPage(filter)).sessions
+}
+
+/** One session by id, for a screen that did not arrive by way of the list. */
+export async function getSession(id: string): Promise<SessionSummary> {
+  const result = await apiFetch<{ session: SessionSummary }>(
+    `/api/sessions/${encodeURIComponent(id)}`,
+  )
+  return normalizeSession(result.session)
 }
 
 /** Teacher only: starts a run of one of their tests. */

@@ -723,6 +723,72 @@ async function happyPaths(session, fixtures) {
     'no room chip on the board',
   )
 
+  // 6.2: the library behind the strip's "All sessions" button. It opens, it
+  // searches, and picking a run returns to it with the dialog gone.
+  await session.run(
+    context,
+    `
+    const button = [...document.querySelectorAll('button')].find(
+      (b) => b.getAttribute('aria-label') === 'All sessions',
+    );
+    if (button) button.click();
+    return true;
+  `,
+  )
+  await sleep(700)
+  const library = await session.run(
+    context,
+    `
+    const dialog = document.querySelector('[role=dialog]');
+    return { open: document.body.textContent.includes('Session library'), dialog: !!dialog };
+  `,
+  )
+  check('teacher: the session library opens from the strip', library.open && library.dialog)
+
+  await session.run(
+    context,
+    `
+    const input = document.querySelector('input[type=search]');
+    if (!input) return 'no input';
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    setter.call(input, 'zzzz-no-such-run');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  `,
+  )
+  await sleep(800)
+  const searched = await session.run(
+    context,
+    `
+    return document.body.textContent.includes('No session matches') ? 'empty' : 'full';
+  `,
+  )
+  check('teacher: the library search narrows the list', searched === 'empty', `got ${searched}`)
+
+  const picked = await session.run(
+    context,
+    `
+    const input = document.querySelector('input[type=search]');
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    setter.call(input, '');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 800));
+    const rows = [...document.querySelectorAll('[role=dialog] button')].filter(
+      (b) => /Browser run/.test(b.textContent),
+    );
+    if (!rows.length) return 'no row';
+    rows[0].click();
+    await new Promise((r) => setTimeout(r, 500));
+    return document.querySelector('[role=dialog]') ? 'still-open' : 'closed';
+  `,
+  )
+  check(
+    'teacher: picking a run in the library returns to the board',
+    picked === 'closed',
+    `got ${picked}`,
+  )
+  await session.screenshot(context, join(SHOTS, 'teacher-session-library.png'))
+
   await clickTab(session, context, '^Tests$', 1800)
   const testsScreen = await session.run(
     context,

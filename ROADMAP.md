@@ -417,25 +417,36 @@ Two decisions the plan left open, taken while building it:
   time the paper was written for one group and that is who is in the room, so
   the common case should not ask a question.
 
-### 6.2 Live — session tabs and a library — v0.6.2
+### 6.2 Live — session tabs and a library — v0.6.2 — **done**
 
 Goal: a strip of the most recent sessions that reads like browser tabs, a button
 beside it that opens a comfortable library to search and filter, and a board that
 visibly belongs to the selected tab.
 
-- [ ] Server: `GET /api/sessions` with the 6.1 filters, sorting and paging;
+- [x] Server: `GET /api/sessions` with the 6.1 filters, sorting and paging, and a
+      `total` that belongs to the filter rather than the page;
       `GET /api/sessions/:id` for one session
-- [ ] Client: `SessionTabs.vue` — as many tabs as fit are shown (measured with a
+- [x] Client: `SessionTabs.vue` — as many tabs as fit are shown (measured with a
       `ResizeObserver`), the rest live behind "All sessions"; a tab carries the
       status dot, the name and the code
-- [ ] Client: `SessionLibraryDialog.vue` — search by name and test, filters by
+- [x] Client: `SessionLibraryDialog.vue` — search by name and test, filters by
       date, test, status, room and tag, sorting, and selection
-- [ ] Client: one visual unit — the tabs are the top edge of one card, and the
+- [x] Client: one visual unit — the tabs are the top edge of one card, and the
       selected session's hero, board and participants sit inside it, so it is
       plain which board and which participants belong to which test
-- [ ] i18n: `teacher.live.library.*`, `teacher.live.tabs.*`
-- [ ] Tests: the list filters on the server; the browser harness opens the
-      library, filters, picks, and checks the grouped block
+- [x] i18n: `teacher.live.library.*`, `teacher.live.tabs.*`
+- [x] Tests: `session-library.test.ts` (sort, paging without repeats, the total,
+      one session by id); the browser harness opens the library, searches, picks,
+      and checks the tab strip and the grouped block
+
+Two decisions taken while building it:
+
+- The library is a **wide dialog**, not a side drawer. The groundwork note listed
+  "AppDrawer / wide dialog" as either; a modal is the better fit on a phone,
+  which is where a teacher picks a past run, and it needed no new component.
+- The "All sessions" button is always in the strip rather than appearing only
+  when tabs overflow. A control that materialises under a finger is worse than
+  one that stays put, and the library is worth reaching even when three tabs fit.
 
 ### 6.3 The lobby, the start, presence — v0.6.3
 

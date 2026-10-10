@@ -43,6 +43,25 @@ and everything else follows from taking that seriously.
   server it does not control. Restart the server (or rebuild the desktop
   sidecar) to get the rooms and labels themselves.
 
+### Live: session tabs and a library
+
+The Live tab showed a row of pills and one board, and finding an older run meant
+scrolling a strip whose ends never said what was beyond them.
+
+- **The sessions are tabs**, as many as fit across the top of the board - measured
+  with a `ResizeObserver`, not guessed - and the rest live behind a button beside
+  them that leads to the library. A tab carries the status dot, the run's name
+  and its join code.
+- **The library** opens from that button: search by name or test, filter by
+  status, test, room, label and date, sort by newest, name, status or number of
+  submissions, and page through the result with a count that is real.
+- **One unit**: the tabs are the top edge of one card, and the selected run's
+  hero, board and participants sit inside it - so which board belongs to which
+  tab is never a question.
+- Server: `GET /api/sessions` grew `sort`, `dir` and `offset` and now returns
+  `total` - the size of the filter, not of the page; `GET /api/sessions/:id`
+  answers with one session in the same shape the list uses.
+
 ### The teacher's Live tab, rebuilt around the run in progress
 
 The tab had grown by accretion - a code, then a QR, then four controls, then a

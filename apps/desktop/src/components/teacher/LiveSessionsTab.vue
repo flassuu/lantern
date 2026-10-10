@@ -36,6 +36,8 @@ import QrCodeCard from '../common/QrCode.vue'
 import SkeletonList from '../common/SkeletonList.vue'
 import TestPicker from './TestPicker.vue'
 import TagInput from './TagInput.vue'
+import SessionTabs from './SessionTabs.vue'
+import SessionLibraryDialog from './SessionLibraryDialog.vue'
 import { useConfirm } from '../../composables/confirm'
 import { useDialogFocus } from '../../composables/focusTrap'
 import { effectiveBaseUrl, loadSettings } from '../../composables/settings'
@@ -64,6 +66,7 @@ const actionError = ref('')
 const starting = ref(false)
 const startingTestId = ref('')
 const showStart = ref(false)
+const showLibrary = ref(false)
 const copied = ref(false)
 const linkCopied = ref(false)
 const showQr = ref(false)
@@ -418,37 +421,33 @@ onBeforeUnmount(() => {
     />
 
     <template v-else>
-      <!-- Only worth a switcher when there is something to switch between. -->
-      <div v-if="sessions.length > 1" class="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
-        <button
-          v-for="session in sessions"
-          :key="session.id"
-          type="button"
-          class="state-layer inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border px-3.5 py-2 text-xs font-semibold"
-          :class="
-            selectedId === session.id
-              ? 'border-transparent bg-primary text-on-primary'
-              : 'border-outline-variant bg-surface-container text-on-surface-variant'
-          "
-          @click="selectedId = session.id"
-        >
-          <span class="size-2 rounded-full" :class="statusDot[session.status]" />
-          <span class="max-w-40 truncate">{{ sessionName(session) }}</span>
-          <span class="font-mono tracking-wide opacity-80">{{ session.joinCode }}</span>
-        </button>
-      </div>
+      <!--
+        One unit. The tabs are the sheet's top edge and the board below them
+        belongs to the tab that is open; the alternative - a row of tabs beside a
+        board of unknown ownership - made the teacher count cards to be sure
+        which one they were looking at.
+      -->
+      <div class="overflow-hidden rounded-2xl border border-outline-variant bg-surface-container">
+        <SessionTabs
+          :sessions="sessions"
+          :selected-id="selectedId"
+          @select="selectedId = $event"
+          @library="showLibrary = true"
+        />
 
-      <p
-        v-if="actionError"
-        role="alert"
-        class="rounded-xl bg-error-container px-3 py-2 text-sm text-on-error-container"
-      >
-        {{ actionError }}
-      </p>
+        <div class="space-y-3 p-3">
+          <p
+            v-if="actionError"
+            role="alert"
+            class="rounded-xl bg-error-container px-3 py-2 text-sm text-on-error-container"
+          >
+            {{ actionError }}
+          </p>
+
 
       <template v-if="selected">
         <!-- Who the session is, how long it has run, and how students get in. -->
-        <AppCard as="section">
+        <AppCard as="section" tone="plain">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
@@ -644,7 +643,7 @@ onBeforeUnmount(() => {
         </AppCard>
 
         <!-- The board: the numbers a teacher watches while the room works. -->
-        <AppCard as="section">
+        <AppCard as="section" tone="plain">
           <h4 class="flex items-center gap-2 text-sm font-semibold text-on-surface">
             <Users class="size-4" aria-hidden="true" />
             {{ t('teacher.live.boardTitle') }}
@@ -731,7 +730,7 @@ onBeforeUnmount(() => {
           </div>
         </AppCard>
 
-        <AppCard as="section">
+        <AppCard as="section" tone="plain">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h4 class="flex items-center gap-2 text-sm font-semibold text-on-surface">
               <Users class="size-4" aria-hidden="true" />
@@ -807,6 +806,8 @@ onBeforeUnmount(() => {
           </ul>
         </AppCard>
       </template>
+        </div>
+      </div>
     </template>
 
     <AppDialog
@@ -908,5 +909,13 @@ onBeforeUnmount(() => {
         </footer>
       </div>
     </AppDialog>
+
+    <SessionLibraryDialog
+      v-if="showLibrary"
+      :tests="props.tests"
+      :selected-id="selectedId"
+      @select="selectedId = $event"
+      @close="showLibrary = false"
+    />
   </div>
 </template>
