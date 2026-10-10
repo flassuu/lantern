@@ -2,7 +2,7 @@ import { apiFetch } from './client'
 import { normalizeSession } from './normalize'
 import type { Tag } from './types'
 
-export type LiveSessionStatus = 'active' | 'paused' | 'finished'
+export type LiveSessionStatus = 'lobby' | 'active' | 'paused' | 'finished'
 export type ParticipationStatus = 'joined' | 'submitted' | 'auto_submitted'
 
 /** Flat answer payload; one shape per question type, mirroring the question payload. */
@@ -53,7 +53,10 @@ export interface LiveSession {
   name: string | null
   /** The group this run is for; it defaults to the test's own room. */
   roomId: string | null
-  startedAt: string
+  /** While set, nobody new may join; the students already in are untouched. */
+  entryLocked: boolean
+  /** Null until the teacher starts the run; the lobby has no clock. */
+  startedAt: string | null
   finishedAt: string | null
   test: { id: string; title: string; questionCount: number }
 }
@@ -65,7 +68,8 @@ export interface SessionState {
     status: LiveSessionStatus
     timeLimitSec: number | null
     passingPercent: number | null
-    startedAt: string
+    /** Null while the run is still a lobby. */
+    startedAt: string | null
     serverNow: string
   }
   questions: StudentQuestion[]
@@ -93,6 +97,11 @@ export interface ParticipantEntry {
   passed: boolean | null
   joinedAt: string
   submittedAt: string | null
+  /** The live half, sent only on the board: socket open, window on screen, how far. */
+  online?: boolean
+  active?: boolean | null
+  questionIndex?: number | null
+  answered?: number | null
 }
 
 /** A session with the counts the board needs. */
@@ -199,6 +208,29 @@ export async function getParticipants(sessionId: string): Promise<{
     `/api/sessions/${sessionId}/participants`,
   )
   return { session: normalizeSession(result.session), participants: result.participants }
+}
+
+/**
+ * Opens the doors: leaves the lobby and starts the clock.
+ *
+ * Named `beginSession` rather than `startSession` because that name is already
+ * taken by the call that *creates* a run - and the two are different acts now.
+ */
+export async function beginSession(sessionId: string): Promise<LiveSession> {
+  const result = await apiFetch<{ session: LiveSession }>(
+    `/api/sessions/${sessionId}/start`,
+    { method: 'POST' },
+  )
+  return normalizeSession(result.session)
+}
+
+/** Closes or opens the door to new students; whoever is inside is untouched. */
+export async function setEntryLocked(sessionId: string, locked: boolean): Promise<LiveSession> {
+  const result = await apiFetch<{ session: LiveSession }>(`/api/sessions/${sessionId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ entryLocked: locked }),
+  })
+  return normalizeSession(result.session)
 }
 
 /** Teacher only: pauses, resumes or finishes. */

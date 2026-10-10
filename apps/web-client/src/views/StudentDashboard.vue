@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppHeader from '../components/AppHeader.vue'
 import { useAuth } from '../stores/auth'
@@ -8,6 +8,7 @@ import SessionResult from '../components/student/SessionResult.vue'
 import StudentCourses from '../components/student/StudentCourses.vue'
 import StudentResults from '../components/student/StudentResults.vue'
 import SessionRunner from '../components/student/SessionRunner.vue'
+import LobbyScreen from '../components/student/LobbyScreen.vue'
 import { ApiError } from '../api/client'
 import {
   getCurrentSession,
@@ -17,6 +18,7 @@ import {
   type SessionState,
 } from '../api/sessions'
 import AppButton from '../components/common/AppButton.vue'
+import { usePresence } from '../composables/presence'
 
 const { t } = useI18n()
 const { user } = useAuth()
@@ -28,6 +30,16 @@ const state = ref<SessionState | null>(null)
 const result = ref<SessionResultBody | null>(null)
 const loading = ref(false)
 const loadError = ref('')
+
+/**
+ * The run the student is in, as one socket: their own presence and progress go
+ * out, and the server's status comes back. That status is what turns a lobby
+ * into a paper the moment the teacher starts, without a poll or a reload.
+ */
+const sessionId = computed(() => state.value?.session.id ?? null)
+const presence = usePresence(sessionId)
+/** What the server last said, falling back to what the join response said. */
+const liveStatus = computed(() => presence.status.value ?? state.value?.session.status ?? 'active')
 
 /**
  * A teacher can hand out a link (or a QR of it) that lands the student straight
@@ -148,7 +160,15 @@ onMounted(() => {
 
       <template v-else-if="state">
         <div class="mt-6">
-          <SessionRunner :state="state" @submitted="showResult" />
+          <!-- The waiting room, until the teacher starts the run. -->
+          <LobbyScreen v-if="liveStatus === 'lobby'" :state="state" />
+          <SessionRunner
+            v-else
+            :state="state"
+            :left-once="presence.leftOnce.value"
+            :report-progress="presence.reportProgress"
+            @submitted="showResult"
+          />
         </div>
         <button
           type="button"

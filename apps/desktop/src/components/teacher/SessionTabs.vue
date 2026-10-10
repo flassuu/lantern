@@ -42,6 +42,7 @@ function labelOf(session: SessionSummary): string {
 }
 
 const dot: Record<LiveSessionStatus, string> = {
+  lobby: 'bg-primary',
   active: 'bg-success',
   paused: 'bg-warning',
   finished: 'bg-on-surface-variant',

@@ -618,8 +618,9 @@ match.
 Admin & teacher. The teacher's own sessions; an admin sees every teacher's.
 Every query parameter is optional.
 
-Narrowing: `room`, `test`, `status`, `from`, `to` (ISO dates), `q` (matches the
-run name and the test title) and `tag` (a tag id).
+Narrowing: `room`, `test`, `status` (`lobby` | `active` | `paused` | `finished`),
+`from`, `to` (ISO dates), `q` (matches the run name and the test title) and
+`tag` (a tag id).
 
 Ordering and paging: `sort` (`created` | `name` | `status` | `submitted`,
 default `created`), `dir` (`asc` | `desc`, default `desc`), `limit` (1–200,
@@ -659,8 +660,32 @@ Admin & teacher. Body `{ "testId": "…", "name": "…", "roomId": "…", "tags"
 stands in. `roomId` defaults to the test's own room, so the common case — a paper
 written for one group, run in front of that group — needs no decision at all.
 
+A new session opens in the **lobby**: students may join and are counted, but
+nothing is timed and nothing can be submitted until it is started. The clock is
+not a property of the run until then — `startedAt` is `null`.
+
 - `400 VALIDATION` — the test has no questions yet, or `roomId` names no room
 - `403 FORBIDDEN` — the test, or the room, belongs to another teacher
+
+### `POST /api/sessions/:id/start`
+
+Admin & teacher (owner). Leaves the lobby: stamps `startedAt`, flips the status
+to `active`, and broadcasts the change to every phone watching. Idempotent — a
+second call on a run that has started changes nothing — and `409` once the run is
+finished.
+
+### `PATCH /api/sessions/:id`
+
+Admin & teacher (owner). Body `{ "status": "paused" }` and/or
+`{ "entryLocked": true }`; at least one is required.
+
+`entryLocked` closes the door to **new** students and leaves the ones already in
+alone — a reload during a locked run must not throw anybody out. An unlocked
+session refuses a new student with `409 ENTRY_LOCKED`; a student who is already
+a participant is let through regardless.
+
+Answering before the run starts is refused with `409`: the paper has not been
+handed out, and grading one early would score a sheet the student never saw.
 
 ### `GET /api/sessions/:id/participants`
 
@@ -842,9 +867,23 @@ WebSocket handshake, so the token travels in the query string:
 
 | Message | Sent to | Meaning |
 |---------|---------|---------|
-| `{ "type": "status", "status": "active", "serverNow": "…" }` | everyone in the session | state on connect and on every change |
-| `{ "type": "participants", "participants": [ … ] }` | teachers only | the board, on connect and after every join, submit, pause, resume, finish and timeout sweep |
+| `{ "type": "status", "status": "active", "serverNow": "…" }` | everyone in the session | state on connect and on every change, start included |
+| `{ "type": "participants", "participants": [ … ] }` | teachers only | the board, on connect and after every join, submit, pause, resume, finish, start, presence change and timeout sweep |
 | `{ "type": "error", "code": "…", "message": "…" }` | the offender | then the socket closes |
+
+A **student** socket may also send two messages, which are the only things a
+student is allowed to say about a session:
+
+| Message | Meaning |
+|---------|---------|
+| `{ "type": "presence", "visible": true }` | the window is on screen, or is not |
+| `{ "type": "progress", "questionIndex": 0, "answered": 3 }` | how far they are |
+
+A teacher socket that sends them is ignored. `presence` is what is kept: a
+*change* appends a `participation_events` row, while `progress` lives only in
+memory. Each board entry then carries `online` (a socket is open), `active` (the
+window is on screen) and `questionIndex` / `answered`, so the board can say
+*waiting*, *answered 3*, *away* or *offline* without a second request.
 
 Rejections close with a code rather than connecting silently: `4401`
 unauthenticated, `4403` not your session (a student who never joined, or a
@@ -869,6 +908,7 @@ teacher who does not own it), `4404` unknown session.
 | `/api/admin/stats`, `/api/admin/participants` | + | – | – |
 | `/api/rooms*` | + | + (own) | – (preview is public) |
 | `/api/tags*` | + | + (own) | – |
+| `POST /api/sessions/:id/start` | + | + (own) | – |
 | `GET /api/logs`, `/ws/server` | + | – | – |
 | `GET /api/settings` | + | + | + |
 | `PATCH /api/settings` | + | + | – |

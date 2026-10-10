@@ -42,12 +42,15 @@ const totalPoints = computed(() =>
 const answered = computed(() => answeredCount(questions.value, responses.value))
 
 const deadline = computed(() =>
-  remainingMs(
-    props.state.session.startedAt,
-    props.state.session.timeLimitSec,
-    props.state.session.serverNow,
-    now.value,
-  ),
+  // No start mark means the run is still a lobby, and a lobby has no clock.
+  props.state.session.startedAt === null
+    ? null
+    : remainingMs(
+        props.state.session.startedAt,
+        props.state.session.timeLimitSec,
+        props.state.session.serverNow,
+        now.value,
+      ),
 )
 const clock = computed(() => (deadline.value === null ? '' : formatClock(deadline.value)))
 const expired = computed(() => deadline.value !== null && deadline.value <= 0)

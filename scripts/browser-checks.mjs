@@ -311,6 +311,9 @@ async function seed() {
     body: { testId: test.test.id, name: 'Browser run', tags: ['Fractions'] },
   })
   created.sessions.push(session.session.id)
+  // A run opens in a lobby now, and nothing can be answered until it starts -
+  // so the student path below would sit in the waiting room forever.
+  await api(`/api/sessions/${session.session.id}/start`, { token: teacher, method: 'POST' })
 
   // Registering with the key is the flow 5.2 added: approved, no admin involved.
   await api('/api/auth/register', {
@@ -335,7 +338,12 @@ async function seed() {
     },
   })
 
-  return { teacher, student: await tokenOf(NAMES.student, 'browsercheck-pass-1'), key: room.room.key }
+  return {
+    teacher,
+    student: await tokenOf(NAMES.student, 'browsercheck-pass-1'),
+    key: room.room.key,
+    testId: test.test.id,
+  }
 }
 
 async function cleanup() {
@@ -862,6 +870,58 @@ async function happyPaths(session, fixtures) {
     createdStatus = Number(/-> (\d{3})/.exec(error.message)?.[1] ?? 0)
   }
   check('teacher: cannot create accounts', createdStatus === 403, `got HTTP ${createdStatus}`)
+
+  // 6.3: a run is born in a lobby, and the teacher opens it from the board. Done
+  // last because it makes a new session the newest one, which is what the board
+  // selects - every check above is about the run that is already going.
+  const lobby = await api('/api/sessions', {
+    token: fixtures.teacher,
+    method: 'POST',
+    body: { testId: fixtures.testId, name: `Lobby run ${SUFFIX}` },
+  })
+  if (!lobby?.session?.id) {
+    check('teacher: a new run opens in the lobby', false, 'could not create a session')
+    return context
+  }
+  created.sessions.push(lobby.session.id)
+
+  await clickTab(session, context, '^Live$', 1500)
+  const lobbyScreen = await session.run(
+    context,
+    `
+    const buttons = [...document.querySelectorAll('button')];
+    return {
+      waiting: document.body.textContent.includes('Waiting to start'),
+      start: buttons.some((b) => b.textContent.trim() === 'Start'),
+    };
+  `,
+  )
+  check('teacher: a new run opens in the lobby', lobbyScreen.waiting, 'no lobby status')
+  check('teacher: the lobby offers a Start button', lobbyScreen.start, 'no Start button')
+  await session.screenshot(context, join(SHOTS, 'teacher-lobby.png'))
+
+  await session.run(
+    context,
+    `
+    const button = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Start');
+    if (button) button.click();
+    return true;
+  `,
+  )
+  await sleep(1500)
+  const opened = await session.run(
+    context,
+    `return document.body.textContent.includes('Running') ? 'running' : 'still-a-lobby';`,
+  )
+  check('teacher: Start leaves the lobby', opened === 'running', `got ${opened}`)
+  await session.screenshot(context, join(SHOTS, 'teacher-lobby-started.png'))
+
+  // Leave the fixture the way the rest of the cleanup expects it: finished.
+  await api(`/api/sessions/${lobby.session.id}`, {
+    token: fixtures.teacher,
+    method: 'PATCH',
+    body: { status: 'finished' },
+  }).catch(() => {})
 
   return context
 }

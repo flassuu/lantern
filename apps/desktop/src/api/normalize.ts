@@ -16,13 +16,24 @@ import type { Tag } from './types'
  * on the declared types instead of remembering an optional chain.
  */
 export function normalizeSession<
-  T extends { name?: string | null; roomId?: string | null; tags?: Tag[] | null },
->(session: T): T & { name: string | null; roomId: string | null; tags: Tag[] } {
+  T extends {
+    name?: string | null
+    roomId?: string | null
+    tags?: Tag[] | null
+    entryLocked?: boolean | null
+  },
+>(session: T): T & {
+  name: string | null
+  roomId: string | null
+  tags: Tag[]
+  entryLocked: boolean
+} {
   return {
     ...session,
     name: session.name ?? null,
     roomId: session.roomId ?? null,
     tags: session.tags ?? [],
+    entryLocked: session.entryLocked ?? false,
   }
 }
 

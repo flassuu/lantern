@@ -262,9 +262,20 @@ const uk: typeof en = {
       emptyTitle: 'Сесій ще немає',
       emptyHint: 'Почніть сесію — студенти приєднаються за кодом.',
       status: {
+        lobby: 'Очікує старту',
         active: 'Триває',
         paused: 'Пауза',
         finished: 'Завершено',
+      },
+      begin: 'Почати',
+      lobbyHint: 'Очікує старту. Присутніх: {count} — починайте, коли клас готовий.',
+      entryLock: 'Закрити вхід',
+      entryUnlock: 'Відкрити вхід',
+      presence: {
+        waiting: 'Тут',
+        answered: 'Відповів {count}',
+        inactive: 'Відійшов',
+        offline: 'Не в мережі',
       },
       tabs: {
         all: 'Усі сесії',
@@ -543,7 +554,13 @@ const uk: typeof en = {
       codePlaceholder: 'ABC123',
       action: 'Приєднатися',
     },
+    lobby: {
+      title: 'Очікуйте на викладача',
+      hint: 'Ви в тесті. Він почнеться, коли викладач його почне.',
+      waiting: 'Очікуємо на старт…',
+    },
     runner: {
+      leftWarning: 'Ви виходили з тесту. Це зафіксовано; можна продовжувати.',
       progress: 'Відповіли на {answered} з {total}',
       points: 'Усього {points} балів',
       timeLeft: 'Час, що залишився',

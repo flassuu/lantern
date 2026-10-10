@@ -448,30 +448,48 @@ Two decisions taken while building it:
   when tabs overflow. A control that materialises under a finger is worse than
   one that stays put, and the library is worth reaching even when three tabs fit.
 
-### 6.3 The lobby, the start, presence — v0.6.3
+### 6.3 The lobby, the start, presence — v0.6.3 — **done**
 
 Goal: a session is created in a **lobby**; the clock starts when the teacher
 starts it; the teacher sees who is in and what they are doing; leaving the window
 is recorded.
 
-- [ ] Migration **v7**: rebuild `live_sessions` so `status` includes `lobby` and
+- [x] Migration **v7**: rebuild `live_sessions` so `status` includes `lobby` and
       `started_at` is null until the start; add `entry_locked`; add
       `participation_events`
-- [ ] Server: `POST /api/sessions` creates a `lobby`; `POST /api/sessions/:id/start`
-      stamps `started_at`, flips to `active` and broadcasts; `PATCH` toggles
-      `entry_locked`; `join` refuses when locked and works from the lobby
-- [ ] Server: the WebSocket hub takes client messages — `progress`
-      (question index, answered count) and `activity` (visible) — keeps them in
-      memory and broadcasts the board with `activity` and `questionIndex`
-- [ ] Server: focus/visibility events are appended to `participation_events`,
-      with timestamps
-- [ ] Client (student): `LobbyScreen` ("waiting for the teacher"), then the
-      runner; `usePresence` reports activity and progress and warns on leaving
-- [ ] Client (teacher): lobby state, Start, Lock entry, and participant rows that
-      say *waiting*, *on question 3*, *finished*, *inactive* or *offline*
-- [ ] i18n: `student.lobby.*`, `teacher.live.entryLock`, `teacher.live.presence.*`
-- [ ] Tests: lobby→active lifecycle, refusal when locked, activity events;
-      presence logic as pure functions; the browser harness covers lobby and start
+- [x] Server: `POST /api/sessions` creates a `lobby`; `POST /api/sessions/:id/start`
+      stamps `started_at`, flips to `active` and broadcasts; `PATCH` takes
+      `entryLocked`; `join` refuses when locked and works from the lobby
+- [x] Server: the WebSocket takes a student's `presence` (visible) and `progress`
+      (question index, answered count), keeps them in memory, and broadcasts the
+      board with `online`, `active` and `questionIndex` folded in
+- [x] Server: focus/visibility changes are appended to `participation_events`,
+      one row per change
+- [x] Client (student): `LobbyScreen` ("waiting for your teacher"), then the
+      runner; `usePresence` reports activity and progress and shows a note when
+      the student has looked away
+- [x] Client (teacher): lobby state, Start, Close/Open entry, and participant
+      rows that say *here*, *answered N*, *away* or *offline*
+- [x] i18n: `student.lobby.*`, `teacher.live.begin|entryLock|entryUnlock|presence.*`
+- [x] Tests: `lobby.test.ts` (lobby → start, refusal when locked, the student
+      already inside); the browser harness opens a lobby, starts it and checks
+      the board
+
+Decisions taken while building it:
+
+- **Presence travels on the WebSocket, `participation_events` holds only the
+  changes.** "On question 3" changes every few seconds and means nothing after
+  the run, so it is memory; "left the window" is worth a row. The roadmap's
+  "in-memory + event log" is exactly this split.
+- The **student's socket lives for the whole run**, lobby and paper alike, so the
+  board never sees a gap where a student reloaded. It is also what carries the
+  start: no polling, no reload.
+- **One page of questions for now**, so `questionIndex` is always 0 and the board
+  shows how many were answered. `questionsPerPage` in 6.4 is what makes "on
+  question 3" true, and the field is already there for it.
+- The tap-target audit caught the harness check running against a stale build
+  once. Worth knowing: rebuild the web client before the checks, and a failed
+  first navigation is worth a second run.
 
 ### 6.4 Session settings — v0.6.4
 

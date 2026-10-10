@@ -238,7 +238,7 @@ defineExpose({ load })
             {{ t('teacher.live.library.statusAny') }}
           </button>
           <button
-            v-for="option in (['active', 'paused', 'finished'] as const)"
+            v-for="option in (['lobby', 'active', 'paused', 'finished'] as const)"
             :key="option"
             type="button"
             class="inline-flex h-8 items-center rounded-full border px-3 text-[11px] font-semibold"

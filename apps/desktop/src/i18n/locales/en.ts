@@ -314,9 +314,20 @@ export default {
       emptyTitle: 'No sessions yet',
       emptyHint: 'Start a session and students join with a code.',
       status: {
+        lobby: 'Waiting to start',
         active: 'Running',
         paused: 'Paused',
         finished: 'Finished',
+      },
+      begin: 'Start',
+      lobbyHint: 'Waiting to start. {count} student(s) are here - start when the room is ready.',
+      entryLock: 'Close entry',
+      entryUnlock: 'Open entry',
+      presence: {
+        waiting: 'Here',
+        answered: 'Answered {count}',
+        inactive: 'Away',
+        offline: 'Offline',
       },
       tabs: {
         all: 'All sessions',
@@ -594,7 +605,13 @@ export default {
       codePlaceholder: 'ABC123',
       action: 'Join',
     },
+    lobby: {
+      title: 'Waiting for your teacher',
+      hint: 'You are in. The test starts when the teacher starts it.',
+      waiting: 'Waiting for the start…',
+    },
     runner: {
+      leftWarning: 'You left the test. It is recorded; you can carry on.',
       progress: 'Answered {answered} of {total}',
       points: '{points} points in total',
       timeLeft: 'Time left',

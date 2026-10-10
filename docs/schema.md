@@ -5,7 +5,7 @@ ids are server-side UUIDs; timestamps are stored as ISO-8601 UTC strings. The
 schema is enforced by idempotent, versioned migrations run at server startup;
 `GET /api/admin/stats` reports the applied version as `schemaVersion`.
 
-> Status: **current**, at version 6. Phases 1–3 added the tables: roles and
+> Status: **current**, at version 7. Phases 1–3 added the tables: roles and
 > auth, the test/course core, and the live-session runtime.
 > **Reporting (Phase 4) added no tables on purpose** — the grade journal and
 > per-question difficulty are derived from `participations` and
@@ -19,6 +19,9 @@ schema is enforced by idempotent, versioned migrations run at server startup;
 > room is *who*, a course is *what*, and the two are no longer allowed to look
 > alike — and adds `course_rooms`, `tags` and `entity_tags`. `tests.room_id`,
 > `live_sessions.room_id` and `live_sessions.name` join the rest.
+> **Phase 6.3 (v7)** makes a session open in a `lobby`: `status` gains the value,
+> `started_at` becomes nullable, `entry_locked` joins the row, and
+> `participation_events` records when a student's window was hidden or shown.
 
 ## Conventions
 
@@ -168,13 +171,31 @@ short code. Created already `active` — there is no draft state.
 | test_id | TEXT FK tests.id | cascades |
 | owner_id | TEXT FK users.id | teacher who started it |
 | join_code | TEXT UNIQUE | 6 chars from `ABCDEFGHJKLMNPQRSTUVWXYZ23456789` (no ambiguous 0/O or 1/I) |
-| status | TEXT | `active \| paused \| finished` |
+| status | TEXT | `lobby \| active \| paused \| finished` |
 | time_limit_sec | INTEGER | snapshot of the test at start |
 | passing_percent | INTEGER | snapshot of the test at start |
 | name | TEXT | what the teacher called this run; NULL falls back to the test title |
 | room_id | TEXT FK rooms.id | the group sitting it; defaults to the test's own room |
-| created_at / started_at | TEXT | |
+| entry_locked | INTEGER | 1 while no *new* student may join; the ones inside stay |
+| created_at | TEXT | |
+| started_at | TEXT | NULL until the teacher starts the run: the lobby has no clock |
 | finished_at | TEXT | nullable |
+
+### participation_events
+
+Leaving the window, recorded rather than punished. One row per visibility
+*change* — not per heartbeat — so the record is the shape of the run and not a
+list of the same sentence repeated every few seconds. The live "on question 3"
+state is not here: it changes too fast to be worth a row, and means nothing once
+the run is over.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | TEXT PK | |
+| session_id | TEXT FK → live_sessions(id) | `ON DELETE CASCADE` |
+| participation_id | TEXT FK → participations(id) | `ON DELETE CASCADE` |
+| kind | TEXT | `CHECK IN ('visible', 'hidden')` |
+| created_at | TEXT | |
 
 The snapshots are deliberate: editing the test while a session runs changes
 nothing for the students already answering.
@@ -322,5 +343,10 @@ checked by the routes, not here.
   `entity_tags`, and adds `tests.room_id`, `live_sessions.room_id`,
   `live_sessions.name`. The existing single course link is copied into
   `course_rooms` before `rooms.course_id` is dropped.
+- v7 rebuilds `live_sessions` — SQLite cannot widen a `CHECK` in place — to let
+  `status` be `lobby` and `started_at` be null, and adds `entry_locked` and
+  `participation_events`. The rebuild drops a parent table that `participations`
+  references, so it runs with `PRAGMA defer_foreign_keys = ON`: the checks are
+  resolved once, at COMMIT, by which time the table is back under its own name.
 - Migrations run idempotently at startup, in order; each is wrapped in a
   transaction and versioned in `schema_migrations`.

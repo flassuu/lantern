@@ -43,6 +43,31 @@ and everything else follows from taking that seriously.
   server it does not control. Restart the server (or rebuild the desktop
   sidecar) to get the rooms and labels themselves.
 
+### A run opens in a lobby, and the room reports itself
+
+A session used to exist only once it had started: creating one began the clock
+and opened the doors in the same breath, so a teacher had to create it with the
+class already watching.
+
+- **A session is born in a lobby.** Students walk in, see that they are in, and
+  nothing is timed. The clock starts when the teacher presses **Start**, and the
+  press reaches every phone at once. Answering before that is refused: the paper
+  has not been handed out.
+- **Closing entry** stops new students joining while leaving the ones already in
+  alone — a reload during a locked run must not throw anybody out.
+- **The board says what the room is doing.** Behind each student: *here*,
+  *answered 3*, *away* (the window is hidden) or *offline* (the socket closed).
+  The student's phone reports its own visibility and progress over the same
+  socket that carries the start.
+- **Leaving the window is recorded, not punished.** A visibility change appends
+  one row to a new event log; nothing is auto-submitted and nobody is blocked.
+  The paper quietly notes afterwards that the student stepped away.
+- Server: schema v7 rebuilds `live_sessions` (SQLite cannot widen the `status`
+  CHECK in place) to allow `lobby` and a null `startedAt`, and adds
+  `entry_locked` and `participation_events`; `POST /api/sessions/:id/start`,
+  `PATCH { entryLocked }`, and the WebSocket takes a student's `presence` and
+  `progress`.
+
 ### Live: session tabs and a library
 
 The Live tab showed a row of pills and one board, and finding an older run meant

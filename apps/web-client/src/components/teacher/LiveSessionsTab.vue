@@ -8,6 +8,8 @@ import {
   Download,
   Hourglass,
   Link2,
+  Lock,
+  LockOpen,
   Pause,
   Percent,
   Play,
@@ -23,9 +25,12 @@ import {
 } from '@lucide/vue'
 import { ApiError, downloadFile } from '../../api/client'
 import {
+  beginSession,
   listSessions,
+  setEntryLocked,
   setSessionStatus,
   startSession,
+  type LiveSession,
   type LiveSessionStatus,
   type ParticipantEntry,
   type SessionSummary,
@@ -64,6 +69,8 @@ const loading = ref(false)
 const errorKey = ref('')
 const actionError = ref('')
 const starting = ref(false)
+/** Busy while the lobby is being opened; separate from the start-a-session dialog. */
+const lobbyStarting = ref(false)
 const startingTestId = ref('')
 const showStart = ref(false)
 const showLibrary = ref(false)
@@ -143,6 +150,8 @@ const progressPercent = computed(() =>
 const elapsedSeconds = computed(() => {
   const session = selected.value
   if (!session) return 0
+  // A lobby has no start mark yet, so it has no elapsed time either.
+  if (session.startedAt === null) return 0
   const start = Date.parse(session.startedAt)
   if (Number.isNaN(start)) return 0
   const end = session.finishedAt ? Date.parse(session.finishedAt) : now.value
@@ -173,12 +182,14 @@ const sortedParticipants = computed(() =>
 )
 
 const statusChip: Record<LiveSessionStatus, string> = {
+  lobby: 'bg-primary-container text-on-primary-container',
   active: 'bg-success-container text-on-success-container',
   paused: 'bg-warning-container text-on-warning-container',
   finished: 'bg-surface-container-highest text-on-surface-variant',
 }
 
 const statusDot: Record<LiveSessionStatus, string> = {
+  lobby: 'bg-primary',
   active: 'bg-success',
   paused: 'bg-warning',
   finished: 'bg-on-surface-variant',
@@ -293,6 +304,58 @@ async function start(testId: string): Promise<void> {
   } finally {
     starting.value = false
   }
+}
+
+/** Folds a session the server just returned back into the list, in place. */
+function applySession(updated: LiveSession): void {
+  sessions.value = sessions.value.map((session) =>
+    session.id === updated.id ? { ...session, ...updated } : session,
+  )
+}
+
+/** Leaves the lobby: stamps the clock and opens the doors. */
+async function begin(): Promise<void> {
+  const session = selected.value
+  if (!session) return
+  actionError.value = ''
+  lobbyStarting.value = true
+  try {
+    applySession(await beginSession(session.id))
+  } catch (error) {
+    actionError.value = errorMessage(error)
+  } finally {
+    lobbyStarting.value = false
+  }
+}
+
+async function toggleEntryLock(): Promise<void> {
+  const session = selected.value
+  if (!session) return
+  actionError.value = ''
+  try {
+    applySession(await setEntryLocked(session.id, !session.entryLocked))
+  } catch (error) {
+    actionError.value = errorMessage(error)
+  }
+}
+
+/**
+ * What the board says about a student who has not handed in yet. Offline beats
+ * hidden beats answered, because that is the order of how much it matters.
+ */
+function liveState(entry: ParticipantEntry): string {
+  if (entry.online === false) return t('teacher.live.presence.offline')
+  if (entry.active === false) return t('teacher.live.presence.inactive')
+  if ((entry.answered ?? 0) > 0) {
+    return t('teacher.live.presence.answered', { count: entry.answered ?? 0 })
+  }
+  return t('teacher.live.presence.waiting')
+}
+
+function liveTone(entry: ParticipantEntry): string {
+  if (entry.online === false) return 'bg-error-container text-on-error-container'
+  if (entry.active === false) return 'bg-warning-container text-on-warning-container'
+  return 'bg-surface-container-highest text-on-surface-variant'
 }
 
 async function changeStatus(status: LiveSessionStatus): Promise<void> {
@@ -498,12 +561,16 @@ onBeforeUnmount(() => {
                   {{ tag.name }}
                 </span>
               </div>
-              <p class="mt-0.5 text-xs text-on-surface-variant">
+              <p v-if="selected.startedAt" class="mt-0.5 text-xs text-on-surface-variant">
                 {{ t('teacher.live.startedAt', { time: formatTime(selected.startedAt) }) }}
               </p>
             </div>
 
-            <div class="flex shrink-0 items-center gap-2 rounded-2xl border border-outline-variant bg-surface-container-high px-3 py-2">
+            <!-- A lobby has no clock to show; the tiles below are all zero anyway. -->
+            <div
+              v-if="boardStatus !== 'lobby'"
+              class="flex shrink-0 items-center gap-2 rounded-2xl border border-outline-variant bg-surface-container-high px-3 py-2"
+            >
               <span
                 class="grid size-9 place-items-center rounded-full bg-surface-container-highest text-on-surface-variant"
               >
@@ -592,7 +659,21 @@ onBeforeUnmount(() => {
             </p>
           </div>
 
+          <p v-if="boardStatus === 'lobby'" class="mt-3 text-xs text-on-surface-variant">
+            {{ t('teacher.live.lobbyHint', { count: joinedCount }) }}
+          </p>
+
           <div class="mt-4 flex flex-wrap items-center gap-2">
+            <!-- The one action that leaves the lobby. -->
+            <AppButton
+              v-if="boardStatus === 'lobby'"
+              variant="primary"
+              :disabled="lobbyStarting"
+              @click="begin()"
+            >
+              <Play class="size-3.5" aria-hidden="true" />
+              {{ t('teacher.live.begin') }}
+            </AppButton>
             <AppButton
               v-if="boardStatus === 'active'"
               variant="secondary"
@@ -616,6 +697,23 @@ onBeforeUnmount(() => {
             >
               <Square class="size-3.5" aria-hidden="true" />
               {{ t('teacher.live.finish') }}
+            </AppButton>
+            <AppButton
+              v-if="boardStatus !== 'finished'"
+              variant="ghost"
+              icon
+              size="sm"
+              :aria-pressed="selected.entryLocked"
+              :aria-label="
+                selected.entryLocked ? t('teacher.live.entryUnlock') : t('teacher.live.entryLock')
+              "
+              v-tip="
+                selected.entryLocked ? t('teacher.live.entryUnlock') : t('teacher.live.entryLock')
+              "
+              @click="toggleEntryLock()"
+            >
+              <Lock v-if="selected.entryLocked" class="size-4" aria-hidden="true" />
+              <LockOpen v-else class="size-4" aria-hidden="true" />
             </AppButton>
             <AppButton variant="secondary" :disabled="exporting" @click="exportCsv">
               <Download class="size-3.5" aria-hidden="true" />
@@ -779,10 +877,11 @@ onBeforeUnmount(() => {
 
               <span
                 v-if="entry.status === 'joined'"
-                class="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant"
+                class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                :class="liveTone(entry)"
               >
                 <Hourglass class="size-3" aria-hidden="true" />
-                {{ t('teacher.live.working') }}
+                {{ liveState(entry) }}
               </span>
               <span v-else class="flex shrink-0 items-center gap-2">
                 <span class="text-sm font-semibold tabular-nums text-on-surface">
