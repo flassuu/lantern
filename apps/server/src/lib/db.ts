@@ -12,7 +12,7 @@ export function nowIso(): string {
   return new Date().toISOString()
 }
 
-export const SCHEMA_VERSION = 7
+export const SCHEMA_VERSION = 8
 
 const MIGRATIONS: Array<{ version: number; up: string }> = [
   {
@@ -313,6 +313,22 @@ const MIGRATIONS: Array<{ version: number; up: string }> = [
       );
       CREATE INDEX IF NOT EXISTS idx_participation_events_session ON participation_events(session_id);
       CREATE INDEX IF NOT EXISTS idx_participation_events_participation ON participation_events(participation_id);
+    `,
+  },
+  {
+    version: 8,
+    up: `
+      -- What a teacher decides about a run: shuffle, when answers are revealed,
+      -- when results are released, and one question at a time. JSON rather than a
+      -- column per option, because these are a bag of choices that grow and
+      -- share one lifetime - and each one is read whole, never queried.
+      ALTER TABLE tests ADD COLUMN settings TEXT;
+      ALTER TABLE live_sessions ADD COLUMN settings TEXT;
+      -- The snapshot a session takes of the test's defaults when it is created.
+      ALTER TABLE live_sessions ADD COLUMN results_released INTEGER NOT NULL DEFAULT 0;
+      -- A student's own option order, per question, when options are shuffled:
+      -- fixed at join so a reload shows the same paper, not a new shuffle.
+      ALTER TABLE participations ADD COLUMN option_order TEXT;
     `,
   },
 ]

@@ -37,6 +37,10 @@ const REWIND_TO_V5 = `
   ALTER TABLE tests DROP COLUMN room_id;
   ALTER TABLE live_sessions DROP COLUMN room_id;
   ALTER TABLE live_sessions DROP COLUMN name;
+  -- v8's columns too: they are plain ALTERs, so re-running v8 over a file that
+  -- still has them is a duplicate-column error rather than a no-op.
+  ALTER TABLE tests DROP COLUMN settings;
+  ALTER TABLE participations DROP COLUMN option_order;
   UPDATE app_meta SET value = '5' WHERE key = 'schema_version';
 `
 
@@ -94,11 +98,11 @@ describe('migration v6', () => {
   })
 
   it('runs to the current version', () => {
-    expect(SCHEMA_VERSION).toBe(7)
+    expect(SCHEMA_VERSION).toBe(8)
     const version = db.raw
       .prepare("SELECT value FROM app_meta WHERE key = 'schema_version'")
       .get() as { value: string }
-    expect(version.value).toBe('7')
+    expect(version.value).toBe('8')
   })
 
   it('has rooms where classrooms used to be, with their keys intact', () => {

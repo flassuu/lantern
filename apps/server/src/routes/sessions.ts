@@ -6,6 +6,11 @@ import { findTestRow, listQuestions } from '../lib/tests'
 import { findRoomById } from '../lib/rooms'
 import { entityIdsWithTag, findTagById, setEntityTags, tagsByEntity } from '../lib/tags'
 import {
+  parseSettings,
+  SETTINGS_BODY_SCHEMA,
+  type TestSettings,
+} from '../lib/testSettings'
+import {
   findParticipation,
   createSession,
   findSessionByCode,
@@ -17,6 +22,8 @@ import {
   listSessions,
   recordParticipationEvent,
   setEntryLocked,
+  setResultsReleased,
+  setSessionSettings,
   startSession,
   listStudentResults,
   countSessions,
@@ -79,6 +86,7 @@ const createBodySchema = {
     name: { type: ['string', 'null'], maxLength: 120 },
     roomId: { type: ['string', 'null'], maxLength: 36 },
     tags: { type: 'array', items: { type: 'string', maxLength: 40 }, maxItems: 20 },
+    settings: SETTINGS_BODY_SCHEMA,
   },
 } as const
 
@@ -116,6 +124,7 @@ interface CreateBody {
   name?: string | null
   roomId?: string | null
   tags?: string[]
+  settings?: Partial<TestSettings>
 }
 
 /** The list query, after validation. */
@@ -152,6 +161,8 @@ interface ParticipationResponse {
     status: LiveSessionStatus
     timeLimitSec: number | null
     passingPercent: number | null
+    /** The run's options, so the runner knows one page or all, and back or not. */
+    settings: TestSettings
     /** Null while the run is still a lobby: there is no clock yet. */
     startedAt: string | null
     serverNow: string
@@ -170,6 +181,7 @@ interface ParticipationResponse {
 function studentQuestions(
   questions: ReturnType<typeof listQuestions>,
   order: string[],
+  optionOrder: Record<string, string[]> = {},
 ) {
   const byId = new Map(questions.map((question) => [question.id, question]))
   return order.flatMap((id, index) => {
@@ -182,7 +194,7 @@ function studentQuestions(
         body: question.body,
         points: question.points,
         position: index,
-        payload: toStudentPayload(question.type, question.payload),
+        payload: toStudentPayload(question.type, question.payload, optionOrder[question.id]),
       },
     ]
   })
@@ -385,11 +397,39 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
         passingPercent: test.passing_percent,
         name: body.name ?? null,
         roomId,
+        // The caller may set the run's options in the start dialog; otherwise the
+        // run takes the test's defaults, snapshotted so a later edit cannot move
+        // the goalposts under a student.
+        settings: body.settings
+          ? parseSettings(JSON.stringify(body.settings))
+          : parseSettings(test.settings),
       })
       if (body.tags !== undefined) {
         setEntityTags(db, request.session!.userId, 'session', created.id, body.tags)
       }
       return reply.code(201).send(sessionPayload(created))
+    },
+  )
+
+  /**
+   * Lets the results out. Only meaningful when the run holds them; from then on
+   * submitting students see their score, and `released` flips for the board.
+   */
+  app.post(
+    '/api/sessions/:id/release',
+    { preHandler: requireRoles('admin', 'teacher'), schema: { params: idParamsSchema } },
+    async (request, reply) => {
+      const session = request.session!
+      const { id } = request.params as { id: string }
+      const row = findSessionRow(db, id)
+      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'session not found')
+      const current = toSession(row)
+      if (current.ownerId !== session.userId && session.role !== 'admin') {
+        return sendError(reply, 403, 'FORBIDDEN', 'this session belongs to another teacher')
+      }
+      const updated = setResultsReleased(db, id, true) ?? current
+      announce(updated)
+      return sessionPayload(updated)
     },
   )
 
@@ -430,15 +470,17 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
           properties: {
             status: { type: 'string', enum: ['paused', 'active', 'finished'] },
             entryLocked: { type: 'boolean' },
+            settings: SETTINGS_BODY_SCHEMA,
           },
         },
       },
     },
     async (request, reply) => {
       const { id } = request.params as { id: string }
-      const { status, entryLocked } = request.body as {
+      const { status, entryLocked, settings } = request.body as {
         status?: LiveSessionStatus
         entryLocked?: boolean
+        settings?: Partial<TestSettings>
       }
       const row = findSessionRow(db, id)
       if (!row) return sendError(reply, 404, 'NOT_FOUND', 'session not found')
@@ -448,6 +490,14 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
       }
       if (entryLocked !== undefined) {
         session = setEntryLocked(db, id, entryLocked) ?? session
+      }
+      if (settings !== undefined) {
+        // Only before it starts: the paper is handed out at the start, and
+        // changing the rules mid-run would change them for people mid-answer.
+        if (session.status !== 'lobby') {
+          return sendError(reply, 409, 'CONFLICT', 'settings can only change in the lobby')
+        }
+        session = setSessionSettings(db, id, parseSettings(JSON.stringify(settings))) ?? session
       }
       if (status !== undefined) {
         if (session.status === 'finished') {
@@ -565,7 +615,8 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
         db,
         session.id,
         request.session!.userId,
-        questions.map((question) => question.id),
+        questions.map((question) => ({ id: question.id, payload: question.payload })),
+        session.settings,
       )
       const participation = toParticipation(participationRow)
       const { order } = questionsFor(participation, session.testId)
@@ -576,10 +627,11 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
           status: session.status,
           timeLimitSec: session.timeLimitSec,
           passingPercent: session.passingPercent,
+          settings: session.settings,
           startedAt: session.startedAt,
           serverNow: new Date().toISOString(),
         },
-        questions: studentQuestions(questions, order),
+        questions: studentQuestions(questions, order, participation.optionOrder),
       }
       return reply.code(201).send(body)
     },
@@ -618,10 +670,11 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
           status: session.status,
           timeLimitSec: session.timeLimitSec,
           passingPercent: session.passingPercent,
+          settings: session.settings,
           startedAt: session.startedAt,
           serverNow: new Date().toISOString(),
         },
-        questions: studentQuestions(questions, order),
+        questions: studentQuestions(questions, order, participation.optionOrder),
       }
       return body
     },
@@ -665,9 +718,13 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
       )
       if (!saved) return sendError(reply, 500, 'INTERNAL', 'could not save the submission')
       announce(session)
+      const held = session.settings.releaseResults === 'teacher' && !session.resultsReleased
       return {
         participation: toParticipation(saved),
-        result: graded.summary,
+        // Held results are not a missing result: `released: false` says the paper
+        // was graded and the teacher has not let it out yet.
+        result: held ? null : graded.summary,
+        released: !held,
       }
     },
   )
@@ -694,6 +751,9 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
       const session = toSession(sessionRow)
       if (participation.status === 'joined') {
         return sendError(reply, 409, 'CONFLICT', 'you have not submitted yet')
+      }
+      if (session.settings.releaseResults === 'teacher' && !session.resultsReleased) {
+        return sendError(reply, 409, 'RESULT_HELD', 'the teacher has not released the results yet')
       }
       const test = findTestRow(db, session.testId)
       const questions = listQuestions(db, session.testId)
@@ -725,7 +785,16 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
               type: question.type,
               body: question.body,
               points: question.points,
-              payload: question.payload,
+              // With the answers hidden, the student payload is sent instead of
+              // the stored one - same shape, without the key inside it.
+              payload:
+                session.settings.showCorrectAnswers === 'never'
+                  ? toStudentPayload(
+                      question.type,
+                      question.payload,
+                      participation.optionOrder[question.id],
+                    )
+                  : question.payload,
               isCorrect: answer ? answer.is_correct === 1 : false,
               pointsAwarded: answer ? answer.points_awarded : 0,
             },

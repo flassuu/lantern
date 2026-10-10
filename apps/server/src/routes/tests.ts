@@ -16,10 +16,12 @@ import {
   validateQuestion,
   type Question,
   type QuestionInput,
+  type TestRow,
   type TestWithQuestions,
 } from '../lib/tests'
 import { findRoomById } from '../lib/rooms'
 import { listEntityTags, setEntityTags, tagsByEntity } from '../lib/tags'
+import { parseSettings, SETTINGS_BODY_SCHEMA, type TestSettings } from '../lib/testSettings'
 import { requireRoles } from '../plugins/auth'
 import { testResults } from '../lib/results'
 import type { Session } from '../lib/tokens'
@@ -55,6 +57,7 @@ const testBodySchema = {
     passingPercent: { type: ['integer', 'null'], minimum: 0, maximum: 100 },
     roomId: { type: ['string', 'null'], maxLength: 36 },
     tags: { type: 'array', items: { type: 'string', maxLength: 40 }, maxItems: 20 },
+    settings: SETTINGS_BODY_SCHEMA,
     questions: { type: 'array', maxItems: 200, items: questionSchema },
   },
 } as const
@@ -73,6 +76,7 @@ interface TestInput {
   passingPercent?: number | null
   roomId?: string | null
   tags?: string[]
+  settings?: Partial<TestSettings>
   questions?: QuestionInput[]
 }
 
@@ -92,7 +96,8 @@ function parseQuestions(questions: QuestionInput[] | undefined): QuestionInput[]
 
 function fullTest(
   db: DatabaseSync,
-  row: { id: string; owner_id: string; title: string; description: string; time_limit_sec: number | null; passing_percent: number | null; room_id: string | null; created_at: string; updated_at: string },
+  // TestRow, not a hand-written copy of it: the copy is how `settings` got left out.
+  row: TestRow,
   questions: Question[],
 ): TestWithQuestions {
   return {
@@ -103,6 +108,7 @@ function fullTest(
     timeLimitSec: row.time_limit_sec,
     passingPercent: row.passing_percent,
     roomId: row.room_id,
+    settings: parseSettings(row.settings),
     tags: listEntityTags(db, 'test', row.id),
     questions,
     createdAt: row.created_at,
@@ -179,6 +185,8 @@ export const testRoutes: FastifyPluginAsync<TestsDeps> = async (
           description: body.description ?? '',
           timeLimitSec: body.timeLimitSec,
           passingPercent: body.passingPercent,
+          // Normalised through the parser so a partial body is stored complete.
+          settings: body.settings ? parseSettings(JSON.stringify(body.settings)) : null,
         },
         questions,
       )
@@ -337,6 +345,7 @@ export const testRoutes: FastifyPluginAsync<TestsDeps> = async (
           description: body.description ?? '',
           timeLimitSec: body.timeLimitSec,
           passingPercent: body.passingPercent,
+          settings: body.settings ? parseSettings(JSON.stringify(body.settings)) : null,
         },
         questions,
       )

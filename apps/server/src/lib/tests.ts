@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
 import { nowIso } from './db'
 import type { Tag } from './tags'
+import { parseSettings, serializeSettings, type TestSettings } from './testSettings'
 
 export type QuestionType =
   | 'single_choice'
@@ -54,6 +55,8 @@ export interface TestRow {
   passing_percent: number | null
   /** The group this test was written for, or null when it is not tied to one. */
   room_id: string | null
+  /** The teacher's defaults for a run of this test, as JSON; NULL means the defaults. */
+  settings: string | null
   created_at: string
   updated_at: string
 }
@@ -66,6 +69,7 @@ export interface Test {
   timeLimitSec: number | null
   passingPercent: number | null
   roomId: string | null
+  settings: TestSettings
   questionCount: number
   createdAt: string
   updatedAt: string
@@ -210,6 +214,7 @@ export function toTest(row: TestRow, questionCount: number): Test {
     timeLimitSec: row.time_limit_sec,
     passingPercent: row.passing_percent,
     roomId: row.room_id,
+    settings: parseSettings(row.settings),
     questionCount,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -282,14 +287,20 @@ export function replaceQuestions(
 export function createTest(
   db: DatabaseSync,
   ownerId: string,
-  input: { title: string; description: string; timeLimitSec?: number | null; passingPercent?: number | null },
+  input: {
+    title: string
+    description: string
+    timeLimitSec?: number | null
+    passingPercent?: number | null
+    settings?: TestSettings | null
+  },
   questions: QuestionInput[],
 ): TestRow {
   const id = randomUUID()
   const now = nowIso()
   db.prepare(
-    `INSERT INTO tests (id, owner_id, title, description, time_limit_sec, passing_percent, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO tests (id, owner_id, title, description, time_limit_sec, passing_percent, settings, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     ownerId,
@@ -297,6 +308,7 @@ export function createTest(
     input.description.trim(),
     input.timeLimitSec ?? null,
     input.passingPercent ?? null,
+    serializeSettings(input.settings),
     now,
     now,
   )
@@ -307,18 +319,25 @@ export function createTest(
 export function updateTest(
   db: DatabaseSync,
   test: TestRow,
-  input: { title: string; description: string; timeLimitSec?: number | null; passingPercent?: number | null },
+  input: {
+    title: string
+    description: string
+    timeLimitSec?: number | null
+    passingPercent?: number | null
+    settings?: TestSettings | null
+  },
   questions: QuestionInput[],
 ): TestRow {
   db.prepare(
     `UPDATE tests
-     SET title = ?, description = ?, time_limit_sec = ?, passing_percent = ?, updated_at = ?
+     SET title = ?, description = ?, time_limit_sec = ?, passing_percent = ?, settings = ?, updated_at = ?
      WHERE id = ?`,
   ).run(
     input.title.trim(),
     input.description.trim(),
     input.timeLimitSec ?? null,
     input.passingPercent ?? null,
+    serializeSettings(input.settings),
     nowIso(),
     test.id,
   )
@@ -432,6 +451,8 @@ export function duplicateTest(
       description: source.description,
       timeLimitSec: source.time_limit_sec,
       passingPercent: source.passing_percent,
+      // A copy behaves like the original, or it is not a copy.
+      settings: parseSettings(source.settings),
     },
     listQuestions(db, source.id).map((question) => ({
       type: question.type,

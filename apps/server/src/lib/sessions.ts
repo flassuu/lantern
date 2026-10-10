@@ -3,6 +3,7 @@ import { randomCode } from './codes'
 import type { DatabaseSync } from 'node:sqlite'
 import { nowIso } from './db'
 import type { QuestionType } from './tests'
+import { parseSettings, serializeSettings, type TestSettings } from './testSettings'
 
 export type LiveSessionStatus = 'lobby' | 'active' | 'paused' | 'finished'
 export type ParticipationStatus = 'joined' | 'submitted' | 'auto_submitted'
@@ -21,6 +22,10 @@ export interface LiveSessionRow {
   room_id: string | null
   /** While set, nobody new may join; the students already in are untouched. */
   entry_locked: number
+  /** The run's settings, snapshotted from the test when it was created. */
+  settings: string | null
+  /** 1 once the teacher has let results out; only meaningful when they hold them. */
+  results_released: number
   created_at: string
   /** Null until the teacher starts the run; the lobby has no clock. */
   started_at: string | null
@@ -38,6 +43,8 @@ export interface LiveSession {
   name: string | null
   roomId: string | null
   entryLocked: boolean
+  settings: TestSettings
+  resultsReleased: boolean
   startedAt: string | null
   finishedAt: string | null
 }
@@ -48,6 +55,8 @@ export interface ParticipationRow {
   user_id: string
   status: ParticipationStatus
   question_order: string
+  /** JSON map of question id to that student's option order; NULL when not shuffled. */
+  option_order: string | null
   score: number | null
   max_score: number | null
   percent: number | null
@@ -62,6 +71,8 @@ export interface Participation {
   userId: string
   status: ParticipationStatus
   questionOrder: string[]
+  /** The student's own option order, by question id; empty when not shuffled. */
+  optionOrder: Record<string, string[]>
   score: number | null
   maxScore: number | null
   percent: number | null
@@ -110,14 +121,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * keys), matching keeps both sides minus the mapping is not stored anyway, and
  * short answers lose the accepted list.
  */
-export function toStudentPayload(type: QuestionType, payload: Record<string, unknown>): Record<string, unknown> {
+export function toStudentPayload(
+  type: QuestionType,
+  payload: Record<string, unknown>,
+  optionOrder?: string[],
+): Record<string, unknown> {
   if (type === 'single_choice' || type === 'multiple_choice') {
-    const options = Array.isArray(payload.options) ? payload.options : []
-    return {
-      options: options.map((option) =>
-        isRecord(option) ? { key: option.key, text: option.text } : option,
-      ),
-    }
+    const options = (Array.isArray(payload.options) ? payload.options : []).flatMap((option) =>
+      isRecord(option) ? [{ key: option.key, text: option.text }] : [],
+    )
+    if (!optionOrder || optionOrder.length === 0) return { options }
+    // The student's own order, with anything it does not mention left at the
+    // end: a question edited after they joined must not lose an option.
+    const byKey = new Map(options.map((option) => [String(option.key), option]))
+    const ordered = optionOrder.flatMap((key) => {
+      const option = byKey.get(key)
+      if (!option) return []
+      byKey.delete(key)
+      return [option]
+    })
+    return { options: [...ordered, ...byKey.values()] }
   }
   if (type === 'true_false') return {}
   if (type === 'short_answer') return {}
@@ -187,8 +210,27 @@ export function toSession(row: LiveSessionRow): LiveSession {
     name: row.name,
     roomId: row.room_id,
     entryLocked: row.entry_locked === 1,
+    settings: parseSettings(row.settings),
+    resultsReleased: row.results_released === 1,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
+  }
+}
+
+function parseOptionOrder(raw: string | null): Record<string, string[]> {
+  if (!raw) return {}
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (typeof parsed !== 'object' || parsed === null) return {}
+    const result: Record<string, string[]> = {}
+    for (const [questionId, keys] of Object.entries(parsed as Record<string, unknown>)) {
+      if (Array.isArray(keys)) {
+        result[questionId] = keys.filter((key): key is string => typeof key === 'string')
+      }
+    }
+    return result
+  } catch {
+    return {}
   }
 }
 
@@ -208,6 +250,7 @@ export function toParticipation(row: ParticipationRow): Participation {
     userId: row.user_id,
     status: row.status,
     questionOrder,
+    optionOrder: parseOptionOrder(row.option_order),
     score: row.score,
     maxScore: row.max_score,
     percent: row.percent,
@@ -242,14 +285,16 @@ export function createSession(
     name?: string | null
     /** The group this run is for; null inherits the test's own room. */
     roomId?: string | null
+    /** The run's settings; null falls back to the defaults. */
+    settings?: TestSettings | null
   },
 ): LiveSession {
   const id = randomUUID()
   const timestamp = nowIso()
   db.prepare(
     `INSERT INTO live_sessions
-       (id, test_id, owner_id, join_code, status, time_limit_sec, passing_percent, name, room_id, entry_locked, created_at, started_at)
-     VALUES (?, ?, ?, ?, 'lobby', ?, ?, ?, ?, 0, ?, NULL)`,
+       (id, test_id, owner_id, join_code, status, time_limit_sec, passing_percent, name, room_id, entry_locked, settings, created_at, started_at)
+     VALUES (?, ?, ?, ?, 'lobby', ?, ?, ?, ?, 0, ?, ?, NULL)`,
   ).run(
     id,
     input.testId,
@@ -259,6 +304,7 @@ export function createSession(
     input.passingPercent,
     input.name?.trim() ? input.name.trim() : null,
     input.roomId ?? null,
+    serializeSettings(input.settings),
     timestamp,
   )
   const row = findSessionRow(db, id)
@@ -283,6 +329,27 @@ export function startSession(db: DatabaseSync, id: string): LiveSession | null {
   )
   const started = findSessionRow(db, id)
   return started ? toSession(started) : null
+}
+
+/** Replaces the run's settings; only meaningful before it starts. */
+export function setSessionSettings(
+  db: DatabaseSync,
+  id: string,
+  settings: TestSettings,
+): LiveSession | null {
+  db.prepare('UPDATE live_sessions SET settings = ? WHERE id = ?').run(
+    serializeSettings(settings),
+    id,
+  )
+  const row = findSessionRow(db, id)
+  return row ? toSession(row) : null
+}
+
+/** Lets results out, or takes them back. */
+export function setResultsReleased(db: DatabaseSync, id: string, released: boolean): LiveSession | null {
+  db.prepare('UPDATE live_sessions SET results_released = ? WHERE id = ?').run(released ? 1 : 0, id)
+  const row = findSessionRow(db, id)
+  return row ? toSession(row) : null
 }
 
 /** Closes or opens the door to new joiners. Whoever is already in is untouched. */
@@ -331,17 +398,49 @@ export function joinSession(
   db: DatabaseSync,
   sessionId: string,
   userId: string,
-  questionIds: string[],
+  questions: Array<{ id: string; payload: Record<string, unknown> }>,
+  settings: TestSettings,
 ): ParticipationRow {
   const existing = findParticipation(db, sessionId, userId)
   if (existing) return existing
 
-  const order = shuffledQuestionIds(questionIds, `${sessionId}:${userId}`)
+  const questionIds = questions.map((question) => question.id)
+  // Shuffling is a setting, not a habit: with it off the paper is in the
+  // teacher's order, which is what a test built as a sequence expects.
+  const order = settings.shuffleQuestions
+    ? shuffledQuestionIds(questionIds, `${sessionId}:${userId}`)
+    : questionIds
+
+  // The option order is per student and fixed at join, so a reload shows the
+  // same paper rather than a fresh shuffle.
+  const optionOrder: Record<string, string[]> = {}
+  if (settings.shuffleOptions) {
+    for (const question of questions) {
+      const keys = Array.isArray(question.payload.options)
+        ? question.payload.options.flatMap((option) =>
+            typeof option === 'object' && option !== null && 'key' in option
+              ? [String((option as { key: unknown }).key)]
+              : [],
+          )
+        : []
+      if (keys.length > 1) {
+        optionOrder[question.id] = shuffledQuestionIds(keys, `${sessionId}:${userId}:${question.id}`)
+      }
+    }
+  }
+
   const id = randomUUID()
   db.prepare(
-    `INSERT INTO participations (id, session_id, user_id, status, question_order, joined_at)
-     VALUES (?, ?, ?, 'joined', ?, ?)`,
-  ).run(id, sessionId, userId, JSON.stringify(order), nowIso())
+    `INSERT INTO participations (id, session_id, user_id, status, question_order, option_order, joined_at)
+     VALUES (?, ?, ?, 'joined', ?, ?, ?)`,
+  ).run(
+    id,
+    sessionId,
+    userId,
+    JSON.stringify(order),
+    Object.keys(optionOrder).length > 0 ? JSON.stringify(optionOrder) : null,
+    nowIso(),
+  )
   const row = findParticipation(db, sessionId, userId)
   if (!row) throw new Error('participation insert failed')
   return row
