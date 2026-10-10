@@ -702,6 +702,19 @@ async function happyPaths(session, fixtures) {
   )
   await session.screenshot(context, join(SHOTS, 'teacher-live-with-address.png'))
 
+  // The other theme. Until now the harness only ever rendered light, and the
+  // contrast bugs live in exactly one of the two: a well that is the same
+  // colour as the card it sits on is invisible in dark and obvious in light.
+  await session.run(context, "localStorage.setItem('theme', 'dark'); return true;")
+  await session.goto(context, `${BASE}/?check=dark`)
+  await settle(session, context, 'tabs')
+  await clickTab(session, context, '^Live$', 1200)
+  await session.screenshot(context, join(SHOTS, 'teacher-live-dark.png'))
+  await session.run(context, "localStorage.setItem('theme', 'light'); return true;")
+  await session.goto(context, `${BASE}/?check=light-again`)
+  await settle(session, context, 'tabs')
+  await clickTab(session, context, '^Live$', 1200)
+
   // 6.1: the room and the labels on the other two screens that carry them. A
   // test is written for a room and labelled; a run can be called something other
   // than the paper it ran. Checked here because this is the last stop on the
@@ -744,6 +757,7 @@ async function happyPaths(session, fixtures) {
   `,
   )
   check('teacher: the session library opens from the strip', library.open && library.dialog)
+  await session.screenshot(context, join(SHOTS, 'teacher-session-library-open.png'))
 
   await session.run(
     context,

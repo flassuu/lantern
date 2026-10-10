@@ -117,7 +117,7 @@ watch(
         class="state-layer inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-t-xl border border-b-0 px-3 py-2 text-xs font-semibold transition-colors"
         :class="[
           session.id === selectedId
-            ? 'border-outline-variant bg-surface-container-high text-on-surface'
+            ? 'border-outline-variant bg-surface-container text-on-surface'
             : 'border-transparent text-on-surface-variant hover:bg-surface-container',
           !measuring && index >= visibleCount ? 'hidden' : '',
         ]"

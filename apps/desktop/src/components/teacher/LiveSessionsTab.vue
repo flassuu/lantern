@@ -427,7 +427,7 @@ onBeforeUnmount(() => {
         board of unknown ownership - made the teacher count cards to be sure
         which one they were looking at.
       -->
-      <div class="overflow-hidden rounded-2xl border border-outline-variant bg-surface-container">
+      <div class="overflow-hidden rounded-2xl border border-outline-variant bg-surface">
         <SessionTabs
           :sessions="sessions"
           :selected-id="selectedId"
@@ -447,7 +447,7 @@ onBeforeUnmount(() => {
 
       <template v-if="selected">
         <!-- Who the session is, how long it has run, and how students get in. -->
-        <AppCard as="section" tone="plain">
+        <AppCard as="section">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
@@ -503,7 +503,7 @@ onBeforeUnmount(() => {
               </p>
             </div>
 
-            <div class="flex shrink-0 items-center gap-2 rounded-2xl bg-surface px-3 py-2">
+            <div class="flex shrink-0 items-center gap-2 rounded-2xl border border-outline-variant bg-surface-container-high px-3 py-2">
               <span
                 class="grid size-9 place-items-center rounded-full bg-surface-container-highest text-on-surface-variant"
               >
@@ -525,7 +525,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <div class="mt-4 rounded-2xl bg-surface p-3 sm:p-4">
+          <div class="mt-4 rounded-2xl border border-outline-variant bg-surface-container-high p-3 sm:p-4">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div class="min-w-0">
                 <p class="text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant">
@@ -643,14 +643,14 @@ onBeforeUnmount(() => {
         </AppCard>
 
         <!-- The board: the numbers a teacher watches while the room works. -->
-        <AppCard as="section" tone="plain">
+        <AppCard as="section">
           <h4 class="flex items-center gap-2 text-sm font-semibold text-on-surface">
             <Users class="size-4" aria-hidden="true" />
             {{ t('teacher.live.boardTitle') }}
           </h4>
 
           <div class="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <div class="rounded-xl bg-surface px-3 py-2.5">
+            <div class="rounded-xl border border-outline-variant bg-surface-container-high px-3 py-2.5">
               <span
                 class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant"
               >
@@ -659,7 +659,7 @@ onBeforeUnmount(() => {
               </span>
               <p class="mt-1 text-2xl font-semibold tabular-nums text-on-surface">{{ joinedCount }}</p>
             </div>
-            <div class="rounded-xl bg-surface px-3 py-2.5">
+            <div class="rounded-xl border border-outline-variant bg-surface-container-high px-3 py-2.5">
               <span
                 class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant"
               >
@@ -668,7 +668,7 @@ onBeforeUnmount(() => {
               </span>
               <p class="mt-1 text-2xl font-semibold tabular-nums text-primary">{{ submittedCount }}</p>
             </div>
-            <div class="rounded-xl bg-surface px-3 py-2.5">
+            <div class="rounded-xl border border-outline-variant bg-surface-container-high px-3 py-2.5">
               <span
                 class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant"
               >
@@ -677,7 +677,7 @@ onBeforeUnmount(() => {
               </span>
               <p class="mt-1 text-2xl font-semibold tabular-nums text-success">{{ passedCount }}</p>
             </div>
-            <div class="rounded-xl bg-surface px-3 py-2.5">
+            <div class="rounded-xl border border-outline-variant bg-surface-container-high px-3 py-2.5">
               <span
                 class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant"
               >
@@ -730,7 +730,7 @@ onBeforeUnmount(() => {
           </div>
         </AppCard>
 
-        <AppCard as="section" tone="plain">
+        <AppCard as="section">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h4 class="flex items-center gap-2 text-sm font-semibold text-on-surface">
               <Users class="size-4" aria-hidden="true" />
@@ -756,7 +756,7 @@ onBeforeUnmount(() => {
             <li
               v-for="entry in sortedParticipants"
               :key="entry.userId"
-              class="flex items-center gap-3 rounded-xl bg-surface px-3 py-2"
+              class="flex items-center gap-3 rounded-xl border border-outline-variant bg-surface-container-high px-3 py-2"
             >
               <span
                 class="grid size-9 shrink-0 place-items-center rounded-full text-xs font-semibold"

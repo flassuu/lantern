@@ -61,6 +61,15 @@ scrolling a strip whose ends never said what was beyond them.
 - Server: `GET /api/sessions` grew `sort`, `dir` and `offset` and now returns
   `total` - the size of the filter, not of the page; `GET /api/sessions/:id`
   answers with one session in the same shape the list uses.
+- **The surfaces read as surfaces again.** Grouping the board into one sheet had
+  flattened it: the cards lost their borders and the run's code block and the
+  four tiles sat on the page colour, so in the dark theme they were the same
+  black as the card they were on. The cards are bordered panels once more, and
+  what sits inside them is one step up with an edge.
+- **The library's own controls look like controls**: the selects and the date
+  fields are drawn like the app's inputs with an arrow of ours, and the status
+  chips are bordered pills at a full tap height. The harness renders the dark
+  theme now too, which is where those holes only showed.
 
 ### The teacher's Live tab, rebuilt around the run in progress
 

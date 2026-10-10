@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowDownAZ, ArrowLeft, ArrowRight, ArrowUpAZ, Search, X } from '@lucide/vue'
+import { ArrowDownAZ, ArrowLeft, ArrowRight, ArrowUpAZ, ChevronDown, Search, X } from '@lucide/vue'
 import { ApiError } from '../../api/client'
 import {
   listSessionPage,
@@ -39,6 +39,17 @@ const emit = defineEmits<{ select: [string]; close: [] }>()
 const { t } = useI18n()
 
 const PAGE = 20
+
+/**
+ * The chrome the library's own controls share.
+ *
+ * A bare `<select>` keeps the browser's dark fill, which on a container surface
+ * reads as a black hole with no edge - so the fields here are drawn like the
+ * app's inputs, and the arrow is ours so it is the same in every browser.
+ */
+const FIELD =
+  'h-[var(--control-md)] w-full rounded-[var(--radius-control)] border border-outline-variant bg-surface-container-high px-3 text-sm text-on-surface'
+const SELECT = `${FIELD} appearance-none pr-9`
 
 const panel = ref<HTMLElement | null>(null)
 const cancelRef = ref<HTMLButtonElement | null>(null)
@@ -216,8 +227,12 @@ defineExpose({ load })
         <div class="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
-            class="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-            :class="status === '' ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'"
+            class="inline-flex h-8 items-center rounded-full border px-3 text-[11px] font-semibold"
+            :class="
+              status === ''
+                ? 'border-transparent bg-primary text-on-primary'
+                : 'border-outline-variant bg-surface-container-high text-on-surface-variant'
+            "
             @click="status = ''"
           >
             {{ t('teacher.live.library.statusAny') }}
@@ -226,100 +241,95 @@ defineExpose({ load })
             v-for="option in (['active', 'paused', 'finished'] as const)"
             :key="option"
             type="button"
-            class="rounded-full px-2.5 py-1 text-[11px] font-semibold"
-            :class="status === option ? 'bg-primary text-on-primary' : 'bg-surface-container text-on-surface-variant'"
+            class="inline-flex h-8 items-center rounded-full border px-3 text-[11px] font-semibold"
+            :class="
+              status === option
+                ? 'border-transparent bg-primary text-on-primary'
+                : 'border-outline-variant bg-surface-container-high text-on-surface-variant'
+            "
             @click="status = option"
           >
             {{ t(`teacher.live.status.${option}`) }}
           </button>
         </div>
 
-        <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
           <label class="block">
             <span class="text-[11px] font-semibold text-on-surface-variant">
               {{ t('teacher.live.library.test') }}
             </span>
-            <select
-              v-model="testId"
-              class="mt-1 w-full rounded-[var(--radius-control)] border border-outline bg-surface px-2 py-1.5 text-sm"
-            >
-              <option value="">{{ t('teacher.live.library.testAny') }}</option>
-              <option v-for="test in props.tests" :key="test.id" :value="test.id">
-                {{ test.title }}
-              </option>
-            </select>
+            <div class="relative mt-1">
+              <select v-model="testId" :class="SELECT">
+                <option value="">{{ t('teacher.live.library.testAny') }}</option>
+                <option v-for="test in props.tests" :key="test.id" :value="test.id">
+                  {{ test.title }}
+                </option>
+              </select>
+              <ChevronDown class="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" aria-hidden="true" />
+            </div>
           </label>
 
           <label class="block">
             <span class="text-[11px] font-semibold text-on-surface-variant">
               {{ t('teacher.live.library.room') }}
             </span>
-            <select
-              v-model="roomId"
-              class="mt-1 w-full rounded-[var(--radius-control)] border border-outline bg-surface px-2 py-1.5 text-sm"
-            >
-              <option value="">{{ t('teacher.live.library.roomAny') }}</option>
-              <option v-for="room in rooms.rooms" :key="room.id" :value="room.id">
-                {{ room.name }}
-              </option>
-            </select>
+            <div class="relative mt-1">
+              <select v-model="roomId" :class="SELECT">
+                <option value="">{{ t('teacher.live.library.roomAny') }}</option>
+                <option v-for="room in rooms.rooms" :key="room.id" :value="room.id">
+                  {{ room.name }}
+                </option>
+              </select>
+              <ChevronDown class="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" aria-hidden="true" />
+            </div>
           </label>
 
           <label class="block">
             <span class="text-[11px] font-semibold text-on-surface-variant">
               {{ t('teacher.live.library.tag') }}
             </span>
-            <select
-              v-model="tagId"
-              class="mt-1 w-full rounded-[var(--radius-control)] border border-outline bg-surface px-2 py-1.5 text-sm"
-            >
-              <option value="">{{ t('teacher.live.library.tagAny') }}</option>
-              <option v-for="tag in tags" :key="tag.id" :value="tag.id">{{ tag.name }}</option>
-            </select>
+            <div class="relative mt-1">
+              <select v-model="tagId" :class="SELECT">
+                <option value="">{{ t('teacher.live.library.tagAny') }}</option>
+                <option v-for="tag in tags" :key="tag.id" :value="tag.id">{{ tag.name }}</option>
+              </select>
+              <ChevronDown class="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" aria-hidden="true" />
+            </div>
           </label>
-
-          <div class="flex items-end gap-1">
-            <label class="block min-w-0 flex-1">
-              <span class="text-[11px] font-semibold text-on-surface-variant">
-                {{ t('teacher.live.library.from') }}
-              </span>
-              <input
-                v-model="from"
-                type="date"
-                class="mt-1 w-full rounded-[var(--radius-control)] border border-outline bg-surface px-2 py-1.5 text-sm"
-              />
-            </label>
-            <label class="block min-w-0 flex-1">
-              <span class="text-[11px] font-semibold text-on-surface-variant">
-                {{ t('teacher.live.library.to') }}
-              </span>
-              <input
-                v-model="to"
-                type="date"
-                class="mt-1 w-full rounded-[var(--radius-control)] border border-outline bg-surface px-2 py-1.5 text-sm"
-              />
-            </label>
-          </div>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
-          <label class="flex items-center gap-2">
+        <div class="grid grid-cols-2 gap-2">
+          <label class="block">
+            <span class="text-[11px] font-semibold text-on-surface-variant">
+              {{ t('teacher.live.library.from') }}
+            </span>
+            <input v-model="from" type="date" :class="FIELD" class="mt-1" />
+          </label>
+          <label class="block">
+            <span class="text-[11px] font-semibold text-on-surface-variant">
+              {{ t('teacher.live.library.to') }}
+            </span>
+            <input v-model="to" type="date" :class="FIELD" class="mt-1" />
+          </label>
+        </div>
+
+        <div class="flex flex-wrap items-end gap-2">
+          <label class="block">
             <span class="text-[11px] font-semibold text-on-surface-variant">
               {{ t('teacher.live.library.sort') }}
             </span>
-            <select
-              v-model="sort"
-              class="rounded-[var(--radius-control)] border border-outline bg-surface px-2 py-1.5 text-sm"
-            >
-              <option value="created">{{ t('teacher.live.library.sortCreated') }}</option>
-              <option value="name">{{ t('teacher.live.library.sortName') }}</option>
-              <option value="status">{{ t('teacher.live.library.sortStatus') }}</option>
-              <option value="submitted">{{ t('teacher.live.library.sortSubmitted') }}</option>
-            </select>
+            <div class="relative mt-1 w-44">
+              <select v-model="sort" :class="SELECT">
+                <option value="created">{{ t('teacher.live.library.sortCreated') }}</option>
+                <option value="name">{{ t('teacher.live.library.sortName') }}</option>
+                <option value="status">{{ t('teacher.live.library.sortStatus') }}</option>
+                <option value="submitted">{{ t('teacher.live.library.sortSubmitted') }}</option>
+              </select>
+              <ChevronDown class="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-on-surface-variant" aria-hidden="true" />
+            </div>
           </label>
           <AppButton
-            variant="secondaryPlain"
-            size="sm"
+            variant="secondary"
             :aria-label="dir === 'asc' ? t('teacher.live.library.ascending') : t('teacher.live.library.descending')"
             @click="toggleDir"
           >
