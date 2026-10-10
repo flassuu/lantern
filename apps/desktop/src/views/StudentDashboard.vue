@@ -155,15 +155,19 @@ onMounted(() => {
 
       <template v-else-if="state">
         <div class="mt-6">
-          <!-- The waiting room, until the teacher starts the run. -->
-          <LobbyScreen v-if="liveStatus === 'lobby'" :state="state" />
-          <SessionRunner
-            v-else
-            :state="state"
-            :left-once="presence.leftOnce.value"
-            :report-progress="presence.reportProgress"
-            @submitted="showResult"
-          />
+          <!-- The waiting room, until the teacher starts the run. The fade is
+               the point: the paper arriving is the teacher's press, and a hard
+               cut would read as the screen breaking. -->
+          <Transition name="view" mode="out-in">
+            <LobbyScreen v-if="liveStatus === 'lobby'" :state="state" />
+            <SessionRunner
+              v-else
+              :state="state"
+              :left-once="presence.leftOnce.value"
+              :report-progress="presence.reportProgress"
+              @submitted="showResult"
+            />
+          </Transition>
         </div>
         <button
           type="button"

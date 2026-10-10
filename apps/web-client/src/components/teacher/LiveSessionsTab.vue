@@ -877,7 +877,7 @@ onBeforeUnmount(() => {
 
               <span
                 v-if="entry.status === 'joined'"
-                class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold transition-colors duration-200"
                 :class="liveTone(entry)"
               >
                 <Hourglass class="size-3" aria-hidden="true" />

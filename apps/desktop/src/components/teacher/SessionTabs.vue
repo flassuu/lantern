@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Library } from '@lucide/vue'
 import type { LiveSessionStatus, SessionSummary } from '../../api/sessions'
@@ -30,7 +30,6 @@ const { t } = useI18n()
 
 const strip = ref<HTMLElement | null>(null)
 const row = ref<HTMLElement | null>(null)
-const libraryButton = ref<HTMLElement | null>(null)
 const visibleCount = ref(props.sessions.length)
 /** Set only for the measurement pass, so every tab has a width to read. */
 const measuring = ref(false)
@@ -41,6 +40,19 @@ function labelOf(session: SessionSummary): string {
   return session.name ?? session.title
 }
 
+/**
+ * The tabs that are actually rendered.
+ *
+ * Not a `hidden` class on the extra ones: Tailwind emits `.inline-flex` after
+ * `.hidden`, so a tab that is `inline-flex` can never be hidden that way - it
+ * stayed on screen and slid under the library button. Rendering only the ones
+ * that fit removes the question. Every tab is rendered for the measurement
+ * pass, which is the only moment all of them exist.
+ */
+const visibleSessions = computed(() =>
+  measuring.value ? props.sessions : props.sessions.slice(0, visibleCount.value),
+)
+
 const dot: Record<LiveSessionStatus, string> = {
   lobby: 'bg-primary',
   active: 'bg-success',
@@ -49,20 +61,20 @@ const dot: Record<LiveSessionStatus, string> = {
 }
 
 async function measure(): Promise<void> {
-  const container = strip.value
   const line = row.value
-  if (!container || !line) return
+  if (!line) return
 
+  // Every tab is shown for one frame so each has a width to read; the row clips
+  // its overflow, so that frame is invisible even if the browser paints it.
   measuring.value = true
   await nextTick()
-  const tabs = Array.from(line.children) as HTMLElement[]
-  const widths = tabs.map((tab) => tab.offsetWidth)
-  // The library button is part of the strip, so its room is booked before the
-  // tabs are placed - otherwise the last tab would sit underneath it.
-  const reserved = (libraryButton.value?.offsetWidth ?? 0) + GAP
-  const available = container.clientWidth
+  const widths = (Array.from(line.children) as HTMLElement[]).map((tab) => tab.offsetWidth)
+  // The row is `flex-1`, so its width is the space left after the library
+  // button - measured, not guessed, and stable whatever is hidden inside it.
+  // Reading the strip instead would count the button twice.
+  const available = line.clientWidth
 
-  let used = reserved
+  let used = 0
   let fits = 0
   for (const width of widths) {
     if (fits > 0 && used + width + GAP > available) break
@@ -108,40 +120,41 @@ watch(
     ref="strip"
     class="flex items-center gap-2 overflow-hidden border-b border-outline-variant px-1.5 pt-1.5"
   >
-    <div ref="row" class="flex min-w-0 items-end gap-2">
+    <!-- `flex-1` with `overflow-hidden`: the tabs own whatever is left after the
+         library button, and the ones that do not fit are clipped rather than
+         sliding under it. -->
+    <div ref="row" class="flex min-w-0 flex-1 items-end gap-2 overflow-hidden">
       <button
-        v-for="(session, index) in sessions"
+        v-for="session in visibleSessions"
         :key="session.id"
         type="button"
         role="tab"
         :aria-selected="session.id === selectedId"
-        class="state-layer inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-t-xl border border-b-0 px-3 py-2 text-xs font-semibold transition-colors"
-        :class="[
+        class="state-layer inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-t-xl border border-b-0 px-3 py-2 text-xs font-semibold transition-colors duration-200 ease-[var(--ease-standard)]"
+        :class="
           session.id === selectedId
             ? 'border-outline-variant bg-surface-container text-on-surface'
-            : 'border-transparent text-on-surface-variant hover:bg-surface-container',
-          !measuring && index >= visibleCount ? 'hidden' : '',
-        ]"
+            : 'border-transparent text-on-surface-variant hover:bg-surface-container'
+        "
         @click="emit('select', session.id)"
       >
-        <span class="size-2 rounded-full" :class="dot[session.status]" />
+        <span class="size-2 rounded-full transition-colors duration-200" :class="dot[session.status]" />
         <span class="max-w-40 truncate">{{ labelOf(session) }}</span>
         <span class="font-mono tracking-wide opacity-70">{{ session.joinCode }}</span>
       </button>
     </div>
 
+    <!-- A filled tonal pill rather than bare text: it overlaps the tab row, so
+         it needs a surface of its own to sit on. -->
     <button
-      ref="libraryButton"
       type="button"
-      class="state-layer ml-auto inline-flex min-h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[11px] font-semibold text-primary"
+      class="state-layer inline-flex min-h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-secondary-container px-3 text-[11px] font-semibold text-on-secondary-container transition-colors duration-200"
       :aria-label="t('teacher.live.tabs.all')"
       @click="emit('library')"
     >
       <Library class="size-3.5" aria-hidden="true" />
       <span class="hidden sm:inline">{{ t('teacher.live.tabs.all') }}</span>
-      <span class="rounded-full bg-primary-container px-1.5 text-[11px] text-on-primary-container">
-        {{ sessions.length }}
-      </span>
+      <span class="tabular-nums opacity-80">{{ sessions.length }}</span>
     </button>
   </div>
 </template>

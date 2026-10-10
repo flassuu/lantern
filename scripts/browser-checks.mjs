@@ -923,6 +923,55 @@ async function happyPaths(session, fixtures) {
     body: { status: 'finished' },
   }).catch(() => {})
 
+  // More runs than fit: the strip has to clip them rather than let them slide
+  // under the library button, and that button needs a surface of its own to sit
+  // on. Both were wrong in the same screenshot.
+  for (let index = 0; index < 10; index += 1) {
+    const extra = await api('/api/sessions', {
+      token: fixtures.teacher,
+      method: 'POST',
+      body: { testId: fixtures.testId, name: `Overflow run ${SUFFIX}-${index}` },
+    })
+    if (extra?.session?.id) created.sessions.push(extra.session.id)
+  }
+  // Away and back: clicking the tab that is already open changes nothing, so the
+  // list would not be re-read and the strip would still hold two tabs - which is
+  // how this check passed vacuously the first time it was written.
+  await clickTab(session, context, '^Tests$', 800)
+  await clickTab(session, context, '^Live$', 1500)
+  const strip = await session.run(
+    context,
+    `
+    const button = [...document.querySelectorAll('button')].find(
+      (b) => b.getAttribute('aria-label') === 'All sessions',
+    );
+    // Only the session strip: the page's own tab bar is [role=tab] as well.
+    const stripEl = button ? button.parentElement : null;
+    const tabs = stripEl ? [...stripEl.querySelectorAll('[role=tab]')] : [];
+    const buttonBox = button ? button.getBoundingClientRect() : null;
+    const last = tabs.length ? tabs[tabs.length - 1].getBoundingClientRect() : null;
+    const rowEl = stripEl ? stripEl.firstElementChild : null;
+    return {
+      shown: tabs.length,
+      clear: !!(buttonBox && last) && last.right <= buttonBox.left + 1,
+      surface: button ? getComputedStyle(button).backgroundColor !== 'rgba(0, 0, 0, 0)' : false,
+      overflow: rowEl ? rowEl.scrollWidth > rowEl.clientWidth : false,
+    };
+  `,
+  )
+  check(
+    'teacher: the tab strip clips instead of sliding under the library button',
+    // Also that it really had to clip: with two tabs the first half is free.
+    strip.clear && strip.shown < 12,
+    JSON.stringify(strip),
+  )
+  check(
+    'teacher: the library button has a surface of its own',
+    strip.surface,
+    JSON.stringify(strip),
+  )
+  await session.screenshot(context, join(SHOTS, 'teacher-session-tabs-overflow.png'))
+
   return context
 }
 
