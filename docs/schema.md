@@ -1,11 +1,11 @@
 # Database schema
 
-Schema of the system at v0.5.0 and later. SQLite via `node:sqlite` (`DatabaseSync`);
+Schema of the system at v0.6.0 and later. SQLite via `node:sqlite` (`DatabaseSync`);
 ids are server-side UUIDs; timestamps are stored as ISO-8601 UTC strings. The
 schema is enforced by idempotent, versioned migrations run at server startup;
 `GET /api/admin/stats` reports the applied version as `schemaVersion`.
 
-> Status: **current**, at version 5. Phases 1–3 added the tables: roles and
+> Status: **current**, at version 6. Phases 1–3 added the tables: roles and
 > auth, the test/course core, and the live-session runtime.
 > **Reporting (Phase 4) added no tables on purpose** — the grade journal and
 > per-question difficulty are derived from `participations` and
@@ -14,8 +14,11 @@ schema is enforced by idempotent, versioned migrations run at server startup;
 > that has to be recomputed every time a session is graded.
 > **Phase 5.1 added no tables either** — `app_meta` was already a key/value
 > store, so the public address is one row.
-> **Phase 5.2 (v5)** adds `classrooms` and `classroom_members`: a teacher's class
-> key, and who arrived through it.
+> **Phase 5.2 (v5)** adds the class key and who arrived through it.
+> **Phase 6.1 (v6)** renames those two tables to `rooms` and `room_members` — a
+> room is *who*, a course is *what*, and the two are no longer allowed to look
+> alike — and adds `course_rooms`, `tags` and `entity_tags`. `tests.room_id`,
+> `live_sessions.room_id` and `live_sessions.name` join the rest.
 
 ## Conventions
 
@@ -99,6 +102,7 @@ A test is a set of questions; it can be shared directly or via courses.
 | description | TEXT | |
 | time_limit_sec | INTEGER | nullable — no time limit |
 | passing_percent | INTEGER | admin/teacher configurable threshold |
+| room_id | TEXT FK rooms.id | nullable; the group this paper was written for |
 | created_at / updated_at | TEXT | |
 
 ### questions
@@ -167,6 +171,8 @@ short code. Created already `active` — there is no draft state.
 | status | TEXT | `active \| paused \| finished` |
 | time_limit_sec | INTEGER | snapshot of the test at start |
 | passing_percent | INTEGER | snapshot of the test at start |
+| name | TEXT | what the teacher called this run; NULL falls back to the test title |
+| room_id | TEXT FK rooms.id | the group sitting it; defaults to the test's own room |
 | created_at / started_at | TEXT | |
 | finished_at | TEXT | nullable |
 
@@ -216,14 +222,21 @@ users ─┬─ owns ──▶ courses ──┬─ has ──▶ materials
        │         │            ├─ enrolls ─▶ course_enrollments ─▶ users (student)
        │         │            └─ runs ───▶ course_tests ─────────▶ tests
        ├─ owns ──▶ tests ──▶ questions
+       ├─ owns ──▶ rooms ──┬─ members ─▶ room_members ─▶ users (student)
+       │                   └─ course_rooms ─▶ courses
+       └─ owns ──▶ tags ───▶ entity_tags (test | session | course)
        ├─ signs in ─▶ sessions            (auth tokens, hashed)
        └─ runs ────▶ live_sessions ──▶ participations ──▶ participation_answers ──▶ questions
 ```
 
-### classrooms
+### rooms
 
-A teacher's own group, held for its key: a student who registers with it is
-approved without an admin.
+A teacher's own group of students, held for its key: a student who registers with
+it is approved without an admin. *Who*, where a course is *what* — the room
+carries a key, and what the group studies is a separate relation, so a class can
+take several subjects and a subject can be taken by several classes.
+
+Renamed from `classrooms` in v6.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -232,23 +245,70 @@ approved without an admin.
 | name | TEXT | as typed, trimmed |
 | key | TEXT UNIQUE | 6 chars from the join-code alphabet |
 | status | TEXT | `active` or `revoked` |
-| course_id | TEXT FK → courses(id) | optional; `ON DELETE SET NULL` |
 | created_at | TEXT | |
 | revoked_at | TEXT | NULL until revoked |
 
-### classroom_members
+### room_members
 
 Who arrived through which key. A join table rather than a column on `users`: one
-student can pass through several classes over a school year, and a teacher needs
-the list per class.
+student can pass through several rooms over a school year, and a teacher needs
+the list per room.
+
+Renamed from `classroom_members` in v6.
 
 | Column | Type | Notes |
 |--------|------|-------|
 | id | TEXT PK | |
-| classroom_id | TEXT FK → classrooms(id) | `ON DELETE CASCADE` |
+| room_id | TEXT FK → rooms(id) | `ON DELETE CASCADE` |
 | user_id | TEXT FK → users(id) | `ON DELETE CASCADE` |
 | joined_at | TEXT | |
-| | UNIQUE(classroom_id, user_id) | registering twice does not double-count |
+| | UNIQUE(room_id, user_id) | registering twice does not double-count |
+
+### course_rooms
+
+What a room studies. Many-to-many, added in v6, replacing the single optional
+`rooms.course_id` it grew out of. The composite key is the whole identity: this
+row is only ever addressed as "this room in this course".
+
+| Column | Type | Notes |
+|--------|------|-------|
+| course_id | TEXT FK → courses(id) | `ON DELETE CASCADE` |
+| room_id | TEXT FK → rooms(id) | `ON DELETE CASCADE` |
+| created_at | TEXT | |
+| | PRIMARY KEY(course_id, room_id) | |
+
+Enrolment follows this table in both directions: attaching a course to a room
+enrols the members already in it, and adding a member enrols them in every
+course already attached. Whichever happens last, the two are in step.
+
+### tags
+
+The teacher's own free labels — "algebra", "photosynthesis", "chapter 4". Not a
+group: what class something belongs to is `room_id`, because a room can be joined
+and revoked and a label cannot.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | TEXT PK | |
+| owner_id | TEXT FK → users(id) | the teacher; `ON DELETE CASCADE` |
+| name | TEXT | |
+| created_at | TEXT | |
+| | UNIQUE(owner_id, lower(name)) | "Algebra" and "algebra" are one label |
+
+### entity_tags
+
+Which labels are on which thing. Added in v6. A tag carries no permission of
+its own: attaching one still requires permission on the entity, and that is
+checked by the routes, not here.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | TEXT PK | |
+| tag_id | TEXT FK → tags(id) | `ON DELETE CASCADE` |
+| entity_type | TEXT | `CHECK IN ('test','session','course')` |
+| entity_id | TEXT | no foreign key: the three kinds have three different owners |
+| created_at | TEXT | |
+| | UNIQUE(tag_id, entity_type, entity_id) | |
 
 ## Migration notes
 
@@ -257,6 +317,10 @@ the list per class.
 - v3 creates `tests`, `questions`, `courses`, `course_enrollments`,
   `course_tests`, `materials`.
 - v4 creates `live_sessions`, `participations`, `participation_answers`.
-- v5 creates `classrooms`, `classroom_members`.
+- v5 creates the class key and its members.
+- v6 renames them to `rooms` and `room_members`, adds `course_rooms`, `tags` and
+  `entity_tags`, and adds `tests.room_id`, `live_sessions.room_id`,
+  `live_sessions.name`. The existing single course link is copied into
+  `course_rooms` before `rooms.course_id` is dropped.
 - Migrations run idempotently at startup, in order; each is wrapped in a
   transaction and versioned in `schema_migrations`.

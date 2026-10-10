@@ -8,6 +8,7 @@ import SkeletonList from '../common/SkeletonList.vue'
 import { createCourse, deleteCourse, listCourses } from '../../api/courses'
 import type { CourseSummary } from '../../api/types'
 import CourseDetails from './CourseDetails.vue'
+import TagInput from './TagInput.vue'
 import { useConfirm } from '../../composables/confirm'
 import { useDialogFocus } from '../../composables/focusTrap'
 import { useToast } from '../../composables/toast'
@@ -27,12 +28,13 @@ const errorKey = ref('')
 const showCreate = ref(false)
 const newTitle = ref('')
 const newDescription = ref('')
+const newTags = ref<string[]>([])
 const createError = ref('')
 const saving = ref(false)
 
 const openCourseId = ref<string | null>(null)
 
-/** The one dialog on this screen: a course is a title and a description. */
+/** The one dialog on this screen: a course is a title, a description and labels. */
 const panel = ref<HTMLElement | null>(null)
 const cancelRef = ref<HTMLButtonElement | null>(null)
 useDialogFocus(() => showCreate.value, () => closeCreate(), panel, cancelRef)
@@ -59,6 +61,7 @@ function openCreate(): void {
   createError.value = ''
   newTitle.value = ''
   newDescription.value = ''
+  newTags.value = []
   showCreate.value = true
 }
 
@@ -88,7 +91,11 @@ async function create() {
   createError.value = ''
   saving.value = true
   try {
-    await createCourse({ title: newTitle.value.trim(), description: newDescription.value.trim() })
+    await createCourse({
+      title: newTitle.value.trim(),
+      description: newDescription.value.trim(),
+      tags: newTags.value,
+    })
     toast.success(t('teacher.courses.created'))
     showCreate.value = false
     newTitle.value = ''
@@ -178,6 +185,13 @@ onMounted(load)
                 <Paperclip class="size-3" aria-hidden="true" />
                 {{ t('teacher.courses.materialsCount', { count: course.materialsCount }) }}
               </span>
+              <span
+                v-for="tag in course.tags"
+                :key="tag.id"
+                class="rounded-full bg-secondary-container px-2 py-0.5 text-[11px] font-semibold text-on-secondary-container"
+              >
+                {{ tag.name }}
+              </span>
             </div>
           </button>
           <AppButton
@@ -237,6 +251,7 @@ onMounted(load)
               class="mt-1 w-full rounded-lg border border-outline bg-surface px-3 py-2 text-sm focus:border-primary"
             />
           </label>
+          <TagInput v-model="newTags" :label="t('teacher.tags.label')" />
           <p v-if="createErrorText()" role="alert" class="text-sm text-error">
             {{ createErrorText() }}
           </p>

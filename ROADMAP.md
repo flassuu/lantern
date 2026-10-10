@@ -378,32 +378,44 @@ teacher, a class of phones, no administrator anywhere.
 Every change lands in **both** apps (`apps/desktop` and `apps/web-client`), whose
 files are byte-identical twins, and in both locale files.
 
-### 6.1 Rooms, tags, session name — v0.6.1
+### 6.1 Rooms, tags, session name — v0.6.1 — **done**
 
 Goal: separate *who* from *what*, give tests and sessions tags, and give a
 session a name and a room.
 
-- [ ] Migration **v6**: rename `classrooms` → `rooms`, `classroom_members` →
+- [x] Migration **v6**: rename `classrooms` → `rooms`, `classroom_members` →
       `room_members`, `classroom_id` → `room_id`; add `course_rooms`
       (many-to-many), move `rooms.course_id` into it; add `tests.room_id` and
       `live_sessions.room_id` (nullable FKs) and `live_sessions.name`; add
       `tags` and `entity_tags` (entity kind `test | session | course`)
-- [ ] Server: `lib/classrooms.ts` → `lib/rooms.ts`, `routes/classrooms.ts` →
+- [x] Server: `lib/classrooms.ts` → `lib/rooms.ts`, `routes/classrooms.ts` →
       `routes/rooms.ts`, `/api/rooms*`; a room enrols its members into every
       course it is linked to, present and future
-- [ ] Server: `lib/tags.ts`, `routes/tags.ts` — `GET/POST /api/tags`,
-      `PATCH/DELETE /api/tags/:id`, `PUT /api/:entity/:id/tags`; tests, sessions
+- [x] Server: `lib/tags.ts`, `routes/tags.ts` — `GET/POST /api/tags`,
+      `PATCH/DELETE /api/tags/:id`, `PUT /api/tags/:entity/:id`; tests, sessions
       and courses carry `tags[]` and `roomId` in and out
-- [ ] Server: `POST /api/sessions` takes `name` and `roomId`; `GET /api/sessions`
-      gains filters (`room`, `tag`, `status`, `from`, `to`, `q`)
-- [ ] Client: `ClassesTab.vue` → `RoomsTab.vue` and the tab label becomes
+- [x] Server: `POST /api/sessions` takes `name`, `roomId` and `tags`;
+      `GET /api/sessions` gains filters (`room`, `test`, `tag`, `status`, `from`,
+      `to`, `q`, `limit`)
+- [x] Client: `ClassesTab.vue` → `RoomsTab.vue` and the tab label becomes
       "Rooms"; a room links to several courses; members as before
-- [ ] Client: `TagInput.vue` / `TagChips.vue` in `TestsTab`, `CoursesTab`,
-      `CourseDetails` and the start-session dialog; the room chip where it applies
-- [ ] i18n: `teacher.rooms.*` (the rename), `teacher.tags.*`, session name/room
-- [ ] Tests: rooms CRUD and course enrolment; tags CRUD and linking; ownership
-      boundaries. Update `scripts/browser-checks.mjs` for the new tab name
-- [ ] Docs: `schema.md` (v6), `api.md` (rooms, tags), `architecture.md` (who/what)
+- [x] Client: `TagInput.vue` in `TestsTab`, `CoursesTab`, `CourseDetails` and the
+      start-session dialog; the room chip on the test card and the Live board
+- [x] i18n: `teacher.rooms.*` (the rename), `teacher.tags.*`, session name/room
+- [x] Tests: `rooms.test.ts` (CRUD, ownership, enrolment both ways),
+      `migration-v6.test.ts` (the rename on a populated file), `tags.test.ts`
+      (labels, ownership, filters); `scripts/browser-checks.mjs` for the new tab
+- [x] Docs: `schema.md` (v6), `api.md` (rooms, tags, filters),
+      `architecture.md`, `scenarios.md`, `TEST_PLAN.md`
+
+Two decisions the plan left open, taken while building it:
+
+- The tag endpoint is `PUT /api/tags/:entity/:id`, not
+  `PUT /api/:entity/:id/tags` — one URL per kind of thing, one body, one call
+  the UI makes for every labelled screen.
+- A session's room defaults to the test's own rather than to null. Most of the
+  time the paper was written for one group and that is who is in the room, so
+  the common case should not ask a question.
 
 ### 6.2 Live — session tabs and a library — v0.6.2
 

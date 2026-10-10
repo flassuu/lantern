@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   Ban,
+  BookOpen,
   CircleCheck,
   Copy,
   KeyRound,
@@ -16,18 +17,18 @@ import {
 } from '@lucide/vue'
 import { ApiError } from '../../api/client'
 import {
-  createClassroom,
-  deleteClassroom,
-  getClassroom,
-  listClassrooms,
-  regenerateClassKey,
-  renameClassroom,
-  revokeClassroom,
-} from '../../api/classrooms'
+  createRoom,
+  deleteRoom,
+  getRoom,
+  listRooms,
+  regenerateRoomKey,
+  revokeRoom,
+  updateRoom,
+} from '../../api/rooms'
 import { listCourses } from '../../api/courses'
 import { updateSettings } from '../../api/settings'
 import { listPendingStudents, setUserStatus } from '../../api/users'
-import type { Classroom, ClassroomMember, CourseSummary, PublicUser } from '../../api/types'
+import type { CourseSummary, PublicUser, Room, RoomMember } from '../../api/types'
 import EmptyState from '../common/EmptyState.vue'
 import QrCodeCard from '../common/QrCode.vue'
 import SkeletonList from '../common/SkeletonList.vue'
@@ -42,64 +43,59 @@ import { useToast } from '../../composables/toast'
 import { isReachableFromPhone, registrationLink } from '../../utils/links'
 
 /**
- * The teacher's own classes.
+ * The teacher's own rooms.
  *
- * A class is a key: something a student can type or scan to get an approved
+ * A room is a key: something a student can type or scan to get an approved
  * account without an admin in the room. Everything on this tab serves that one
- * moment - the key is shown big enough to read from a desk, offered as a QR for
+ * moment — the key is shown big enough to read from a desk, offered as a QR for
  * the whole room to scan, and replaceable when it has been photographed and left
- * on a wall. Nothing here grants a teacher anything over anybody else.
+ * on a wall. A room also names the courses its students are enrolled in, which
+ * is what ties "who is here" to "what they are studying" without an admin in
+ * the room. Nothing here grants a teacher anything over anybody else.
  */
 const { t } = useI18n()
 const toast = useToast()
 const confirm = useConfirm()
 
-const classrooms = ref<Classroom[]>([])
-/** Students stuck at `pending` because they registered with no class key. */
+const rooms = ref<Room[]>([])
+/** Students stuck at `pending` because they registered with no room key. */
 const pending = ref<PublicUser[]>([])
 const courses = ref<CourseSummary[]>([])
 const loading = ref(true)
 const errorKey = ref('')
 
-const members = ref<Record<string, ClassroomMember[]>>({})
+const members = ref<Record<string, RoomMember[]>>({})
 const openDetails = ref<string | null>(null)
 const showQr = ref<string | null>(null)
 const copiedKey = ref<string | null>(null)
 const renaming = ref<string | null>(null)
 const renameDraft = ref('')
 
-const newName = ref('')
-const newCourseId = ref('')
-const creating = ref(false)
-/** Creating a class is a dialog: a name, an optional course, nothing else. */
-const showCreate = ref(false)
-const createPanel = ref<HTMLElement | null>(null)
-const createCancel = ref<HTMLButtonElement | null>(null)
-useDialogFocus(() => showCreate.value, () => closeCreate(), createPanel, createCancel)
-
-function openCreate(): void {
-  newName.value = ''
-  newCourseId.value = ''
-  showCreate.value = true
-}
-
-function closeCreate(): void {
-  if (creating.value) return
-  showCreate.value = false
-}
-
 /** The address a student's phone will be told to open for registration. */
 const baseUrl = ref(effectiveBaseUrl())
 const baseReachable = computed(() => isReachableFromPhone(baseUrl.value))
+
+/** Creating a room is a dialog: a name, any number of courses, nothing else. */
+const showEditor = ref(false)
+const editingRoomId = ref<string | null>(null)
+const editorName = ref('')
+const editorCourseIds = ref<string[]>([])
+const editorPanel = ref<HTMLElement | null>(null)
+const editorCancel = ref<HTMLButtonElement | null>(null)
+useDialogFocus(() => showEditor.value, () => closeEditor(), editorPanel, editorCancel)
+
+const editorTitle = computed(() =>
+  editingRoomId.value === null ? t('teacher.rooms.create') : t('teacher.rooms.editTitle'),
+)
 
 async function load(): Promise<void> {
   loading.value = true
   errorKey.value = ''
   try {
-    const [list, courseList] = await Promise.all([listClassrooms(), listCourses()])
-    classrooms.value = list
+    const [roomList, courseList] = await Promise.all([listRooms(), listCourses()])
+    rooms.value = roomList
     courses.value = courseList
-    // A failure here must not empty the tab: the classes themselves loaded, and
+    // A failure here must not empty the tab: the rooms themselves loaded, and
     // a student waiting for approval is an inconvenience, not an outage.
     try {
       pending.value = await listPendingStudents()
@@ -124,36 +120,58 @@ function report(error: unknown): void {
   toast.error(t(`teacher.errors.${errorKeyOf(error)}`))
 }
 
-async function create(): Promise<void> {
-  const name = newName.value.trim()
-  if (name === '' || creating.value) return
-  creating.value = true
+function openCreate(): void {
+  editingRoomId.value = null
+  editorName.value = ''
+  editorCourseIds.value = []
+  showEditor.value = true
+}
+
+function openEditor(room: Room): void {
+  editingRoomId.value = room.id
+  editorName.value = room.name
+  editorCourseIds.value = [...room.courseIds]
+  showEditor.value = true
+}
+
+function closeEditor(): void {
+  showEditor.value = false
+  editingRoomId.value = null
+}
+
+function toggleCourse(courseId: string): void {
+  const current = editorCourseIds.value
+  editorCourseIds.value = current.includes(courseId)
+    ? current.filter((id) => id !== courseId)
+    : [...current, courseId]
+}
+
+async function saveRoom(): Promise<void> {
+  const name = editorName.value.trim()
+  if (name === '') return
   try {
-    await createClassroom({
-      name,
-      courseId: newCourseId.value === '' ? null : newCourseId.value,
-    })
-    showCreate.value = false
-    newName.value = ''
-    newCourseId.value = ''
+    if (editingRoomId.value === null) {
+      await createRoom({ name, courseIds: editorCourseIds.value })
+    } else {
+      await updateRoom(editingRoomId.value, { name, courseIds: editorCourseIds.value })
+    }
+    closeEditor()
     await load()
   } catch (error) {
     report(error)
-  } finally {
-    creating.value = false
   }
 }
 
-function startRename(classroom: Classroom): void {
-  renaming.value = classroom.id
-  renameDraft.value = classroom.name
+function startRename(room: Room): void {
+  renaming.value = room.id
+  renameDraft.value = room.name
 }
 
-async function saveRename(classroom: Classroom): Promise<void> {
+async function saveRename(room: Room): Promise<void> {
   const name = renameDraft.value.trim()
   if (name === '') return
   try {
-    await renameClassroom(classroom.id, { name })
+    await updateRoom(room.id, { name })
     renaming.value = null
     await load()
   } catch (error) {
@@ -161,27 +179,27 @@ async function saveRename(classroom: Classroom): Promise<void> {
   }
 }
 
-async function toggleDetails(classroom: Classroom): Promise<void> {
-  if (openDetails.value === classroom.id) {
+async function toggleDetails(room: Room): Promise<void> {
+  if (openDetails.value === room.id) {
     openDetails.value = null
     return
   }
-  openDetails.value = classroom.id
-  if (members.value[classroom.id]) return
+  openDetails.value = room.id
+  if (members.value[room.id]) return
   try {
-    const detail = await getClassroom(classroom.id)
-    members.value[classroom.id] = detail.members
+    const detail = await getRoom(room.id)
+    members.value[room.id] = detail.members
   } catch (error) {
     report(error)
   }
 }
 
-async function newKey(classroom: Classroom): Promise<void> {
-  if (!(await confirm({ message: t('teacher.classes.newKeyConfirm') }))) return
+async function newKey(room: Room): Promise<void> {
+  if (!(await confirm({ message: t('teacher.rooms.newKeyConfirm') }))) return
   try {
-    const key = await regenerateClassKey(classroom.id)
+    const key = await regenerateRoomKey(room.id)
     await load()
-    toast.success(t('teacher.classes.newKeyDone', { key }))
+    toast.success(t('teacher.rooms.newKeyDone', { key }))
   } catch (error) {
     report(error)
   }
@@ -198,7 +216,7 @@ const suggestions = ref<string[]>([])
  * The admin sets this on the System tab, but a teacher running a lesson alone has
  * no admin to ask, and without it the code points at `localhost` — which scans
  * perfectly and then fails on every phone. So the teacher gets the same field
- * here, next to the classes it matters for.
+ * here, next to the rooms it matters for.
  */
 async function saveAddress(): Promise<void> {
   const value = addressDraft.value.trim()
@@ -206,7 +224,7 @@ async function saveAddress(): Promise<void> {
   try {
     applySettings(await updateSettings(value === '' ? null : value))
     baseUrl.value = effectiveBaseUrl()
-    toast.success(t('teacher.classes.addressSaved'))
+    toast.success(t('teacher.rooms.addressSaved'))
   } catch (error) {
     report(error)
   } finally {
@@ -215,7 +233,7 @@ async function saveAddress(): Promise<void> {
 }
 
 /**
- * Approving is what the classroom key normally does. This path exists for the
+ * Approving is what the room key normally does. This path exists for the
  * student who typed no key: without it and without an admin they wait forever,
  * and the teacher has no way to unstick them.
  */
@@ -223,44 +241,40 @@ async function approve(student: PublicUser): Promise<void> {
   try {
     await setUserStatus(student.id, 'approved')
     pending.value = pending.value.filter((entry) => entry.id !== student.id)
-    toast.success(t('teacher.classes.waitingApprovedToast', { name: student.fullName }))
+    toast.success(t('teacher.rooms.waitingApprovedToast', { name: student.fullName }))
   } catch (error) {
     report(error)
   }
 }
 
 async function deny(student: PublicUser): Promise<void> {
-  if (!(await confirm({ message: t('teacher.classes.waitingDenyConfirm', { name: student.fullName }) })))
+  if (
+    !(await confirm({ message: t('teacher.rooms.waitingDenyConfirm', { name: student.fullName }) }))
+  )
     return
   try {
     await setUserStatus(student.id, 'blocked')
     pending.value = pending.value.filter((entry) => entry.id !== student.id)
-    toast.success(t('teacher.classes.waitingDeniedToast', { name: student.fullName }))
+    toast.success(t('teacher.rooms.waitingDeniedToast', { name: student.fullName }))
   } catch (error) {
     report(error)
   }
 }
 
-async function revoke(classroom: Classroom): Promise<void> {
-  if (
-    !(await confirm({ message: t('teacher.classes.revokeConfirm', { name: classroom.name }) }))
-  )
-    return
+async function revoke(room: Room): Promise<void> {
+  if (!(await confirm({ message: t('teacher.rooms.revokeConfirm', { name: room.name }) }))) return
   try {
-    await revokeClassroom(classroom.id)
+    await revokeRoom(room.id)
     await load()
   } catch (error) {
     report(error)
   }
 }
 
-async function remove(classroom: Classroom): Promise<void> {
-  if (
-    !(await confirm({ message: t('teacher.classes.deleteConfirm', { name: classroom.name }) }))
-  )
-    return
+async function remove(room: Room): Promise<void> {
+  if (!(await confirm({ message: t('teacher.rooms.deleteConfirm', { name: room.name }) }))) return
   try {
-    await deleteClassroom(classroom.id)
+    await deleteRoom(room.id)
     await load()
   } catch (error) {
     report(error)
@@ -268,25 +282,27 @@ async function remove(classroom: Classroom): Promise<void> {
 }
 
 /** Clipboard writes fail in some contexts; the key is on screen either way. */
-async function copyKey(classroom: Classroom): Promise<void> {
+async function copyKey(room: Room): Promise<void> {
   try {
-    await navigator.clipboard.writeText(classroom.key)
-    copiedKey.value = classroom.id
+    await navigator.clipboard.writeText(room.key)
+    copiedKey.value = room.id
     window.setTimeout(() => {
-      if (copiedKey.value === classroom.id) copiedKey.value = null
+      if (copiedKey.value === room.id) copiedKey.value = null
     }, 1500)
   } catch {
     toast.error(t('teacher.live.copyFailed'))
   }
 }
 
-function registrationQr(classroom: Classroom): string {
-  return registrationLink(baseUrl.value, classroom.key)
+function registrationQr(room: Room): string {
+  return registrationLink(baseUrl.value, room.key)
 }
 
-function courseTitle(courseId: string | null): string {
-  if (courseId === null) return ''
-  return courses.value.find((course) => course.id === courseId)?.title ?? ''
+function courseTitles(room: Room): Array<{ id: string; title: string }> {
+  return room.courseIds.flatMap((id) => {
+    const course = courses.value.find((entry) => entry.id === id)
+    return course ? [{ id: course.id, title: course.title }] : []
+  })
 }
 
 onMounted(() => {
@@ -303,9 +319,9 @@ onMounted(() => {
   <section class="space-y-4">
     <div class="flex items-start justify-between gap-3">
       <div class="min-w-0">
-        <h3 class="text-sm font-semibold text-on-surface">{{ t('teacher.classes.title') }}</h3>
+        <h3 class="text-sm font-semibold text-on-surface">{{ t('teacher.rooms.title') }}</h3>
         <p class="mt-1 text-xs text-on-surface-variant">
-          {{ t('teacher.classes.hint') }}
+          {{ t('teacher.rooms.hint') }}
         </p>
       </div>
       <div class="flex shrink-0 items-center gap-2">
@@ -314,7 +330,7 @@ onMounted(() => {
         </AppButton>
         <AppButton variant="primary" size="sm" @click="openCreate">
           <Plus class="size-3.5" aria-hidden="true" />
-          {{ t('teacher.classes.create') }}
+          {{ t('teacher.rooms.create') }}
         </AppButton>
       </div>
     </div>
@@ -322,10 +338,10 @@ onMounted(() => {
     <!-- The address every QR code on this tab is built from -->
     <AppCard as="section">
       <h3 class="text-sm font-semibold text-on-surface">
-        {{ t('teacher.classes.addressTitle') }}
+        {{ t('teacher.rooms.addressTitle') }}
       </h3>
       <p class="mt-1 text-xs text-on-surface-variant">
-        {{ t('teacher.classes.addressHint') }}
+        {{ t('teacher.rooms.addressHint') }}
       </p>
       <ul v-if="suggestions.length" class="mt-2 flex flex-wrap gap-1.5">
         <li v-for="suggestion in suggestions" :key="suggestion">
@@ -349,7 +365,7 @@ onMounted(() => {
           inputmode="url"
         />
         <AppButton :disabled="savingAddress" @click="saveAddress">
-          {{ t('teacher.classes.addressSave') }}
+          {{ t('teacher.rooms.addressSave') }}
         </AppButton>
       </div>
     </AppCard>
@@ -365,29 +381,31 @@ onMounted(() => {
     <SkeletonList v-else-if="loading" :rows="2" />
 
     <EmptyState
-      v-else-if="classrooms.length === 0"
+      v-else-if="rooms.length === 0"
       :icon="Users"
-      :title="t('teacher.classes.emptyTitle')"
-      :description="t('teacher.classes.emptyHint')"
+      :title="t('teacher.rooms.emptyTitle')"
+      :description="t('teacher.rooms.emptyHint')"
+      :action-label="t('teacher.rooms.create')"
+      @action="openCreate"
     />
 
     <ul v-else class="space-y-3">
-      <li v-for="classroom in classrooms" :key="classroom.id">
+      <li v-for="room in rooms" :key="room.id">
         <AppCard as="article">
           <!-- Header: name (or inline rename) and status -->
           <div class="flex flex-wrap items-start justify-between gap-2">
             <div class="min-w-0 flex-1">
-              <div v-if="renaming === classroom.id" class="flex items-center gap-2">
+              <div v-if="renaming === room.id" class="flex items-center gap-2">
                 <AppInput
                   v-model="renameDraft"
                   class="flex-1"
-                  :aria-label="t('teacher.classes.rename')"
-                  @keyup.enter="saveRename(classroom)"
+                  :aria-label="t('teacher.rooms.rename')"
+                  @keyup.enter="saveRename(room)"
                 />
                 <AppButton
                   variant="primary"
                   size="sm"
-                  @click="saveRename(classroom)"
+                  @click="saveRename(room)"
                 >
                   {{ t('common.save') }}
                 </AppButton>
@@ -401,134 +419,147 @@ onMounted(() => {
               </div>
               <template v-else>
                 <p class="truncate text-sm font-semibold text-on-surface">
-                  {{ classroom.name }}
+                  {{ room.name }}
                 </p>
                 <div class="mt-1 flex flex-wrap items-center gap-1.5">
                   <span
                     class="rounded-full px-2 py-0.5 text-[11px] font-semibold"
                     :class="
-                      classroom.status === 'active'
+                      room.status === 'active'
                         ? 'bg-success-container text-on-success-container'
                         : 'bg-surface-container-high text-on-surface-variant'
                     "
                   >
-                    {{
-                      classroom.status === 'active'
-                        ? t('teacher.classes.active')
-                        : t('teacher.classes.revoked')
-                    }}
-                  </span>
-                  <span
-                    v-if="courseTitle(classroom.courseId)"
-                    class="rounded-full bg-surface-container-high px-2 py-0.5 text-[11px] text-on-surface-variant"
-                  >
-                    {{ courseTitle(classroom.courseId) }}
+                    {{ room.status === 'active' ? t('teacher.rooms.active') : t('teacher.rooms.revoked') }}
                   </span>
                   <span class="inline-flex items-center gap-1 text-[11px] text-on-surface-variant">
                     <Users class="size-3" aria-hidden="true" />
-                    {{ classroom.membersCount }}
+                    {{ room.membersCount }}
                   </span>
                 </div>
               </template>
             </div>
+            <AppButton
+              variant="ghost"
+              icon
+              size="sm"
+              class="shrink-0"
+              :aria-label="t('teacher.rooms.courses')"
+              v-tip="t('teacher.rooms.coursesHint')"
+              @click="openEditor(room)"
+            >
+              <BookOpen class="size-4" aria-hidden="true" />
+            </AppButton>
           </div>
+
+          <!-- The courses this room studies: arriving through the key enrols
+               somebody in all of them, now and later. -->
+          <div v-if="courseTitles(room).length" class="mt-2 flex flex-wrap items-center gap-1.5">
+            <span
+              v-for="course in courseTitles(room)"
+              :key="course.id"
+              class="inline-flex items-center gap-1 rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant"
+            >
+              <BookOpen class="size-3" aria-hidden="true" />
+              {{ course.title }}
+            </span>
+          </div>
+          <p v-else class="mt-2 text-[11px] text-on-surface-variant">
+            {{ t('teacher.rooms.noCourses') }}
+          </p>
 
           <!-- The key itself: the one thing a student needs -->
           <div class="mt-3 flex items-center gap-2">
             <code
               class="flex h-12 flex-1 items-center justify-center rounded-[var(--radius-control)] bg-surface-container font-mono text-xl font-bold tracking-[0.3em] text-on-surface"
             >
-              {{ classroom.key }}
+              {{ room.key }}
             </code>
             <AppButton
               variant="secondaryMuted"
               size="md"
-              :disabled="classroom.status === 'revoked'"
-              :aria-label="t('teacher.classes.copyKey')"
-              @click="copyKey(classroom)"
+              :disabled="room.status === 'revoked'"
+              :aria-label="t('teacher.rooms.copyKey')"
+              @click="copyKey(room)"
             >
-              <CircleCheck
-                v-if="copiedKey === classroom.id"
-                class="size-4"
-                aria-hidden="true"
-              />
+              <CircleCheck v-if="copiedKey === room.id" class="size-4" aria-hidden="true" />
               <Copy v-else class="size-4" aria-hidden="true" />
             </AppButton>
           </div>
 
           <!-- A QR that scans to the sign-up form with the key filled in -->
-          <div v-if="showQr === classroom.id" class="mt-3">
+          <div v-if="showQr === room.id" class="mt-3">
             <QrCodeCard
-              :text="registrationQr(classroom)"
-              :caption="t('teacher.classes.qrCaption')"
+              :text="registrationQr(room)"
+              :caption="t('teacher.rooms.qrCaption')"
             />
             <p
               v-if="!baseReachable"
               class="mt-2 rounded-[var(--radius-control)] bg-warning-container px-3 py-2 text-xs text-on-warning-container"
             >
               {{ t('teacher.live.unreachableHint') }}
-              <span class="font-mono break-all">{{ baseUrl }}</span>
+              <span class="break-all font-mono">{{ baseUrl }}</span>
             </p>
           </div>
 
-          <!-- Actions: the two reading actions as words, the rare or destructive ones
-               as icons with a tooltip, matching the Tests and Courses rows. -->
+          <!-- Actions: the two reading actions as words, the rare or destructive
+               ones as icons with a tooltip, matching the Tests and Courses rows. -->
           <div class="mt-3 flex flex-wrap items-center gap-2">
             <AppButton
               variant="secondary"
               size="sm"
-              :disabled="classroom.status === 'revoked'"
-              :aria-pressed="showQr === classroom.id"
-              @click="showQr = showQr === classroom.id ? null : classroom.id"
+              :disabled="room.status === 'revoked'"
+              :aria-pressed="showQr === room.id"
+              @click="showQr = showQr === room.id ? null : room.id"
             >
               <QrCode class="size-3.5" aria-hidden="true" />
-              {{ showQr === classroom.id ? t('teacher.classes.hideQr') : t('teacher.classes.showQr') }}
+              {{ showQr === room.id ? t('teacher.rooms.hideQr') : t('teacher.rooms.showQr') }}
             </AppButton>
             <AppButton
               variant="secondaryPlain"
               size="sm"
-              :aria-expanded="openDetails === classroom.id"
-              @click="toggleDetails(classroom)"
+              :aria-expanded="openDetails === room.id"
+              @click="toggleDetails(room)"
             >
               <Users class="size-3.5" aria-hidden="true" />
-              {{ t('teacher.classes.students') }}
+              {{ t('teacher.rooms.students') }}
             </AppButton>
             <AppButton
-              v-if="renaming !== classroom.id"
+              v-if="renaming !== room.id"
               variant="ghost"
               icon
               size="sm"
-              :disabled="classroom.status === 'revoked'"
-              :aria-label="t('teacher.classes.rename')"
-              v-tip="t('teacher.classes.rename')"
-              @click="startRename(classroom)"
+              :disabled="room.status === 'revoked'"
+              :aria-label="t('teacher.rooms.rename')"
+              v-tip="t('teacher.rooms.rename')"
+              @click="startRename(room)"
             >
               <Pencil class="size-4" aria-hidden="true" />
             </AppButton>
             <AppButton
-              v-if="classroom.status === 'active'"
+              v-if="room.status === 'active'"
               variant="ghost"
               icon
               size="sm"
-              :aria-label="t('teacher.classes.newKey')"
-              v-tip="t('teacher.classes.newKeyConfirm')"
-              @click="newKey(classroom)"
+              :aria-label="t('teacher.rooms.newKey')"
+              v-tip="t('teacher.rooms.newKey')"
+              @click="newKey(room)"
             >
               <KeyRound class="size-4" aria-hidden="true" />
             </AppButton>
             <AppButton
-              v-if="classroom.status === 'active'"
+              v-if="room.status === 'active'"
               variant="ghost"
               icon
               size="sm"
-              :disabled="classroom.membersCount > 0"
-              :aria-label="t('teacher.classes.revoke')"
+              :disabled="room.membersCount > 0"
+              :aria-label="t('teacher.rooms.revoke')"
               v-tip="
-                classroom.membersCount > 0
-                  ? t('teacher.classes.revokeBlocked')
-                  : t('teacher.classes.revokeConfirm')
+                room.membersCount > 0
+                  ? t('teacher.rooms.revokeBlocked')
+                  : t('teacher.rooms.revokeConfirm', { name: room.name })
               "
-              @click="revoke(classroom)"
+              @click="revoke(room)"
             >
               <Ban class="size-4" aria-hidden="true" />
             </AppButton>
@@ -536,19 +567,19 @@ onMounted(() => {
               variant="ghostDanger"
               icon
               size="sm"
-              :aria-label="t('teacher.classes.delete')"
-              v-tip="t('teacher.classes.delete')"
-              @click="remove(classroom)"
+              :aria-label="t('teacher.rooms.delete')"
+              v-tip="t('teacher.rooms.delete')"
+              @click="remove(room)"
             >
               <Trash2 class="size-4" aria-hidden="true" />
             </AppButton>
           </div>
 
           <!-- Members -->
-          <div v-if="openDetails === classroom.id" class="mt-3 border-t border-outline-variant pt-3">
-            <ul v-if="members[classroom.id]?.length" class="space-y-1.5">
+          <div v-if="openDetails === room.id" class="mt-3 border-t border-outline-variant pt-3">
+            <ul v-if="members[room.id]?.length" class="space-y-1.5">
               <li
-                v-for="member in members[classroom.id]"
+                v-for="member in members[room.id]"
                 :key="member.userId"
                 class="flex items-center justify-between gap-3 rounded-xl bg-surface px-3 py-2 text-sm"
               >
@@ -557,24 +588,24 @@ onMounted(() => {
               </li>
             </ul>
             <p v-else class="text-xs text-on-surface-variant">
-              {{ t('teacher.classes.noStudents') }}
+              {{ t('teacher.rooms.noStudents') }}
             </p>
           </div>
         </AppCard>
       </li>
     </ul>
 
-    <!-- Students who registered without a class key. Without this they sit at
+    <!-- Students who registered without a room key. Without this they sit at
          "awaiting approval" with nobody able to let them in, which is the whole
          reason the seed is a teacher now. -->
     <AppCard v-if="pending.length" as="section" class="mt-4">
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
           <h3 class="text-sm font-semibold text-on-surface">
-            {{ t('teacher.classes.waitingTitle') }}
+            {{ t('teacher.rooms.waitingTitle') }}
           </h3>
           <p class="mt-1 text-xs text-on-surface-variant">
-            {{ t('teacher.classes.waitingHint') }}
+            {{ t('teacher.rooms.waitingHint') }}
           </p>
         </div>
         <span
@@ -598,18 +629,18 @@ onMounted(() => {
             <AppButton
               variant="ghostDanger"
               size="sm"
-              :aria-label="t('teacher.classes.waitingDeny', { name: student.fullName })"
+              :aria-label="t('teacher.rooms.waitingDeny', { name: student.fullName })"
               @click="deny(student)"
             >
-              {{ t('teacher.classes.waitingDenyShort') }}
+              {{ t('teacher.rooms.waitingDenyShort') }}
             </AppButton>
             <AppButton
               variant="primary"
               size="sm"
-              :aria-label="t('teacher.classes.waitingApprove', { name: student.fullName })"
+              :aria-label="t('teacher.rooms.waitingApprove', { name: student.fullName })"
               @click="approve(student)"
             >
-              {{ t('teacher.classes.waitingApproveShort') }}
+              {{ t('teacher.rooms.waitingApproveShort') }}
             </AppButton>
           </div>
         </li>
@@ -617,69 +648,82 @@ onMounted(() => {
     </AppCard>
 
     <AppDialog
-      v-if="showCreate"
-      :label="t('teacher.classes.create')"
-      @close="closeCreate"
+      v-if="showEditor"
+      :label="editorTitle"
+      max-width="max-w-lg"
+      @close="closeEditor"
     >
-      <form ref="createPanel" class="flex max-h-[92dvh] flex-col" @submit.prevent="create">
+      <form ref="editorPanel" class="flex max-h-[92dvh] flex-col" @submit.prevent="saveRoom">
         <header class="flex items-start justify-between gap-3 border-b border-outline-variant p-4">
           <div class="min-w-0">
-            <h3 class="text-base font-semibold text-on-surface">
-              {{ t('teacher.classes.create') }}
-            </h3>
+            <h3 class="text-base font-semibold text-on-surface">{{ editorTitle }}</h3>
             <p class="mt-0.5 text-sm text-on-surface-variant">
-              {{ t('teacher.classes.emptyHint') }}
+              {{ t('teacher.rooms.emptyHint') }}
             </p>
           </div>
           <AppButton
             variant="ghost"
             class="shrink-0"
             :aria-label="t('common.close')"
-            @click="closeCreate"
+            @click="closeEditor"
           >
             <X class="size-4" aria-hidden="true" />
           </AppButton>
         </header>
 
-        <div class="flex-1 space-y-3 overflow-y-auto p-4">
+        <div class="flex-1 space-y-4 overflow-y-auto p-4">
           <label class="block">
             <span class="text-xs font-semibold text-on-surface-variant">
-              {{ t('teacher.classes.name') }}
+              {{ t('teacher.rooms.name') }}
             </span>
             <AppInput
-              v-model="newName"
-              :placeholder="t('teacher.classes.namePlaceholder')"
+              v-model="editorName"
+              :placeholder="t('teacher.rooms.namePlaceholder')"
               class="mt-1"
             />
           </label>
-          <label class="block">
-            <span class="text-xs font-semibold text-on-surface-variant">
-              {{ t('teacher.classes.course') }}
-            </span>
-            <!-- Optional: a class can enrol its students into a course on arrival. -->
-            <select
-              v-model="newCourseId"
-              class="mt-1 w-full rounded-lg border border-outline bg-surface px-3 py-2 text-sm text-on-surface focus:border-primary"
-            >
-              <option value="">{{ t('teacher.classes.courseNone') }}</option>
-              <option v-for="course in courses" :key="course.id" :value="course.id">
-                {{ course.title }}
-              </option>
-            </select>
-          </label>
+
+          <!-- Optional, and any number: a room can take several subjects, and
+               everyone who arrives through the key joins all of them. -->
+          <div>
+            <p class="text-xs font-semibold text-on-surface-variant">
+              {{ t('teacher.rooms.courses') }}
+            </p>
+            <p class="mt-0.5 text-[11px] text-on-surface-variant">
+              {{ t('teacher.rooms.coursesHint') }}
+            </p>
+            <ul v-if="courses.length" class="mt-2 flex flex-wrap gap-1.5">
+              <li v-for="course in courses" :key="course.id">
+                <AppButton
+                  variant="secondaryPlain"
+                  size="sm"
+                  :aria-pressed="editorCourseIds.includes(course.id)"
+                  :class="editorCourseIds.includes(course.id) ? 'bg-secondary-container text-on-secondary-container' : ''"
+                  @click="toggleCourse(course.id)"
+                >
+                  <CircleCheck
+                    v-if="editorCourseIds.includes(course.id)"
+                    class="size-3.5"
+                    aria-hidden="true"
+                  />
+                  <BookOpen v-else class="size-3.5" aria-hidden="true" />
+                  {{ course.title }}
+                </AppButton>
+              </li>
+            </ul>
+            <p v-else class="mt-2 text-[11px] text-on-surface-variant">
+              {{ t('teacher.rooms.noCoursesYet') }}
+            </p>
+          </div>
         </div>
 
         <footer class="flex justify-end gap-2 border-t border-outline-variant p-4">
-          <AppButton variant="secondary" ref="createCancel" @click="closeCreate">
+          <AppButton variant="secondary" ref="editorCancel" @click="closeEditor">
             {{ t('common.cancel') }}
           </AppButton>
-          <AppButton
-            variant="primary"
-            type="submit"
-            :disabled="creating || newName.trim() === ''"
-          >
-            <Plus class="size-4" aria-hidden="true" />
-            {{ t('teacher.classes.create') }}
+          <AppButton variant="primary" type="submit" :disabled="editorName.trim() === ''">
+            <Plus v-if="editingRoomId === null" class="size-4" aria-hidden="true" />
+            {{ editingRoomId === null ? t('teacher.rooms.create') : t('common.save') }}
           </AppButton>
         </footer>
       </form>

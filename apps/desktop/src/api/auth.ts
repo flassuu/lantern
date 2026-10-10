@@ -12,13 +12,13 @@ export interface RegisterPayload {
   fullName: string
   /** Optional: a key the teacher handed out. It approves the account straight
    *  away; without it the account waits for an admin, as before. */
-  classKey?: string
+  roomKey?: string
 }
 
-/** What a student is told after registering: which class they joined, if any. */
+/** What a student is told after registering: which room they joined, if any. */
 export interface RegisterResult {
   user: PublicUser
-  viaClass: { className: string; teacherName: string } | null
+  viaRoom: { roomName: string; teacherName: string } | null
 }
 
 export async function login(username: string, password: string): Promise<LoginResult> {

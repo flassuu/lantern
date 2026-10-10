@@ -6,6 +6,35 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Rooms, tags, and runs that can be named
+
+A class and a course were doing two jobs under one word: *who* is in the group
+and *what* the group studies. They are two things, they are linked many-to-many,
+and everything else follows from taking that seriously.
+
+- **Classes are rooms**, all the way down: the tables, the API (`/api/rooms`),
+  the sign-up field (`roomKey`), the tab and every string that says so. A room is
+  a key that lets students in without an administrator; a course is a programme
+  with materials and tests. The rename is a migration (schema v6) that rewrites
+  the referencing foreign keys through `ALTER TABLE` and keeps every key, every
+  member and every enrolment that already existed.
+- **A room links to any number of courses**, and enrolment follows both ways:
+  attach a course later and the students already in are caught up, arrive later
+  and they are caught up too. Whichever happens last, the two are in step, so a
+  teacher never has to think about it.
+- **Tags** are the free labels a teacher puts on tests, sessions and courses -
+  "algebra", "chapter 4". Deliberately not a group: what class something belongs
+  to is a foreign key, because a room can be joined and revoked and a label
+  cannot. One call, `PUT /api/tags/:entity/:id`, answers with the state that
+  resulted rather than with the request.
+- **Tests and runs can be pointed at a room and labelled**, and a test copy keeps
+  both, because a copy is the same paper for the same class.
+- **A session can be named**, and its room defaults to the test's own - most of
+  the time the paper was written for one group and that is who is in the room.
+  The Live board shows the name, the room and the labels.
+- **The session list takes filters** - room, test, status, date range, word and
+  tag - so the archive has something to search once 6.2 gives it a screen.
+
 ### The teacher's Live tab, rebuilt around the run in progress
 
 The tab had grown by accretion - a code, then a QR, then four controls, then a
@@ -37,12 +66,13 @@ lesson runs.
 - **One action colour per tab**: the main action of a tab is the filled primary
   button - start on Live, new on Tests and Courses - where "new" used to be
   green on some screens and blue on others.
-- **Classes**: creating one is a dialog; on each class card the reading actions
-  (QR, students) stay as words while rename, re-key, revoke and delete become
-  icon buttons with tooltips - revoke had been rendering both a tooltip and its
-  own label; the members list picks up the participant-row style; approve takes
-  the primary colour it always deserved. The address card, the key display and
-  every string the classroom flow depends on are untouched.
+- **Rooms** (called classes until 0.6.0, see above): creating one is a dialog; on
+  each room card the reading actions (QR, students) stay as words while rename,
+  re-key, revoke and delete become icon buttons with tooltips - revoke had been
+  rendering both a tooltip and its own label; the members list picks up the
+  participant-row style; approve takes the primary colour it always deserved. The
+  address card, the key display and every string the classroom flow depends on
+  are untouched.
 - **The results journal**: its four headline numbers use the same tile shape as
   the Live board - icon and label above the figure, colour only where the figure
   means something (average in the primary, pass rate in the success colour, and

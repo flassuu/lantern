@@ -6,7 +6,7 @@ import AppHeader from '../components/AppHeader.vue'
 import TabStrip from '../components/common/TabStrip.vue'
 import TestsTab from '../components/teacher/TestsTab.vue'
 import CoursesTab from '../components/teacher/CoursesTab.vue'
-import ClassesTab from '../components/teacher/ClassesTab.vue'
+import RoomsTab from '../components/teacher/RoomsTab.vue'
 import LiveSessionsTab from '../components/teacher/LiveSessionsTab.vue'
 import { listTests } from '../api/tests'
 import type { TestSummary } from '../api/types'
@@ -17,7 +17,7 @@ const emit = defineEmits<{ server: [] }>()
 
 const { t } = useI18n()
 
-const activeTab = ref<'live' | 'tests' | 'courses' | 'classes'>('live')
+const activeTab = ref<'live' | 'tests' | 'courses' | 'rooms'>('live')
 const tests = ref<TestSummary[]>([])
 
 /** The live tab starts sessions from the teacher's own tests, so it needs the list. */
@@ -48,7 +48,7 @@ onMounted(async () => {
           { value: 'live', label: t('teacher.tabs.live'), icon: Radio },
           { value: 'tests', label: t('teacher.tabs.tests'), icon: FileQuestion },
           { value: 'courses', label: t('teacher.tabs.courses'), icon: BookOpen },
-          { value: 'classes', label: t('teacher.tabs.classes'), icon: Users },
+          { value: 'rooms', label: t('teacher.tabs.rooms'), icon: Users },
         ]"
       />
 
@@ -62,7 +62,7 @@ onMounted(async () => {
           <LiveSessionsTab v-if="activeTab === 'live'" :tests="tests" />
           <TestsTab v-else-if="activeTab === 'tests'" />
           <CoursesTab v-else-if="activeTab === 'courses'" />
-          <ClassesTab v-else />
+          <RoomsTab v-else />
         </div>
       </Transition>
 

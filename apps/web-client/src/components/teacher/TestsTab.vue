@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeft, BarChart3, CloudUpload, Copy, Download, Eye, FileQuestion, Plus, Search, Trash2, Upload } from '@lucide/vue'
+import { ArrowLeft, BarChart3, CloudUpload, Copy, Download, Eye, FileQuestion, Plus, Search, Trash2, Upload, Users } from '@lucide/vue'
 import { ApiError } from '../../api/client'
 import EmptyState from '../common/EmptyState.vue'
 import SkeletonList from '../common/SkeletonList.vue'
@@ -26,10 +26,12 @@ import {
   type QuestionForm,
 } from './questionForm'
 import QuestionEditor from './QuestionEditor.vue'
+import TagInput from './TagInput.vue'
 import TestPreviewDialog from './TestPreviewDialog.vue'
 import TestResultsView from './TestResultsView.vue'
 import { useConfirm } from '../../composables/confirm'
 import { getHealthState } from '../../composables/health'
+import { getRoomsState, loadRooms } from '../../composables/rooms'
 import {
   deleteDraft,
   listDrafts,
@@ -66,6 +68,10 @@ const description = ref('')
 const timeLimitMin = ref('')
 const passingPercent = ref('')
 const questionForms = ref<QuestionForm[]>([])
+/** The editor's two extras: which room the test is for, and its labels. */
+const testTags = ref<string[]>([])
+const testRoomId = ref<string | null>(null)
+const rooms = getRoomsState()
 const busyId = ref('')
 /** Which test's journal is open instead of the list. */
 const resultsFor = ref<TestSummary | null>(null)
@@ -120,12 +126,19 @@ async function load() {
   }
 }
 
+/** The name of a room, for the chip; '' when the test is not tied to one. */
+const roomNameOf = computed(
+  () => (id: string | null) => rooms.rooms.find((room) => room.id === id)?.name ?? '',
+)
+
 function startCreate() {
   formErrorKey.value = ''
   title.value = ''
   description.value = ''
   timeLimitMin.value = ''
   passingPercent.value = ''
+  testTags.value = []
+  testRoomId.value = null
   questionForms.value = [newQuestionForm()]
   editingId.value = null
   isEditing.value = true
@@ -140,6 +153,8 @@ async function startEdit(test: TestSummary) {
     timeLimitMin.value = details.timeLimitSec ? String(Math.round(details.timeLimitSec / 60)) : ''
     passingPercent.value = details.passingPercent != null ? String(details.passingPercent) : ''
     questionForms.value = formsFromQuestions(details.questions)
+    testTags.value = (details.tags ?? []).map((tag) => tag.name)
+    testRoomId.value = details.roomId ?? null
     editingId.value = test.id
     isEditing.value = true
   } catch (error) {
@@ -208,6 +223,8 @@ async function save() {
     description: description.value.trim(),
     timeLimitSec: timeLimitMin.value ? Number(timeLimitMin.value) * 60 : null,
     passingPercent: passingPercent.value ? Number(passingPercent.value) : null,
+    roomId: testRoomId.value,
+    tags: testTags.value,
     questions: built,
   }
   saving.value = true
@@ -353,6 +370,7 @@ watch(
 
 onMounted(async () => {
   drafts.value = listDrafts()
+  void loadRooms()
   await load()
 })
 </script>
@@ -400,6 +418,44 @@ onMounted(async () => {
             class="mt-1 w-full rounded-lg border border-outline bg-surface px-3 py-2 text-sm focus:border-primary"
           />
         </label>
+
+        <!-- Which group this paper is for, and what it is about. A room is a
+             choice with consequences - the board counts students per room - and
+             the labels answer the softer question of what it covers. -->
+        <div class="sm:col-span-2">
+          <p class="text-xs font-semibold text-on-surface-variant">{{ t('teacher.tests.room') }}</p>
+          <ul v-if="rooms.rooms.length" class="mt-1.5 flex flex-wrap gap-1.5">
+            <li>
+              <AppButton
+                variant="secondaryPlain"
+                size="sm"
+                :aria-pressed="testRoomId === null"
+                :class="testRoomId === null ? 'bg-secondary-container text-on-secondary-container' : ''"
+                @click="testRoomId = null"
+              >
+                {{ t('teacher.tests.roomNone') }}
+              </AppButton>
+            </li>
+            <li v-for="room in rooms.rooms" :key="room.id">
+              <AppButton
+                variant="secondaryPlain"
+                size="sm"
+                :aria-pressed="testRoomId === room.id"
+                :class="testRoomId === room.id ? 'bg-secondary-container text-on-secondary-container' : ''"
+                @click="testRoomId = room.id"
+              >
+                {{ room.name }}
+              </AppButton>
+            </li>
+          </ul>
+          <p v-else class="mt-1.5 text-[11px] text-on-surface-variant">
+            {{ t('teacher.tests.roomNoneHint') }}
+          </p>
+        </div>
+
+        <div class="sm:col-span-2">
+          <TagInput v-model="testTags" :label="t('teacher.tags.label')" />
+        </div>
       </div>
     </AppCard>
 
@@ -627,6 +683,20 @@ onMounted(async () => {
                 class="rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant"
               >
                 {{ t('teacher.tests.passing', { percent: test.passingPercent }) }}
+              </span>
+              <span
+                v-if="roomNameOf(test.roomId)"
+                class="inline-flex items-center gap-1 rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant"
+              >
+                <Users class="size-3" aria-hidden="true" />
+                {{ roomNameOf(test.roomId) }}
+              </span>
+              <span
+                v-for="tag in test.tags"
+                :key="tag.id"
+                class="rounded-full bg-secondary-container px-2 py-0.5 text-[11px] font-semibold text-on-secondary-container"
+              >
+                {{ tag.name }}
               </span>
             </div>
           </div>

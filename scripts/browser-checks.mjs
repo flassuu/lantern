@@ -15,7 +15,7 @@
  *   BASE=http://host:3300 pnpm check:browser
  *   TEACHER_PASSWORD=... pnpm check:browser
  *
- * It creates the accounts, the test, the session and the class it needs, and
+ * It creates the accounts, the test, the session and the room it needs, and
  * deletes them afterwards. Screenshots of a failure land in a temporary
  * directory whose path is printed.
  */
@@ -246,7 +246,7 @@ const NAMES = {
   teacher: `browsercheck_t${SUFFIX}`,
   student: `browsercheck_s${SUFFIX}`,
 }
-const created = { tests: [], sessions: [], classes: [], users: [] }
+const created = { tests: [], sessions: [], rooms: [], courses: [], users: [] }
 
 /** Everything the checks need, built through the API and torn down after. */
 async function seed() {
@@ -258,11 +258,32 @@ async function seed() {
   // admin-only screens are covered by the server tests, which can insert one.
   const teacher = await tokenOf('teacher', TEACHER_PASSWORD)
 
+  // A room and a course, linked, because that is the shape 6.1 introduced: a
+  // room is who, a course is what, and a room carries any number of courses.
+  // The test is written for that room and labelled, and the run is named, so the
+  // checks below can look for a room chip and a label chip rather than for an
+  // empty state that would pass whether or not the feature works.
+  const course = await api('/api/courses', {
+    token: teacher,
+    method: 'POST',
+    body: { title: `Browser course ${SUFFIX}`, description: 'For the browser checks' },
+  })
+
+  const room = await api('/api/rooms', {
+    token: teacher,
+    method: 'POST',
+    body: { name: `Room ${SUFFIX}`, courseIds: [course.id] },
+  })
+  created.rooms.push(room.room.id)
+  created.courses.push(course.id)
+
   const test = await api('/api/tests', {
     token: teacher,
     method: 'POST',
     body: {
       title: `Browser check ${SUFFIX}`,
+      roomId: room.room.id,
+      tags: ['Fractions', 'Year 9'],
       // The API takes the stored shape - keyed options and a correct key - not
       // what the editor shows, so the fixture follows the server's contract.
       questions: [
@@ -287,16 +308,9 @@ async function seed() {
   const session = await api('/api/sessions', {
     token: teacher,
     method: 'POST',
-    body: { testId: test.test.id },
+    body: { testId: test.test.id, name: 'Browser run', tags: ['Fractions'] },
   })
   created.sessions.push(session.session.id)
-
-  const classroom = await api('/api/classrooms', {
-    token: teacher,
-    method: 'POST',
-    body: { name: `Class ${SUFFIX}` },
-  })
-  created.classes.push(classroom.classroom.id)
 
   // Registering with the key is the flow 5.2 added: approved, no admin involved.
   await api('/api/auth/register', {
@@ -305,12 +319,12 @@ async function seed() {
       username: NAMES.student,
       password: 'browsercheck-pass-1',
       fullName: 'Check Student',
-      classKey: classroom.classroom.key,
+      roomKey: room.room.key,
     },
   })
   created.users.push(NAMES.student)
 
-  // A student who registered with no class key, so the teacher's Classes tab has
+  // A student who registered with no room key, so the teacher's Rooms tab has
   // somebody in the waiting list to approve.
   await api('/api/auth/register', {
     method: 'POST',
@@ -321,7 +335,7 @@ async function seed() {
     },
   })
 
-  return { teacher, student: await tokenOf(NAMES.student, 'browsercheck-pass-1'), key: classroom.classroom.key }
+  return { teacher, student: await tokenOf(NAMES.student, 'browsercheck-pass-1'), key: room.room.key }
 }
 
 async function cleanup() {
@@ -331,7 +345,8 @@ async function cleanup() {
     await api(`/api/sessions/${id}`, { token: teacher, method: 'PATCH', body: { status: 'finished' } }).catch(() => {})
   }
   for (const id of created.tests) await api(`/api/tests/${id}`, { token: teacher, method: 'DELETE' }).catch(() => {})
-  for (const id of created.classes) await api(`/api/classrooms/${id}`, { token: teacher, method: 'DELETE' }).catch(() => {})
+  for (const id of created.rooms) await api(`/api/rooms/${id}`, { token: teacher, method: 'DELETE' }).catch(() => {})
+  for (const id of created.courses) await api(`/api/courses/${id}`, { token: teacher, method: 'DELETE' }).catch(() => {})
   // The student is left behind on purpose: deleting accounts is admin-only, and
   // the teacher cannot — nor should be able to — reach that endpoint.
 }
@@ -540,7 +555,7 @@ async function clickTabByIndex(session, context, index, wait = 1200) {
 
 async function layoutSweep(session, fixtures) {
   const roles = [
-    { name: 'teacher', token: fixtures.teacher, tabs: [/^Live$/, /^Tests$/, /^Courses$/, /^Classes$/] },
+    { name: 'teacher', token: fixtures.teacher, tabs: [/^Live$/, /^Tests$/, /^Courses$/, /^Rooms$/] },
     { name: 'student', token: fixtures.student, tabs: [] },
   ]
 
@@ -572,7 +587,7 @@ async function happyPaths(session, fixtures) {
 
   // With nothing configured, the Live tab has to say the QR is unreachable. This
   // runs first, before anything sets an address: 0.5.2 moved that to the
-  // teacher's own Classes tab, and the warning can only be observed while the
+  // teacher's own Rooms tab, and the warning can only be observed while the
   // address is still unset.
   await openApp(session, context, { token: fixtures.teacher, locale: 'en', width: 1100, height: 1000 })
   await settle(session, context, 'tabs')
@@ -587,8 +602,8 @@ async function happyPaths(session, fixtures) {
   )
   await session.screenshot(context, join(SHOTS, 'teacher-live-no-address.png'))
 
-  // Teacher: the class key is on screen.
-  await clickTab(session, context, '^Classes$')
+  // Teacher: the room key is on screen.
+  await clickTab(session, context, '^Rooms$')
   const keyShown = await session.run(
     context,
     `
@@ -597,7 +612,7 @@ async function happyPaths(session, fixtures) {
   `,
   )
   check(
-    'teacher: the class key is shown',
+    'teacher: the room key is shown',
     /^[A-HJ-NP-Z2-9]{6}$/.test(keyShown ?? ''),
     `got ${keyShown}`,
   )
@@ -613,13 +628,13 @@ async function happyPaths(session, fixtures) {
   )
 
   // 0.5.1: the teacher sets the address and approves a waiting student from the
-  // Classes tab. Both are screens that did not exist for a teacher before, and
+  // Rooms tab. Both are screens that did not exist for a teacher before, and
   // both are the reason the seed stopped being an admin.
   await openApp(session, context, { token: fixtures.teacher, locale: 'en', width: 1100, height: 1000 })
   await settle(session, context, 'tabs')
-  await clickTab(session, context, '^Classes$', 1800)
+  await clickTab(session, context, '^Rooms$', 1800)
 
-  const classes = await session.run(
+  const roomsScreen = await session.run(
     context,
     `
     const text = document.body.textContent;
@@ -627,17 +642,26 @@ async function happyPaths(session, fixtures) {
       addressField: !!document.querySelector('#public-address'),
       addressCard: /Student address/.test(text),
       waiting: /Waiting for approval/.test(text),
-      waitingHint: /Nobody is waiting|without a class key/.test(text),
+      waitingHint: /Nobody is waiting|without a room key/.test(text),
+      courseChip: /Browser course/.test(text),
+      courseText: (text.match(/Browser course/g) || []).length,
     };
   `,
   )
-  check('teacher: the Classes tab has an address field', classes.addressField)
-  check('teacher: the Classes tab has an address card', classes.addressCard)
+  check('teacher: the Rooms tab has an address field', roomsScreen.addressField)
+  check('teacher: the Rooms tab has an address card', roomsScreen.addressCard)
   check(
     'teacher: a student who registered without a key is listed for approval',
-    classes.waitingHint,
+    roomsScreen.waitingHint,
   )
-  await session.screenshot(context, join(SHOTS, 'teacher-classes-address.png'))
+  // 6.1: a room is who, a course is what, and the room card says which courses
+  // its students are on. The fixture links one, so an empty state cannot pass.
+  check(
+    'teacher: a room shows the courses its students are enrolled in',
+    roomsScreen.courseChip,
+    `courses on screen: ${roomsScreen.courseText}`,
+  )
+  await session.screenshot(context, join(SHOTS, 'teacher-rooms-address.png'))
 
   // Saving an address from the teacher screen, rather than the admin's System tab.
   const teacherAddress = 'http://10.11.12.13:3300'
@@ -656,7 +680,7 @@ async function happyPaths(session, fixtures) {
     return document.body.textContent.includes('Address saved') ? 'saved' : 'no confirmation';
   `,
   )
-  check('teacher: saving the address from the Classes tab works', saved === 'saved', `got ${saved}`)
+  check('teacher: saving the address from the Rooms tab works', saved === 'saved', `got ${saved}`)
 
   const readBack = await api('/api/settings', { token: fixtures.teacher })
   check(
@@ -678,11 +702,55 @@ async function happyPaths(session, fixtures) {
   )
   await session.screenshot(context, join(SHOTS, 'teacher-live-with-address.png'))
 
+  // 6.1: the room and the labels on the other two screens that carry them. A
+  // test is written for a room and labelled; a run can be called something other
+  // than the paper it ran. Checked here because this is the last stop on the
+  // Live tab, and the next block leaves it for the student screens.
+  const liveScreen = await session.run(
+    context,
+    `
+    const text = document.body.textContent;
+    return {
+      runName: /Browser run/.test(text),
+      roomChip: text.includes(${JSON.stringify(`Room ${SUFFIX}`)}),
+    };
+  `,
+  )
+  check('teacher: a run is called what the teacher called it', liveScreen.runName)
+  check(
+    'teacher: the live board shows which room is sitting the run',
+    liveScreen.roomChip,
+    'no room chip on the board',
+  )
+
+  await clickTab(session, context, '^Tests$', 1800)
+  const testsScreen = await session.run(
+    context,
+    `
+    const text = document.body.textContent;
+    return {
+      roomChip: text.includes(${JSON.stringify(`Room ${SUFFIX}`)}),
+      tagChip: /Fractions/.test(text) && /Year 9/.test(text),
+    };
+  `,
+  )
+  check(
+    'teacher: a test card shows the room it is written for',
+    testsScreen.roomChip,
+    'no room chip on the test card',
+  )
+  check(
+    'teacher: a test card shows its labels',
+    testsScreen.tagChip,
+    'labels missing from the test card',
+  )
+  await session.screenshot(context, join(SHOTS, 'teacher-tests-tags.png'))
+
   // And the student who registered with no key can be let in from this tab.
   const pending = await api('/api/users/pending', { token: fixtures.teacher }).catch(() => ({ users: [] }))
   const student = (pending.users ?? [])[0]
   if (!student) {
-    check('teacher: a no-key student can be approved from the Classes tab', false, 'no pending student')
+    check('teacher: a no-key student can be approved from the Rooms tab', false, 'no pending student')
   } else {
     const approved = await api(`/api/users/${student.id}/status`, {
       token: fixtures.teacher,
@@ -690,7 +758,7 @@ async function happyPaths(session, fixtures) {
       body: { status: 'approved' },
     })
     check(
-      'teacher: a no-key student can be approved from the Classes tab',
+      'teacher: a no-key student can be approved from the Rooms tab',
       approved?.user?.status === 'approved',
       JSON.stringify(approved).slice(0, 80),
     )
@@ -766,7 +834,7 @@ function readAddressState(session, context) {
   )
 }
 
-/** Student: the account created with a class key can sign in and see work. */
+/** Student: the account created with a room key can sign in and see work. */
 async function studentPath(session, fixtures, context) {
   await openApp(session, context, { token: fixtures.student, locale: 'uk', width: 390 })
   await settle(session, context, 'content')
@@ -1189,7 +1257,7 @@ async function studentPath(session, fixtures, context) {
   // diagnosed from `the page said`, not from this file.
 
   // The signed-out screens, where there is no account to put in a menu. A student
-  // arriving from a class QR lands here first, and it is the first thing anybody
+  // arriving from a room QR lands here first, and it is the first thing anybody
   // sees, so it is checked in both languages at phone width.
   // Sign out through the store, then navigate: a second load is what makes the app
   // read the missing token, and `location.href` from inside a script leaves the

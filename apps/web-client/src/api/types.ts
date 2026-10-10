@@ -57,7 +57,10 @@ export interface TestSummary {
   description: string
   timeLimitSec: number | null
   passingPercent: number | null
+  /** The group this test was written for, or null when it is not tied to one. */
+  roomId: string | null
   questionCount: number
+  tags: Tag[]
   createdAt: string
   updatedAt: string
 }
@@ -71,7 +74,21 @@ export interface TestInput {
   description?: string
   timeLimitSec?: number | null
   passingPercent?: number | null
+  roomId?: string | null
+  tags?: string[]
   questions?: QuestionInput[]
+}
+
+/**
+ * A free label the teacher puts on tests, sessions and courses: "algebra",
+ * "photosynthesis", "chapter 4". What class something belongs to is a room, not
+ * a label — see `Room.roomId` on the things that carry one.
+ */
+export interface Tag {
+  id: string
+  ownerId: string
+  name: string
+  createdAt: string
 }
 
 export interface CourseSummary {
@@ -82,6 +99,7 @@ export interface CourseSummary {
   materialsCount: number
   testsCount: number
   studentsCount: number
+  tags: Tag[]
   createdAt: string
   updatedAt: string
 }
@@ -95,6 +113,7 @@ export interface CourseDetails extends CourseSummary {
 export interface CourseInput {
   title: string
   description?: string
+  tags?: string[]
 }
 
 export interface Material {
@@ -146,21 +165,27 @@ export interface ServerSettings {
   suggestions: string[]
 }
 
-export interface Classroom {
+/**
+ * A room is *who*: a group of students with a key that lets them register
+ * without an administrator in the room. A course is *what*: a programme with
+ * topics, materials and tests. The two are linked many-to-many, and a room can
+ * have any number of courses.
+ */
+export interface Room {
   id: string
   ownerId: string
   name: string
   /** Six characters from the join-code alphabet, read aloud without 0/O or 1/I. */
   key: string
   status: 'active' | 'revoked'
-  /** Optional: everyone who arrives through this class joins the course too. */
-  courseId: string | null
+  /** Every course this room's students are enrolled in. */
+  courseIds: string[]
   createdAt: string
   revokedAt: string | null
   membersCount: number
 }
 
-export interface ClassroomMember {
+export interface RoomMember {
   userId: string
   username: string
   fullName: string
@@ -168,20 +193,27 @@ export interface ClassroomMember {
   joinedAt: string
 }
 
-export interface ClassroomDetail {
-  classroom: Classroom
-  members: ClassroomMember[]
+/** A course a room is attached to, for the picker. */
+export interface RoomCourse {
+  id: string
+  title: string
 }
 
-/** What a class key leads to, shown on the sign-up form before an account exists. */
-export interface ClassPreview {
-  className: string
+export interface RoomDetail {
+  room: Room
+  members: RoomMember[]
+  courses: RoomCourse[]
+}
+
+/** What a room key leads to, shown on the sign-up form before an account exists. */
+export interface RoomPreview {
+  roomName: string
   teacherName: string
 }
 
-export interface CreateClassroom {
+export interface CreateRoom {
   name: string
-  courseId?: string | null
+  courseIds?: string[]
 }
 
 /** One line of the server log, as the console and the web admin both read it. */

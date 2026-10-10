@@ -64,8 +64,8 @@ export const authRoutes: FastifyPluginAsync<AuthDeps> = async (
    *
    * Without a key the account starts `pending` and waits for an admin, exactly
    * as before. With a key that a teacher handed out it starts `approved` and the
-   * classroom is recorded - that is the whole point of a class key: the teacher
-   * is alone in the room, so nobody else can press "Approve".
+   * room is recorded - that is the whole point of a room key: the teacher is
+   * alone in the room, so nobody else can press "Approve".
    *
    * A key only ever approves a *student*. The role is hard-coded below, so no
    * key, however it was obtained, can produce anything but a student account.

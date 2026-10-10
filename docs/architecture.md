@@ -11,7 +11,7 @@ required — all data lives inside the classroom LAN.
 | Role | Entry points | Capabilities |
 |------|--------------|--------------|
 | **Administrator** | Desktop app (with embedded console) or headless CLI | Hosts the system: runs the embedded server, manages the database, users and participants, sees all data. The central point every other client connects to. |
-| **Teacher** | Desktop app and/or web app on `localhost` | Creates and edits tests, shares them with students, builds courses (like Google Classroom) with materials, reviews statistics, grade journals and per-session reports. May prepare tests offline and sync them later. |
+| **Teacher** | Desktop app and/or web app on `localhost` | Creates and edits tests, shares them with students, builds courses and rooms (like Google Classroom) with materials, reviews statistics, grade journals and per-session reports. May prepare tests offline and sync them later. |
 | **Student** | Web app on a phone/PC (PWA) or desktop app | Takes tests, views own statistics, and reads materials from assigned courses. (Forums — a future idea, out of scope for v1.) |
 
 One client, many roles — the frontend is a single codebase whose features are

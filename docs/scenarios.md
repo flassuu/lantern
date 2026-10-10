@@ -232,7 +232,7 @@ cd apps/desktop/src-tauri && cargo test      # HOST=<triple> for the real-server
 
 ## Scenario C — a classroom with no admin
 
-### Closed in Phase 5.2
+### Closed in Phase 5.2, renamed in Phase 6.1
 
 A **classroom with a key**. Before it, the teacher had to sign in as the admin to
 approve students by hand — which is the exact thing that breaks when a student
@@ -240,13 +240,18 @@ registers five minutes before the lesson.
 
 How it works:
 
-1. The teacher creates a class in their workbench; the app shows a six-character
-   key and a QR of the registration link (`?class=KEY`).
+1. The teacher creates a **room** in their workbench; the app shows a
+   six-character key and a QR of the registration link (`?room=KEY`).
 2. A student scans it, registers, and is **approved immediately** — the key is
-   the approval, scoped to that class and revocable.
-3. Optionally the classroom is linked to a course, and everyone who arrives
-   through the key is enrolled in it.
+   the approval, scoped to that room and revocable.
+3. The room is linked to any number of courses, and everyone who arrives through
+   the key is enrolled in all of them. The link works in both directions: attach
+   a course later and the students already in are caught up.
 4. The teacher sees who came in through the key, and can revoke or regenerate it.
+
+   Since 6.1 the room is *who* and a course is *what*. Before that they were one
+   column, and a class could study exactly one course — which was wrong for
+   every teacher who teaches more than one subject to the same group.
 
 ### How to verify it
 
@@ -255,11 +260,15 @@ How it works:
   `pending` (nothing about the old flow changes).
 - Revoke a key → the next registration with it is refused; existing students keep
   working.
-- A teacher cannot see, revoke or delete another teacher's class, and a class key
+- A teacher cannot see, revoke or delete another teacher's room, and a room key
   never grants teacher or admin rights anywhere.
-- Automated: `apps/server/tests/classrooms.test.ts` (key generation, approve /
-  reject / revoke, ownership, auto-enrolment) and a browser check of the register
-  screen with and without a key.
+- Link two courses to a room, register a student before and after: both end up
+  enrolled in both, and enrolling one of them again is refused as a duplicate.
+- Automated: `apps/server/tests/rooms.test.ts` (key generation, approve /
+  reject / revoke, ownership, enrolment both ways), `tests/migration-v6.test.ts`
+  (the rename on a database that already has a room, members and a course in
+  it), `tests/tags.test.ts`, and browser checks of the register screen with and
+  without a key and of the Rooms tab.
 
 ---
 

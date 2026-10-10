@@ -1,4 +1,5 @@
 import { apiFetch } from './client'
+import type { Tag } from './types'
 
 export type LiveSessionStatus = 'active' | 'paused' | 'finished'
 export type ParticipationStatus = 'joined' | 'submitted' | 'auto_submitted'
@@ -47,6 +48,10 @@ export interface LiveSession {
   status: LiveSessionStatus
   timeLimitSec: number | null
   passingPercent: number | null
+  /** What the teacher called this run; null falls back to the test's title. */
+  name: string | null
+  /** The group this run is for; it defaults to the test's own room. */
+  roomId: string | null
   startedAt: string
   finishedAt: string | null
   test: { id: string; title: string; questionCount: number }
@@ -94,19 +99,54 @@ export interface SessionSummary extends LiveSession {
   title: string
   joinedCount: number
   submittedCount: number
+  tags: Tag[]
+}
+
+/** What a session list can be narrowed by; every field is optional. */
+export interface SessionFilter {
+  roomId?: string | null
+  testId?: string | null
+  status?: LiveSessionStatus | null
+  /** ISO date; sessions created on or after it. */
+  from?: string | null
+  to?: string | null
+  /** Matched against the session name and the test title. */
+  query?: string | null
+  tagId?: string | null
+  limit?: number
+}
+
+function filterQuery(filter: SessionFilter): string {
+  const parts: string[] = []
+  const add = (key: string, value: string | number | null | undefined): void => {
+    if (value === null || value === undefined || value === '') return
+    parts.push(`${key}=${encodeURIComponent(String(value))}`)
+  }
+  add('room', filter.roomId)
+  add('test', filter.testId)
+  add('status', filter.status)
+  add('from', filter.from)
+  add('to', filter.to)
+  add('q', filter.query)
+  add('tag', filter.tagId)
+  add('limit', filter.limit)
+  return parts.length > 0 ? `?${parts.join('&')}` : ''
 }
 
 /** Teacher only: their own sessions (an admin sees every teacher's). */
-export async function listSessions(): Promise<SessionSummary[]> {
-  const result = await apiFetch<{ sessions: SessionSummary[] }>('/api/sessions')
+export async function listSessions(filter: SessionFilter = {}): Promise<SessionSummary[]> {
+  const result = await apiFetch<{ sessions: SessionSummary[] }>(`/api/sessions${filterQuery(filter)}`)
   return result.sessions
 }
 
 /** Teacher only: starts a run of one of their tests. */
-export async function startSession(testId: string): Promise<LiveSession> {
+export async function startSession(
+  testId: string,
+  input: { name?: string | null; roomId?: string | null; tags?: string[] } = {},
+): Promise<LiveSession> {
   const result = await apiFetch<{ session: LiveSession }>('/api/sessions', {
     method: 'POST',
-    body: JSON.stringify({ testId }),
+    body: JSON.stringify({ testId, ...input }),
   })
   return result.session
 }

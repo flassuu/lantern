@@ -164,6 +164,15 @@ onMounted(load)
           <p v-if="course.description" class="mt-0.5 truncate text-sm text-on-surface-variant">
             {{ course.description }}
           </p>
+          <ul v-if="course.tags.length" class="mt-1.5 flex flex-wrap gap-1.5">
+            <li
+              v-for="tag in course.tags"
+              :key="tag.id"
+              class="rounded-full bg-secondary-container px-2 py-0.5 text-[11px] font-semibold text-on-secondary-container"
+            >
+              {{ tag.name }}
+            </li>
+          </ul>
         </div>
       </div>
     </div>

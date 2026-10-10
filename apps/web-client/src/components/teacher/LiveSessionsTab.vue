@@ -35,15 +35,18 @@ import EmptyState from '../common/EmptyState.vue'
 import QrCodeCard from '../common/QrCode.vue'
 import SkeletonList from '../common/SkeletonList.vue'
 import TestPicker from './TestPicker.vue'
+import TagInput from './TagInput.vue'
 import { useConfirm } from '../../composables/confirm'
 import { useDialogFocus } from '../../composables/focusTrap'
 import { effectiveBaseUrl, loadSettings } from '../../composables/settings'
 import { isReachableFromPhone, joinLink as buildJoinLink } from '../../utils/links'
 import { useSessionChannel } from '../../composables/sessionChannel'
+import { getRoomsState, loadRooms } from '../../composables/rooms'
 import { useToast } from '../../composables/toast'
 import AppButton from '../../components/common/AppButton.vue'
 import AppCard from '../../components/common/AppCard.vue'
 import AppDialog from '../../components/common/AppDialog.vue'
+import AppInput from '../../components/common/AppInput.vue'
 
 const props = defineProps<{
   tests: TestSummary[]
@@ -97,6 +100,17 @@ const selected = computed(
 const selectedTest = computed(
   () => props.tests.find((test) => test.id === selected.value?.testId) ?? null,
 )
+/** What a session is called on screen: the teacher's own name, or the test's. */
+const sessionName = (session: SessionSummary): string => session.name ?? session.title
+const selectedName = computed(() => (selected.value ? sessionName(selected.value) : ''))
+const rooms = getRoomsState()
+const roomNameOf = (id: string | null): string =>
+  rooms.rooms.find((room) => room.id === id)?.name ?? ''
+
+/** What the start dialog collects beyond the test: a name, a room, labels. */
+const sessionNameDraft = ref('')
+const sessionRoomId = ref<string | null>(null)
+const sessionTags = ref<string[]>([])
 const joinedCount = computed(() => participants.value.length)
 const workingCount = computed(
   () => participants.value.filter((entry) => entry.status === 'joined').length,
@@ -234,7 +248,20 @@ async function load(): Promise<void> {
 function openStart(): void {
   actionError.value = ''
   startingTestId.value = ''
+  // Every run starts blank, except for the room: most of the time the paper was
+  // written for one group and that is who is in the room, so offering it already
+  // ticked saves a decision that is usually already made.
+  sessionNameDraft.value = ''
+  sessionTags.value = []
+  sessionRoomId.value = null
   showStart.value = true
+}
+
+/** Picking a test pre-fills the room that test belongs to, if any. */
+function chooseTestForStart(testId: string): void {
+  startingTestId.value = testId
+  const test = props.tests.find((entry) => entry.id === testId)
+  if (test) sessionRoomId.value = test.roomId ?? null
 }
 
 function closeStart(): void {
@@ -247,7 +274,12 @@ async function start(testId: string): Promise<void> {
   starting.value = true
   actionError.value = ''
   try {
-    const session = await startSession(testId)
+    const name = sessionNameDraft.value.trim()
+    const session = await startSession(testId, {
+      name: name === '' ? null : name,
+      roomId: sessionRoomId.value,
+      tags: sessionTags.value,
+    })
     showStart.value = false
     startingTestId.value = ''
     toast.success(t('teacher.live.started', { code: session.joinCode }))
@@ -343,6 +375,7 @@ watch(selectedId, (id) => {
 onMounted(() => {
   void load()
   void loadSettings()
+  void loadRooms()
   clock = window.setInterval(() => {
     now.value = Date.now()
   }, 1000)
@@ -400,7 +433,7 @@ onBeforeUnmount(() => {
           @click="selectedId = session.id"
         >
           <span class="size-2 rounded-full" :class="statusDot[session.status]" />
-          <span class="max-w-40 truncate">{{ session.title }}</span>
+          <span class="max-w-40 truncate">{{ sessionName(session) }}</span>
           <span class="font-mono tracking-wide opacity-80">{{ session.joinCode }}</span>
         </button>
       </div>
@@ -437,8 +470,35 @@ onBeforeUnmount(() => {
                 </span>
               </div>
               <h4 class="mt-1.5 truncate text-lg font-semibold text-on-surface">
-                {{ selected.title }}
+                {{ selectedName }}
               </h4>
+              <!-- A run the teacher named shows the paper it ran as well: the name
+                   says which lesson this was, the title says what was asked. -->
+              <p
+                v-if="selected.name && selected.title"
+                class="mt-0.5 truncate text-xs text-on-surface-variant"
+              >
+                {{ selected.title }}
+              </p>
+              <div
+                v-if="roomNameOf(selected.roomId) || selected.tags.length"
+                class="mt-1.5 flex flex-wrap items-center gap-1.5"
+              >
+                <span
+                  v-if="roomNameOf(selected.roomId)"
+                  class="inline-flex items-center gap-1 rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant"
+                >
+                  <Users class="size-3" aria-hidden="true" />
+                  {{ roomNameOf(selected.roomId) }}
+                </span>
+                <span
+                  v-for="tag in selected.tags"
+                  :key="tag.id"
+                  class="rounded-full bg-secondary-container px-2 py-0.5 text-[11px] font-semibold text-on-secondary-container"
+                >
+                  {{ tag.name }}
+                </span>
+              </div>
               <p class="mt-0.5 text-xs text-on-surface-variant">
                 {{ t('teacher.live.startedAt', { time: formatTime(selected.startedAt) }) }}
               </p>
@@ -773,8 +833,64 @@ onBeforeUnmount(() => {
           </AppButton>
         </header>
 
-        <div class="flex-1 overflow-y-auto p-4">
-          <TestPicker :tests="props.tests" :busy="starting" @select="startingTestId = $event" />
+        <div class="flex-1 space-y-4 overflow-y-auto p-4">
+          <TestPicker
+            :tests="props.tests"
+            :busy="starting"
+            @select="chooseTestForStart"
+          />
+
+          <!-- Three optionals, all of which make the archive usable later: what
+               the run was called, which group sat it, what it covered. -->
+          <label class="block">
+            <span class="text-xs font-semibold text-on-surface-variant">
+              {{ t('teacher.live.runName') }}
+            </span>
+            <AppInput
+              v-model="sessionNameDraft"
+              class="mt-1"
+              :placeholder="t('teacher.live.runNamePlaceholder')"
+              maxlength="120"
+            />
+          </label>
+
+          <div>
+            <p class="text-xs font-semibold text-on-surface-variant">
+              {{ t('teacher.live.runRoom') }}
+            </p>
+            <p class="mt-0.5 text-[11px] text-on-surface-variant">
+              {{ t('teacher.live.runRoomHint') }}
+            </p>
+            <ul v-if="rooms.rooms.length" class="mt-2 flex flex-wrap gap-1.5">
+              <li>
+                <AppButton
+                  variant="secondaryPlain"
+                  size="sm"
+                  :aria-pressed="sessionRoomId === null"
+                  :class="sessionRoomId === null ? 'bg-secondary-container text-on-secondary-container' : ''"
+                  @click="sessionRoomId = null"
+                >
+                  {{ t('teacher.tests.roomNone') }}
+                </AppButton>
+              </li>
+              <li v-for="room in rooms.rooms" :key="room.id">
+                <AppButton
+                  variant="secondaryPlain"
+                  size="sm"
+                  :aria-pressed="sessionRoomId === room.id"
+                  :class="sessionRoomId === room.id ? 'bg-secondary-container text-on-secondary-container' : ''"
+                  @click="sessionRoomId = room.id"
+                >
+                  {{ room.name }}
+                </AppButton>
+              </li>
+            </ul>
+            <p v-else class="mt-2 text-[11px] text-on-surface-variant">
+              {{ t('teacher.tests.roomNoneHint') }}
+            </p>
+          </div>
+
+          <TagInput v-model="sessionTags" :label="t('teacher.tags.label')" />
         </div>
 
         <footer class="flex justify-end gap-2 border-t border-outline-variant p-4">
@@ -782,7 +898,7 @@ onBeforeUnmount(() => {
             {{ t('common.cancel') }}
           </AppButton>
           <AppButton
-            variant="success"
+            variant="primary"
             :disabled="!startingTestId || starting"
             @click="start(startingTestId)"
           >

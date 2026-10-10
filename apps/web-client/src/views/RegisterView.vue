@@ -4,9 +4,9 @@ import { useI18n } from 'vue-i18n'
 import { CircleCheck, Eye, EyeOff } from '@lucide/vue'
 import AppHeader from '../components/AppHeader.vue'
 import { register } from '../api/auth'
-import { previewClassKey } from '../api/classrooms'
+import { previewRoomKey } from '../api/rooms'
 import { ApiError } from '../api/client'
-import type { ClassPreview } from '../api/types'
+import type { RoomPreview } from '../api/types'
 import AppButton from '../components/common/AppButton.vue'
 import AppCard from '../components/common/AppCard.vue'
 import AppInput from '../components/common/AppInput.vue'
@@ -16,10 +16,10 @@ import AppInput from '../components/common/AppInput.vue'
  *
  * The key is the whole reason a teacher can run a class alone: it approves the
  * account without an admin in the room. It is optional and it is checked before
- * the password is typed, so a student learns "Class 9A · Olena M." - or that
+ * the password is typed, so a student learns "9A · Olena M." - or that
  * the code is wrong - before they have committed to anything.
  */
-const emit = defineEmits<{ back: [] }>()
+const emit = defineEmits<{ back: []; server: [] }>()
 
 const { t } = useI18n()
 
@@ -30,18 +30,18 @@ const confirmPassword = ref('')
 /** One toggle per field: the same show/hide button the sign-in form carries. */
 const showPassword = ref(false)
 const showConfirmPassword = ref(false)
-const classKey = ref('')
+const roomKey = ref('')
 const errorKey = ref('')
 const submitting = ref(false)
 
 /** null = nothing typed yet; false = the code is not usable. */
-const classPreview = ref<ClassPreview | null>(null)
+const roomPreview = ref<RoomPreview | null>(null)
 const classChecked = ref(false)
 const classErrorKey = ref('')
-const checkingClass = ref(false)
+const checkingRoom = ref(false)
 
 /** What happened to the account: approved through a key, or waiting for an admin. */
-const created = ref<{ approved: boolean; className?: string } | null>(null)
+const created = ref<{ approved: boolean; roomName?: string } | null>(null)
 
 function validate(): string {
   if (!fullName.value.trim()) return 'fullNameRequired'
@@ -61,7 +61,7 @@ function errorMessage(key: string): string {
     case 'CONFLICT':
       return t('auth.errors.usernameTaken')
     case 'INVALID_CLASS_KEY':
-      return t('auth.errors.classKeyWrong')
+      return t('auth.errors.roomKeyWrong')
     case 'VALIDATION':
       return t('auth.errors.validation')
     case 'NETWORK':
@@ -76,25 +76,25 @@ function errorMessage(key: string): string {
  * keystroke: a lookup per character would be both rude to the server and
  * useless, since nobody finishes typing a six-character code in under a second.
  */
-async function checkClass(): Promise<void> {
-  const key = classKey.value.trim()
+async function checkRoom(): Promise<void> {
+  const key = roomKey.value.trim()
   if (key === '') {
     classChecked.value = false
-    classPreview.value = null
+    roomPreview.value = null
     classErrorKey.value = ''
     return
   }
-  checkingClass.value = true
+  checkingRoom.value = true
   classErrorKey.value = ''
   try {
-    classPreview.value = await previewClassKey(key)
+    roomPreview.value = await previewRoomKey(key)
     classChecked.value = true
   } catch (error) {
-    classPreview.value = null
+    roomPreview.value = null
     classChecked.value = true
     classErrorKey.value = error instanceof ApiError && error.code === 'NETWORK' ? 'network' : 'wrong'
   } finally {
-    checkingClass.value = false
+    checkingRoom.value = false
   }
 }
 
@@ -111,11 +111,11 @@ async function submit() {
       fullName: fullName.value.trim(),
       username: username.value.trim(),
       password: password.value,
-      ...(classKey.value.trim() === '' ? {} : { classKey: classKey.value.trim() }),
+      ...(roomKey.value.trim() === '' ? {} : { roomKey: roomKey.value.trim() }),
     })
     created.value = {
       approved: result.user.status === 'approved',
-      className: result.viaClass?.className,
+      roomName: result.viaRoom?.roomName,
     }
   } catch (error) {
     errorKey.value = error instanceof ApiError ? error.code : ''
@@ -133,14 +133,14 @@ function back() {
 onMounted(() => {
   const key = new URLSearchParams(window.location.search).get('class')
   if (!key) return
-  classKey.value = key.trim().toUpperCase()
-  void checkClass()
+  roomKey.value = key.trim().toUpperCase()
+  void checkRoom()
 })
 </script>
 
 <template>
   <div class="flex min-h-dvh flex-col bg-surface">
-    <AppHeader />
+    <AppHeader hosted @server="emit('server')" />
     <main class="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 py-10">
     <section
       v-if="created"
@@ -151,7 +151,7 @@ onMounted(() => {
       </p>
       <p class="mt-2 text-sm text-success">
         <template v-if="created.approved">
-          {{ t('auth.readyNote', { className: created.className ?? '' }) }}
+          {{ t('auth.readyNote', { roomName: created.roomName ?? '' }) }}
         </template>
         <template v-else>{{ t('auth.pendingNote') }}</template>
       </p>
@@ -179,11 +179,11 @@ onMounted(() => {
         <div>
           <label class="block">
             <span class="flex items-baseline gap-2 text-xs font-medium text-on-surface-variant">
-              {{ t('auth.classKey') }}
-              <span class="font-normal text-on-surface-variant/80">{{ t('auth.classKeyOptional') }}</span>
+              {{ t('auth.roomKey') }}
+              <span class="font-normal text-on-surface-variant/80">{{ t('auth.roomKeyOptional') }}</span>
             </span>
             <AppInput
-              v-model="classKey"
+              v-model="roomKey"
               type="text"
               autocomplete="off"
               autocapitalize="characters"
@@ -191,26 +191,26 @@ onMounted(() => {
               maxlength="7"
               placeholder="ABC234"
               class="mt-1 font-mono uppercase tracking-[0.2em]"
-              @blur="checkClass"
+              @blur="checkRoom"
             />
           </label>
 
           <p
-            v-if="checkingClass"
+            v-if="checkingRoom"
             class="mt-1.5 text-xs text-on-surface-variant"
           >
             {{ t('common.loading') }}
           </p>
           <p
-            v-else-if="classPreview"
+            v-else-if="roomPreview"
             class="mt-1.5 flex items-start gap-2 rounded-[var(--radius-control)] bg-success-container px-3 py-2 text-xs text-on-success-container"
           >
             <CircleCheck class="mt-px size-4 shrink-0" aria-hidden="true" />
             <span>
-              {{ t('auth.classKeyFound') }}
-              <span class="font-semibold">{{ classPreview.className }}</span>
-              <template v-if="classPreview.teacherName">
-                · {{ classPreview.teacherName }}
+              {{ t('auth.roomKeyFound') }}
+              <span class="font-semibold">{{ roomPreview.roomName }}</span>
+              <template v-if="roomPreview.teacherName">
+                · {{ roomPreview.teacherName }}
               </template>
             </span>
           </p>
@@ -221,7 +221,7 @@ onMounted(() => {
             {{
               classErrorKey === 'network'
                 ? t('auth.errors.network')
-                : t('auth.errors.classKeyWrong')
+                : t('auth.errors.roomKeyWrong')
             }}
           </p>
         </div>

@@ -39,16 +39,16 @@ Request body:
 ```json
 {
   "username": "student1", "password": "secret-pass-1", "fullName": "Student One",
-  "classKey": "42FAK2"
+  "roomKey": "42FAK2"
 }
 ```
 
-- `classKey` is optional. Without it the account is `pending` and waits for an
+- `roomKey` is optional. Without it the account is `pending` and waits for an
   approval — from an admin, or from a teacher (see
   [`GET /api/users/pending`](#get-apiuserspending)). With a valid
-  [class key](#classrooms-apiclassrooms) it is `approved`
-  immediately, the classroom records the student, and the class is enrolled into
-  the linked course — a teacher can run a class alone.
+  [room key](#rooms-apirooms) it is `approved` immediately, the room records the
+  student, and they are enrolled in every course the room is attached to — a
+  teacher can run a class alone.
 - Only a student role is ever created, whatever the body contains.
 
 Response:
@@ -217,12 +217,19 @@ Create a test. Body:
   "description": "First test",
   "timeLimitSec": 600,
   "passingPercent": 60,
+  "roomId": "…",
+  "tags": ["Algebra", "Year 9"],
   "questions": [{ "type": "single_choice", "body": "…", "points": 2, "position": 0, "payload": { "options": [{ "key": "a", "text": "A" }, { "key": "b", "text": "B" }], "correct": "a" } }]
 }
 ```
 
-- `201` → full test with questions
-- `400 VALIDATION` — any question payload is invalid
+- `201` → full test with questions, its `roomId` and its `tags`
+- `400 VALIDATION` — any question payload is invalid, or `roomId` names a room
+  the requester does not own
+
+`roomId` and `tags` are optional on create and on `PUT`. Duplicating a test
+keeps both: a copy is the same paper for the same class, and a stranger that has
+to be set up again is not a copy.
 
 ### `GET /api/tests/:id`
 
@@ -308,9 +315,10 @@ Own courses (admin: all), each with `materialsCount`, `testsCount`,
 
 ### `POST /api/courses` / `PATCH /api/courses/:id`
 
-Body: `{ "title": "Physics 101", "description": "…" }`. `POST` → `201`.
-`GET /api/courses/:id` returns the full course with `materials`, `tests`
-(`{ id, title }`), and `students` (`{ id, username, fullName }`).
+Body: `{ "title": "Physics 101", "description": "…", "tags": ["Subject"] }`.
+`POST` → `201`. `GET /api/courses/:id` returns the full course with `materials`,
+`tests` (`{ id, title }`), `students` (`{ id, username, fullName }`) and
+`tags`.
 
 ### `DELETE /api/courses/:id`
 
@@ -427,11 +435,15 @@ unable to make a single phone connect.
 The value lives in `app_meta` under `public_base_url`; a value that is not
 currently valid is treated as unset rather than trusted.
 
-## Classrooms (`/api/classrooms`)
+## Rooms (`/api/rooms`)
 
-A **classroom** is one teacher's group. It exists to hold a six-character key
-that a student can register with: with a valid key the account is approved on
+A **room** is one teacher's group of students. It exists to hold a six-character
+key that a student can register with: with a valid key the account is approved on
 the spot, so a teacher can seat a class without an administrator in the room.
+
+A room is *who*; a **course** is *what* it studies. The two were the same column
+until 0.6.1 and are now separate: a room links to any number of courses, and a
+course can be taken by any number of rooms.
 
 The key is drawn from the same alphabet as a join code (`ABCDEFGHJKLMNPQRSTUVWXYZ23456789`,
 no `0`/`O`/`1`/`I`), so it can be read aloud in class. It accepts only a student
@@ -439,81 +451,133 @@ role — the role is fixed in the registration handler, so no key, however it wa
 obtained, produces anything else.
 
 - The read is authenticated for teachers and admins; a student is refused.
-- A teacher sees only their own classes. Another teacher's class answers `403`
-  for read, rename, revoke, key and delete alike. An admin sees all.
+- A teacher sees only their own rooms. Another teacher's room answers `403`
+  for read, update, revoke, key and delete alike. An admin sees all.
 - Registering through a key **approves** the account; registering without one is
   unchanged (`pending`, waiting for an admin).
 - A wrong key and a revoked key both answer `404 NOT_FOUND` with the same
-  message, so a key cannot be used to find out which classes existed.
+  message, so a key cannot be used to find out which rooms existed.
 
-### `GET /api/classrooms`
+### `GET /api/rooms`
 
 ```json
 {
-  "classrooms": [
+  "rooms": [
     {
-      "id": "…", "ownerId": "…", "name": "Class 9A",
+      "id": "…", "ownerId": "…", "name": "9A",
       "key": "42FAK2", "status": "active",
-      "courseId": "…", "createdAt": "…", "revokedAt": null,
+      "courseIds": ["…"], "createdAt": "…", "revokedAt": null,
       "membersCount": 12
     }
   ]
 }
 ```
 
-### `POST /api/classrooms`
+### `POST /api/rooms`
 
 ```json
-{ "name": "Class 9A", "courseId": "…" }
+{ "name": "9A", "courseIds": ["…"] }
 ```
 
-`courseId` is optional (`null` for none). A course the requester does not own is
-rejected with `400 VALIDATION` rather than silently ignored — attaching a class
+`courseIds` is optional and may be empty. A course the requester does not own is
+rejected with `400 VALIDATION` rather than silently ignored — attaching a room
 to someone else's course would enrol your students into their roll.
 
-### `GET /api/classrooms/:id`
+### `GET /api/rooms/:id`
 
-The class plus the students who arrived through it.
+The room, its students, and the courses it is attached to.
 
 ```json
 {
-  "classroom": { "id": "…", "name": "Class 9A", "membersCount": 1 },
+  "room": { "id": "…", "name": "9A", "membersCount": 1 },
   "members": [
     { "userId": "…", "username": "olena", "fullName": "Olena M.",
       "status": "approved", "joinedAt": "…" }
-  ]
+  ],
+  "courses": [{ "id": "…", "title": "Algebra 9" }]
 }
 ```
 
-### `PATCH /api/classrooms/:id`
+### `PATCH /api/rooms/:id`
 
-`{ "name": "…", "courseId": "…" }` — rename, or change the linked course. The key
-and the existing members are untouched.
+`{ "name": "…", "courseIds": ["…"] }` — rename, change the linked courses, or
+both; send whichever fields you mean. The key and the existing members are
+untouched.
 
-### `POST /api/classrooms/:id/revoke`
+Enrolment follows the courses both ways: attaching a course enrols the members
+already in the room, and a member who arrives later is enrolled in every course
+already attached. Enrolling the same student twice is refused with `409`.
+
+### `POST /api/rooms/:id/revoke`
 
 Sets `status: "revoked"` and stamps `revoked_at`. Nobody can register with the key
 afterwards; the accounts that already came in are untouched.
 
-### `POST /api/classrooms/:id/key`
+### `POST /api/rooms/:id/key`
 
 Issues a **new** key and returns it. The old one stops working immediately — this
 is the fix for a code that was photographed and left on a wall.
 
-### `DELETE /api/classrooms/:id`
+### `DELETE /api/rooms/:id`
 
-Removes the class and its member rows. The student accounts stay.
+Removes the room and its member rows, and the links to its courses. The student
+accounts and the course enrolments stay.
 
-### `GET /api/classrooms/preview?key=…`
+### `GET /api/rooms/preview?key=…`
 
-**Public.** What a key leads to, so the sign-up form can say "Class 9A · Olena M."
+**Public.** What a key leads to, so the sign-up form can say "9A · Olena M."
 before a student types a password. No account is created and nothing is recorded.
 
 ```json
-{ "preview": { "className": "Class 9A", "teacherName": "Olena M." } }
+{ "preview": { "roomName": "9A", "teacherName": "Olena M." } }
 ```
 
-A key holder learns the class name and the teacher's name, and nothing else.
+A key holder learns the room name and the teacher's name, and nothing else.
+
+## Tags (`/api/tags`)
+
+A **tag** is one of the teacher's own free labels — "algebra", "photosynthesis",
+"chapter 4" — put on a test, a session or a course.
+
+Deliberately only labels: what class something belongs to is `roomId`, not a tag,
+because a room can be joined, revoked and enrolled, and a label cannot. Tags
+carry no permission of their own; attaching one still requires permission on the
+thing itself, and a tag another teacher created is never visible here.
+
+Labels are per teacher and case-insensitive: "Algebra" and "algebra" are one tag.
+
+### `GET /api/tags`
+
+```json
+{ "tags": [{ "id": "…", "ownerId": "…", "name": "Algebra", "createdAt": "…" }] }
+```
+
+### `POST /api/tags`
+
+`{ "name": "Algebra" }` → `201 { "tag": { … } }`. Returns the existing tag when
+the name is already in use, rather than failing: one word, one label.
+
+### `PATCH /api/tags/:id` · `DELETE /api/tags/:id`
+
+Rename or remove one of the teacher's own labels. Removing it unlinks it from
+everything it was on; the tests and sessions themselves are untouched. Another
+teacher's label answers `403`.
+
+### `PUT /api/tags/:entity/:id`
+
+The one call the UI makes: `{ "names": ["Algebra", "Year 9"] }` puts exactly these
+labels on that thing.
+
+`:entity` is `test`, `session` or `course`; anything else is `400`. Names the
+teacher has not used before are created, names that are no longer listed lose
+their link, and the answer is the state that resulted rather than the request:
+
+```json
+{ "tags": [{ "id": "…", "name": "Algebra", "ownerId": "…", "createdAt": "…" }] }
+```
+
+A missing entity answers `404`; somebody else's answers `403`, and nothing is
+written on the way out.
 
 ## Live sessions (`/api/sessions`)
 
@@ -552,21 +616,33 @@ match.
 ### `GET /api/sessions`
 
 Admin & teacher. The teacher's own sessions, newest first; an admin sees every
-teacher's.
+teacher's. Any query parameter narrows the list, and all of them are optional:
+`room`, `test`, `status`, `from`, `to` (ISO dates), `q` (matches the run name
+and the test title), `tag` (a tag id) and `limit` (1–200, default 50).
 
 ```json
 { "sessions": [ { "id": "…", "joinCode": "JV8Z9B", "status": "active",
                   "timeLimitSec": 600, "passingPercent": 50,
+                  "name": "Monday revision", "roomId": "…",
                   "title": "Mixed quiz", "questionCount": 5,
-                  "joinedCount": 2, "submittedCount": 1 } ] }
+                  "joinedCount": 2, "submittedCount": 1,
+                  "tags": [{ "id": "…", "name": "Algebra" }] } ] }
 ```
+
+A tag that exists but is on nothing answers with an empty list, not with an
+error — a filter that matched nothing is a result, not a failure.
 
 ### `POST /api/sessions`
 
-Admin & teacher. Body `{ "testId": "…" }` → `201` with the new session.
+Admin & teacher. Body `{ "testId": "…", "name": "…", "roomId": "…", "tags": ["…"] }`
+→ `201` with the new session.
 
-- `400 VALIDATION` — the test has no questions yet
-- `403 FORBIDDEN` — the test belongs to another teacher
+`name` is what the teacher called this run; when it is omitted the test title
+stands in. `roomId` defaults to the test's own room, so the common case — a paper
+written for one group, run in front of that group — needs no decision at all.
+
+- `400 VALIDATION` — the test has no questions yet, or `roomId` names no room
+- `403 FORBIDDEN` — the test, or the room, belongs to another teacher
 
 ### `GET /api/sessions/:id/participants`
 
@@ -760,7 +836,7 @@ teacher who does not own it), `4404` unknown session.
 
 | Endpoint | Admin | Teacher | Student |
 |----------|:-----:|:-------:|:-------:|
-| `POST /api/auth/register` | + | + | + (student only, `classKey` optional) |
+| `POST /api/auth/register` | + | + | + (student only, `roomKey` optional) |
 | `POST /api/auth/login` | + | + | + |
 | `POST /api/auth/logout`, `GET /api/auth/me` | + | + | + |
 | `GET/POST /api/users`, `DELETE /api/users/:id` | + | – | – |
@@ -773,7 +849,8 @@ teacher who does not own it), `4404` unknown session.
 | `POST /api/sessions/join`, `GET /api/sessions/current`, `/:id/submit`, `/:id/result`, `/api/student/results` | – | – | + |
 | `GET /ws/sessions/:id` | + (board) | + (board) | + (status only) |
 | `/api/admin/stats`, `/api/admin/participants` | + | – | – |
-| `/api/classrooms*` | + | + (own) | – (preview is public) |
+| `/api/rooms*` | + | + (own) | – (preview is public) |
+| `/api/tags*` | + | + (own) | – |
 | `GET /api/logs`, `/ws/server` | + | – | – |
 | `GET /api/settings` | + | + | + |
 | `PATCH /api/settings` | + | + | – |

@@ -115,7 +115,7 @@ Work top to bottom. Tick what works, note what does not.
 - [ ] Admin cannot block or delete themselves
 - [ ] Stats counts match the Users tab
 
-**Classrooms (the no-admin scenario)**
+**Rooms (the no-admin scenario)**
 - [ ] Create, regenerate key (old one dies), revoke, rename, delete
 - [ ] Key preview shows what a student sees without creating anything
 - [ ] A wrong key and a revoked key look **identical** in the response
