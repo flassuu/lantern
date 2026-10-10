@@ -21,12 +21,16 @@ export function normalizeSession<
     roomId?: string | null
     tags?: Tag[] | null
     entryLocked?: boolean | null
+    resultsReleased?: boolean | null
+    settings?: Partial<TestSettings> | null
   },
 >(session: T): T & {
   name: string | null
   roomId: string | null
   tags: Tag[]
   entryLocked: boolean
+  resultsReleased: boolean
+  settings: TestSettings
 } {
   return {
     ...session,
@@ -34,14 +38,21 @@ export function normalizeSession<
     roomId: session.roomId ?? null,
     tags: session.tags ?? [],
     entryLocked: session.entryLocked ?? false,
+    resultsReleased: session.resultsReleased ?? false,
+    settings: normalizeSettings(session.settings),
   }
 }
 
 /** A test as the client expects it; see `normalizeSession` for why. */
-export function normalizeTest<T extends { roomId?: string | null; tags?: Tag[] | null }>(
-  test: T,
-): T & { roomId: string | null; tags: Tag[] } {
-  return { ...test, roomId: test.roomId ?? null, tags: test.tags ?? [] }
+export function normalizeTest<
+  T extends { roomId?: string | null; tags?: Tag[] | null; settings?: Partial<TestSettings> | null },
+>(test: T): T & { roomId: string | null; tags: Tag[]; settings: TestSettings } {
+  return {
+    ...test,
+    roomId: test.roomId ?? null,
+    tags: test.tags ?? [],
+    settings: normalizeSettings(test.settings),
+  }
 }
 
 /** A course as the client expects it; see `normalizeSession` for why. */
@@ -49,4 +60,45 @@ export function normalizeCourse<T extends { tags?: Tag[] | null }>(
   course: T,
 ): T & { tags: Tag[] } {
   return { ...course, tags: course.tags ?? [] }
+}
+
+/**
+ * What a teacher can decide about a run, beyond the questions.
+ *
+ * The test holds the defaults; a session snapshots them when it is created, so
+ * editing the test later cannot change a run that is already under way.
+ *
+ * It lives here, next to the normalisers, for the same reason they do: this
+ * module has no runtime imports, so a plain `node --test` can load it.
+ */
+export interface TestSettings {
+  shuffleQuestions: boolean
+  shuffleOptions: boolean
+  showCorrectAnswers: 'never' | 'after_submit'
+  releaseResults: 'immediate' | 'teacher'
+  questionsPerPage: 'all' | 'one'
+  allowBack: boolean
+}
+
+/** What the app did before there were settings: the safe reading of a blank blob. */
+export const DEFAULT_SETTINGS: TestSettings = {
+  shuffleQuestions: false,
+  shuffleOptions: false,
+  showCorrectAnswers: 'after_submit',
+  releaseResults: 'immediate',
+  questionsPerPage: 'all',
+  allowBack: true,
+}
+
+/** Settings from the wire, made whole; a server older than the app sends none. */
+export function normalizeSettings(raw: Partial<TestSettings> | null | undefined): TestSettings {
+  if (!raw) return { ...DEFAULT_SETTINGS }
+  return {
+    shuffleQuestions: raw.shuffleQuestions ?? DEFAULT_SETTINGS.shuffleQuestions,
+    shuffleOptions: raw.shuffleOptions ?? DEFAULT_SETTINGS.shuffleOptions,
+    showCorrectAnswers: raw.showCorrectAnswers ?? DEFAULT_SETTINGS.showCorrectAnswers,
+    releaseResults: raw.releaseResults ?? DEFAULT_SETTINGS.releaseResults,
+    questionsPerPage: raw.questionsPerPage ?? DEFAULT_SETTINGS.questionsPerPage,
+    allowBack: raw.allowBack ?? DEFAULT_SETTINGS.allowBack,
+  }
 }

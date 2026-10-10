@@ -43,6 +43,29 @@ and everything else follows from taking that seriously.
   server it does not control. Restart the server (or rebuild the desktop
   sidecar) to get the rooms and labels themselves.
 
+### A run can be tuned
+
+- **Settings for a run**: shuffle the questions, shuffle the answers, reveal the
+  correct ones never or after submitting, show results at once or hold them, one
+  question at a time or the whole paper, and whether going back is allowed. A
+  test stores its defaults; a **session snapshots them when it is created**, so
+  editing the test afterwards cannot change a run that is already under way. The
+  start dialog can override them for one run, and they can still be changed in
+  the lobby — and only there, because the paper is handed out at the start.
+- **Held results.** With `releaseResults: teacher`, submitting shows the student
+  that they are done and nothing else; the teacher's board grows a **Release
+  results** action, and until they press it the result endpoint refuses. Then it
+  flips once, for everyone.
+- **Hidden answers.** With `showCorrectAnswers: never`, the per-question
+  breakdown arrives without the key in it — the same shape, with the answer
+  taken out.
+- **One question at a time.** With `questionsPerPage: one`, the student sees a
+  pager, an index, and a Back button when the teacher allows one.
+- Shuffling is a setting now rather than a habit: questions were always
+  shuffled, and a test built as a sequence can keep its order. Options are
+  shuffled per student and **fixed at join**, so a reload shows the same paper
+  rather than a fresh shuffle.
+
 ### A run opens in a lobby, and the room reports itself
 
 A session used to exist only once it had started: creating one began the clock

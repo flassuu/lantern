@@ -1,6 +1,6 @@
 import { apiFetch } from './client'
 import { normalizeSession } from './normalize'
-import type { Tag } from './types'
+import type { Tag, TestSettings } from './types'
 
 export type LiveSessionStatus = 'lobby' | 'active' | 'paused' | 'finished'
 export type ParticipationStatus = 'joined' | 'submitted' | 'auto_submitted'
@@ -49,12 +49,16 @@ export interface LiveSession {
   status: LiveSessionStatus
   timeLimitSec: number | null
   passingPercent: number | null
+  /** The run's options, snapshotted from the test when it was created. */
+  settings: TestSettings
   /** What the teacher called this run; null falls back to the test's title. */
   name: string | null
   /** The group this run is for; it defaults to the test's own room. */
   roomId: string | null
   /** While set, nobody new may join; the students already in are untouched. */
   entryLocked: boolean
+  /** True once held results have been let out. */
+  resultsReleased: boolean
   /** Null until the teacher starts the run; the lobby has no clock. */
   startedAt: string | null
   finishedAt: string | null
@@ -68,6 +72,8 @@ export interface SessionState {
     status: LiveSessionStatus
     timeLimitSec: number | null
     passingPercent: number | null
+    /** The run's options: one page or many, and whether back is allowed. */
+    settings: TestSettings
     /** Null while the run is still a lobby. */
     startedAt: string | null
     serverNow: string
@@ -77,7 +83,9 @@ export interface SessionState {
 
 export interface SubmitResult {
   participation: Participation
-  result: { score: number; maxScore: number; percent: number; passed: boolean | null }
+  /** Null when the teacher holds the results: graded, but not shown yet. */
+  result: { score: number; maxScore: number; percent: number; passed: boolean | null } | null
+  released: boolean
 }
 
 export interface SessionResultBody {
@@ -190,7 +198,12 @@ export async function getSession(id: string): Promise<SessionSummary> {
 /** Teacher only: starts a run of one of their tests. */
 export async function startSession(
   testId: string,
-  input: { name?: string | null; roomId?: string | null; tags?: string[] } = {},
+  input: {
+    name?: string | null
+    roomId?: string | null
+    tags?: string[]
+    settings?: Partial<TestSettings>
+  } = {},
 ): Promise<LiveSession> {
   const result = await apiFetch<{ session: LiveSession }>('/api/sessions', {
     method: 'POST',
@@ -219,6 +232,27 @@ export async function getParticipants(sessionId: string): Promise<{
 export async function beginSession(sessionId: string): Promise<LiveSession> {
   const result = await apiFetch<{ session: LiveSession }>(
     `/api/sessions/${sessionId}/start`,
+    { method: 'POST' },
+  )
+  return normalizeSession(result.session)
+}
+
+/** Changes the run's options; the server only accepts this in the lobby. */
+export async function setSessionSettings(
+  sessionId: string,
+  settings: Partial<TestSettings>,
+): Promise<LiveSession> {
+  const result = await apiFetch<{ session: LiveSession }>(`/api/sessions/${sessionId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ settings }),
+  })
+  return normalizeSession(result.session)
+}
+
+/** Lets held results out, so students can see how they did. */
+export async function releaseSessionResults(sessionId: string): Promise<LiveSession> {
+  const result = await apiFetch<{ session: LiveSession }>(
+    `/api/sessions/${sessionId}/release`,
     { method: 'POST' },
   )
   return normalizeSession(result.session)

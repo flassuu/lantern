@@ -5,7 +5,7 @@ ids are server-side UUIDs; timestamps are stored as ISO-8601 UTC strings. The
 schema is enforced by idempotent, versioned migrations run at server startup;
 `GET /api/admin/stats` reports the applied version as `schemaVersion`.
 
-> Status: **current**, at version 7. Phases 1–3 added the tables: roles and
+> Status: **current**, at version 8. Phases 1–3 added the tables: roles and
 > auth, the test/course core, and the live-session runtime.
 > **Reporting (Phase 4) added no tables on purpose** — the grade journal and
 > per-question difficulty are derived from `participations` and
@@ -22,6 +22,10 @@ schema is enforced by idempotent, versioned migrations run at server startup;
 > **Phase 6.3 (v7)** makes a session open in a `lobby`: `status` gains the value,
 > `started_at` becomes nullable, `entry_locked` joins the row, and
 > `participation_events` records when a student's window was hidden or shown.
+> **Phase 6.4 (v8)** gives a run options: `tests.settings` holds a teacher's
+> defaults, `live_sessions.settings` the snapshot a run takes of them,
+> `live_sessions.results_released` whether held results have been let out, and
+> `participations.option_order` a student's own shuffled option order.
 
 ## Conventions
 
@@ -106,6 +110,7 @@ A test is a set of questions; it can be shared directly or via courses.
 | time_limit_sec | INTEGER | nullable — no time limit |
 | passing_percent | INTEGER | admin/teacher configurable threshold |
 | room_id | TEXT FK rooms.id | nullable; the group this paper was written for |
+| settings | TEXT | the teacher's run defaults, as JSON; NULL means the defaults |
 | created_at / updated_at | TEXT | |
 
 ### questions
@@ -177,6 +182,8 @@ short code. Created already `active` — there is no draft state.
 | name | TEXT | what the teacher called this run; NULL falls back to the test title |
 | room_id | TEXT FK rooms.id | the group sitting it; defaults to the test's own room |
 | entry_locked | INTEGER | 1 while no *new* student may join; the ones inside stay |
+| settings | TEXT | the run's options, snapshotted from the test when it was created |
+| results_released | INTEGER | 1 once held results have been let out |
 | created_at | TEXT | |
 | started_at | TEXT | NULL until the teacher starts the run: the lobby has no clock |
 | finished_at | TEXT | nullable |
@@ -212,6 +219,7 @@ order and their result.
 | user_id | TEXT FK users.id | cascades |
 | status | TEXT | `joined \| submitted \| auto_submitted` |
 | question_order | TEXT JSON | array of question ids — the per-student shuffle, fixed at join so a reload never reshuffles |
+| option_order | TEXT JSON | map of question id to that student's option order; NULL when options are not shuffled |
 | score | INTEGER | points earned, nullable until submitted |
 | max_score | INTEGER | points on offer |
 | percent | INTEGER | `round(score / max_score × 100)` |
@@ -348,5 +356,9 @@ checked by the routes, not here.
   `participation_events`. The rebuild drops a parent table that `participations`
   references, so it runs with `PRAGMA defer_foreign_keys = ON`: the checks are
   resolved once, at COMMIT, by which time the table is back under its own name.
+- v8 adds the settings columns (`tests.settings`, `live_sessions.settings`,
+  `live_sessions.results_released`) and `participations.option_order`. Settings
+  are JSON rather than a column per option: they are a bag of choices that grow,
+  share one lifetime, and are read whole, never queried.
 - Migrations run idempotently at startup, in order; each is wrapped in a
   transaction and versioned in `schema_migrations`.

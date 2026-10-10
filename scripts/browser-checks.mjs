@@ -898,6 +898,23 @@ async function happyPaths(session, fixtures) {
   )
   check('teacher: a new run opens in the lobby', lobbyScreen.waiting, 'no lobby status')
   check('teacher: the lobby offers a Start button', lobbyScreen.start, 'no Start button')
+  // 6.4: the run's settings live in the lobby, where they can still be changed.
+  const settings = await session.run(
+    context,
+    `
+    const text = document.body.textContent;
+    return {
+      block: text.includes('Session settings'),
+      switches: document.querySelectorAll('[role=switch]').length,
+    };
+  `,
+  )
+  check('teacher: the lobby shows the run settings', settings.block, 'no settings block')
+  check(
+    'teacher: the settings are real controls',
+    settings.switches >= 3,
+    `switches: ${settings.switches}`,
+  )
   await session.screenshot(context, join(SHOTS, 'teacher-lobby.png'))
 
   await session.run(

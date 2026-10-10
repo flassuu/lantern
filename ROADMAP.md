@@ -491,30 +491,47 @@ Decisions taken while building it:
   once. Worth knowing: rebuild the web client before the checks, and a failed
   first navigation is worth a second run.
 
-### 6.4 Session settings — v0.6.4
+### 6.4 Session settings — v0.6.4 — **done**
 
 Goal: shuffle, answer reveal, result release, and one question at a time.
 
-- [ ] Migration **v8**: `tests.settings` and `live_sessions.settings` (JSON) and
+- [x] Migration **v8**: `tests.settings` and `live_sessions.settings` (JSON) and
       `live_sessions.results_released`; `participations.option_order` for the
       shuffled options
-- [ ] Defaults: `shuffleQuestions`, `shuffleOptions`,
+- [x] Defaults: `shuffleQuestions`, `shuffleOptions`,
       `showCorrectAnswers: never | after_submit`,
       `releaseResults: immediate | teacher`,
       `questionsPerPage: all | one`, `allowBack`
-- [ ] Server: a session snapshots the test's defaults at the start; options are
-      shuffled per student and fixed in `option_order`; `POST
-      /api/sessions/:id/release` flips the release and broadcasts; with
-      `releaseResults: teacher`, `submit` returns no result and `result` refuses
-      until released
-- [ ] Client: a settings step in the start dialog (switches and segments) driven
-      by `useSessionSettings`
-- [ ] Client (student): a one-at-a-time runner with a pager and progress when
-      `questionsPerPage: one`; the result view honours the reveal rule
-- [ ] Client (teacher): a "Release results" action and a "results hidden" badge
-- [ ] i18n: `teacher.sessionSettings.*`, `student.paged.*`
-- [ ] Tests: settings snapshot, the release gate, option shuffling; the browser
-      harness covers the paged runner and the held result
+- [x] Server: a session snapshots the test's defaults when it is created (and the
+      start dialog may override them); options are shuffled per student and fixed
+      in `option_order`; `POST /api/sessions/:id/release` flips the release;
+      with `releaseResults: teacher`, `submit` answers `released: false` and
+      `result` refuses with `409 RESULT_HELD` until released
+- [x] Client: a settings block in the test editor for the defaults, and the same
+      controls in the start dialog and in the lobby, driven by one
+      `SessionSettingsFields` component
+- [x] Client (student): a one-at-a-time runner with a pager when
+      `questionsPerPage: one`; the result view honours the reveal rule, and a
+      held result says so instead of failing
+- [x] Client (teacher): a "Release results" action and a "results are out" badge
+- [x] i18n: `teacher.sessionSettings.*`, `student.paged.*`
+- [x] Tests: `session-settings.test.ts` (the snapshot and the override, settings
+      frozen after the start, option order fixed across a reload, the release
+      gate, the hidden key); the harness checks the lobby's settings controls
+
+Decisions taken while building it:
+
+- Settings are **snapshotted when the session is created**, not at the start: the
+  lobby is where they are edited, so a start-time copy would either overwrite the
+  teacher's edits or need a second write. "Snapshot" means "a later edit to the
+  test cannot reach a run that already exists", which is what this gives.
+- The settings model lives in `api/normalize.ts` rather than `api/types.ts`,
+  because that module has no runtime imports and a plain `node --test` can load
+  it.
+- **Deferred to the end-of-phase test pass**: an end-to-end harness run of the
+  paged runner and a held result through the student path. The server behaviour
+  is covered by tests and the lobby controls by the harness; the student flow is
+  the last thing to wire into the browser checks.
 
 ### 6.5 Per-student detail — v0.6.5
 

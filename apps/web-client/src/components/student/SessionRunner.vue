@@ -22,9 +22,13 @@ import AppCard from '../../components/common/AppCard.vue'
 
 const props = defineProps<{
   state: SessionState
+  /** True once the student has looked away; the paper says so, it does not scold. */
+  leftOnce?: boolean
+  /** Tells the room how far the student is; the teacher's board shows it. */
+  reportProgress?: (questionIndex: number, answered: number) => void
 }>()
 
-const emit = defineEmits<{ submitted: [sessionId: string] }>()
+const emit = defineEmits<{ submitted: [sessionId: string, released: boolean] }>()
 
 const { t } = useI18n()
 const confirm = useConfirm()
@@ -32,6 +36,20 @@ const toast = useToast()
 
 const questions = computed<StudentQuestion[]>(() => props.state.questions)
 const responses = ref<Responses>(emptyResponses(props.state.questions))
+
+/**
+ * One question at a time, or the whole paper.
+ *
+ * `questionsPerPage` is the teacher's choice and travels with the run, so the
+ * runner has to do both. The paged mode keeps its own index; the whole-paper
+ * mode ignores it.
+ */
+const paged = computed(() => props.state.session.settings.questionsPerPage === 'one')
+const allowBack = computed(() => props.state.session.settings.allowBack)
+const page = ref(0)
+const current = computed(() => questions.value[page.value])
+const lastPage = computed(() => Math.max(questions.value.length - 1, 0))
+const onLastPage = computed(() => page.value >= lastPage.value)
 const submitting = ref(false)
 const now = ref(Date.now())
 let ticker: number | undefined
@@ -83,11 +101,13 @@ async function send(): Promise<void> {
   if (!ok) return
   submitting.value = true
   try {
-    await submitSession(
+    const outcome = await submitSession(
       props.state.session.id,
       buildAnswers(questions.value, responses.value),
     )
-    emit('submitted', props.state.session.id)
+    // `released` is false when the teacher holds the results: the paper was
+    // graded, but the student is not shown how they did yet.
+    emit('submitted', props.state.session.id, outcome.released)
   } catch (error) {
     toast.error(
       error instanceof ApiError && error.code === 'CONFLICT'
@@ -104,6 +124,14 @@ watch(
   (next) => {
     responses.value = emptyResponses(next)
   },
+)
+
+// How far the student is, for the teacher's board: the page in paged mode, and
+// how many were answered either way.
+watch(
+  [answered, page],
+  ([count, index]) => props.reportProgress?.(paged.value ? index : 0, count),
+  { immediate: true },
 )
 
 onMounted(() => {
@@ -162,7 +190,52 @@ onBeforeUnmount(() => {
       {{ t('student.runner.paused') }}
     </p>
 
-    <ol class="space-y-3">
+    <p
+      v-if="props.leftOnce"
+      role="status"
+      class="flex items-center gap-2 rounded-xl bg-surface-container-high px-3 py-2 text-xs text-on-surface-variant"
+    >
+      <TriangleAlert class="size-3.5 shrink-0" aria-hidden="true" />
+      {{ t('student.runner.leftWarning') }}
+    </p>
+
+    <!-- One question at a time: a pager above, a single card below. -->
+    <template v-if="paged && current">
+      <p class="text-xs text-on-surface-variant" role="status">
+        {{ t('student.paged.of', { current: page + 1, total: questions.length }) }}
+      </p>
+      <AppCard as="section">
+        <div class="flex items-start justify-between gap-3">
+          <p class="text-sm font-semibold text-on-surface">
+            {{ page + 1 }}. {{ current.body }}
+          </p>
+          <span
+            class="shrink-0 rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant"
+          >
+            {{ t('teacher.editor.points') }}: {{ current.points }}
+          </span>
+        </div>
+        <QuestionAnswerInput
+          class="mt-3"
+          :question="current"
+          :options="optionsOf(current)"
+          :choices="matchingChoices(current)"
+          :model-value="responseFor(current)"
+          @update:model-value="responses[current.id] = $event"
+        />
+      </AppCard>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <AppButton v-if="allowBack && page > 0" variant="secondary" @click="page -= 1">
+          {{ t('student.paged.back') }}
+        </AppButton>
+        <AppButton v-if="!onLastPage" variant="primary" class="ml-auto" @click="page += 1">
+          {{ t('student.paged.next') }}
+        </AppButton>
+      </div>
+    </template>
+
+    <ol v-else class="space-y-3">
       <AppCard as="li" v-for="(question, index) in questions" :key="question.id">
         <div class="flex items-start justify-between gap-3">
           <p class="text-sm font-semibold text-on-surface">

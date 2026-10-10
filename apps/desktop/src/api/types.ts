@@ -1,3 +1,6 @@
+import type { TestSettings } from './normalize'
+
+export type { TestSettings } from './normalize'
 export type UserRole = 'admin' | 'teacher' | 'student'
 export type UserStatus = 'pending' | 'approved' | 'blocked'
 
@@ -59,6 +62,7 @@ export interface TestSummary {
   passingPercent: number | null
   /** The group this test was written for, or null when it is not tied to one. */
   roomId: string | null
+  settings: TestSettings
   questionCount: number
   tags: Tag[]
   createdAt: string
@@ -76,6 +80,7 @@ export interface TestInput {
   passingPercent?: number | null
   roomId?: string | null
   tags?: string[]
+  settings?: Partial<TestSettings>
   questions?: QuestionInput[]
 }
 
@@ -226,3 +231,4 @@ export interface LogEntry {
   /** Whatever else the record carried: a request, an error, a class key. */
   fields: Record<string, unknown>
 }
+

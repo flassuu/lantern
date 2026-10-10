@@ -18,6 +18,7 @@ import {
   type SessionState,
 } from '../api/sessions'
 import AppButton from '../components/common/AppButton.vue'
+import AppCard from '../components/common/AppCard.vue'
 import { usePresence } from '../composables/presence'
 
 const { t } = useI18n()
@@ -30,6 +31,8 @@ const state = ref<SessionState | null>(null)
 const result = ref<SessionResultBody | null>(null)
 const loading = ref(false)
 const loadError = ref('')
+/** True when the paper was handed in but the teacher holds the result. */
+const held = ref(false)
 
 /**
  * The run the student is in, as one socket: their own presence and progress go
@@ -81,7 +84,14 @@ async function join(): Promise<void> {
   }
 }
 
-async function showResult(sessionId: string): Promise<void> {
+async function showResult(sessionId: string, released = true): Promise<void> {
+  // Held is not an error and not a result: the paper is graded and waiting.
+  if (!released) {
+    held.value = true
+    state.value = null
+    return
+  }
+  held.value = false
   loading.value = true
   loadError.value = ''
   try {
@@ -90,6 +100,11 @@ async function showResult(sessionId: string): Promise<void> {
     // on a stale runner for a session that can no longer be submitted.
     state.value = null
   } catch (error) {
+    // A held result is not a failure: the teacher has not let it out yet.
+    if (error instanceof ApiError && error.code === 'RESULT_HELD') {
+      held.value = true
+      return
+    }
     loadError.value = t('student.errors.resultFailed')
   } finally {
     loading.value = false
@@ -102,6 +117,7 @@ async function showResult(sessionId: string): Promise<void> {
  * down and mount it again, fetching the courses twice on every page load.
  */
 async function resume(): Promise<void> {
+  held.value = false
   try {
     state.value = await getCurrentSession()
   } catch {
@@ -147,6 +163,15 @@ onMounted(() => {
         <div class="h-4 w-1/2 rounded-full bg-surface-container-highest" aria-hidden="true" />
         <div class="h-3 w-3/4 rounded-full bg-surface-container-highest" aria-hidden="true" />
       </div>
+
+      <template v-else-if="held">
+        <AppCard as="section" class="mt-6">
+          <p class="text-sm text-on-surface-variant">{{ t('student.paged.held') }}</p>
+        </AppCard>
+        <AppButton variant="primary" class="mt-4 rounded-xl" @click="resume()">
+          {{ t('student.result.back') }}
+        </AppButton>
+      </template>
 
       <template v-else-if="result">
         <SessionResult class="mt-6" :result="result" />

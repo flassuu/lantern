@@ -27,7 +27,9 @@ import { ApiError, downloadFile } from '../../api/client'
 import {
   beginSession,
   listSessions,
+  releaseSessionResults,
   setEntryLocked,
+  setSessionSettings,
   setSessionStatus,
   startSession,
   type LiveSession,
@@ -43,12 +45,15 @@ import TestPicker from './TestPicker.vue'
 import TagInput from './TagInput.vue'
 import SessionTabs from './SessionTabs.vue'
 import SessionLibraryDialog from './SessionLibraryDialog.vue'
+import SessionSettingsFields from './SessionSettingsFields.vue'
 import { useConfirm } from '../../composables/confirm'
 import { useDialogFocus } from '../../composables/focusTrap'
 import { effectiveBaseUrl, loadSettings } from '../../composables/settings'
 import { isReachableFromPhone, joinLink as buildJoinLink } from '../../utils/links'
 import { useSessionChannel } from '../../composables/sessionChannel'
 import { getRoomsState, loadRooms } from '../../composables/rooms'
+import { normalizeSettings } from '../../api/normalize'
+import type { TestSettings } from '../../api/types'
 import { useToast } from '../../composables/toast'
 import AppButton from '../../components/common/AppButton.vue'
 import AppCard from '../../components/common/AppCard.vue'
@@ -121,6 +126,8 @@ const roomNameOf = (id: string | null): string =>
 const sessionNameDraft = ref('')
 const sessionRoomId = ref<string | null>(null)
 const sessionTags = ref<string[]>([])
+/** What the run will be like; prefilled from the test, overridable here. */
+const sessionSettings = ref<TestSettings>(normalizeSettings(null))
 const joinedCount = computed(() => participants.value.length)
 const workingCount = computed(
   () => participants.value.filter((entry) => entry.status === 'joined').length,
@@ -268,6 +275,7 @@ function openStart(): void {
   sessionNameDraft.value = ''
   sessionTags.value = []
   sessionRoomId.value = null
+  sessionSettings.value = normalizeSettings(null)
   showStart.value = true
 }
 
@@ -275,7 +283,12 @@ function openStart(): void {
 function chooseTestForStart(testId: string): void {
   startingTestId.value = testId
   const test = props.tests.find((entry) => entry.id === testId)
-  if (test) sessionRoomId.value = test.roomId ?? null
+  if (test) {
+    sessionRoomId.value = test.roomId ?? null
+    // The run starts from the test's defaults; the teacher can still change them
+    // here, which is the whole point of the step.
+    sessionSettings.value = test.settings
+  }
 }
 
 function closeStart(): void {
@@ -293,6 +306,7 @@ async function start(testId: string): Promise<void> {
       name: name === '' ? null : name,
       roomId: sessionRoomId.value,
       tags: sessionTags.value,
+      settings: sessionSettings.value,
     })
     showStart.value = false
     startingTestId.value = ''
@@ -325,6 +339,35 @@ async function begin(): Promise<void> {
     actionError.value = errorMessage(error)
   } finally {
     lobbyStarting.value = false
+  }
+}
+
+/** The lobby's own copy of the settings; saving is optimistic on the response. */
+const lobbySettings = computed({
+  get: () => selected.value?.settings ?? normalizeSettings(null),
+  set: (value: TestSettings) => {
+    const session = selected.value
+    if (!session) return
+    void (async () => {
+      actionError.value = ''
+      try {
+        applySession(await setSessionSettings(session.id, value))
+      } catch (error) {
+        actionError.value = errorMessage(error)
+      }
+    })()
+  },
+})
+
+/** Lets held results out; from then on submitting students see their score. */
+async function release(): Promise<void> {
+  const session = selected.value
+  if (!session) return
+  actionError.value = ''
+  try {
+    applySession(await releaseSessionResults(session.id))
+  } catch (error) {
+    actionError.value = errorMessage(error)
   }
 }
 
@@ -663,6 +706,23 @@ onBeforeUnmount(() => {
             {{ t('teacher.live.lobbyHint', { count: joinedCount }) }}
           </p>
 
+          <!-- The lobby is the only place the rules can still change: the paper
+               is handed out at the start. -->
+          <div
+            v-if="boardStatus === 'lobby'"
+            class="mt-3 rounded-2xl border border-outline-variant bg-surface-container-high p-3"
+          >
+            <p class="text-xs font-semibold text-on-surface-variant">
+              {{ t('teacher.sessionSettings.title') }}
+            </p>
+            <p class="mt-0.5 text-[11px] text-on-surface-variant">
+              {{ t('teacher.sessionSettings.lobbyOnly') }}
+            </p>
+            <div class="mt-3">
+              <SessionSettingsFields v-model="lobbySettings" />
+            </div>
+          </div>
+
           <div class="mt-4 flex flex-wrap items-center gap-2">
             <!-- The one action that leaves the lobby. -->
             <AppButton
@@ -715,6 +775,22 @@ onBeforeUnmount(() => {
               <Lock v-if="selected.entryLocked" class="size-4" aria-hidden="true" />
               <LockOpen v-else class="size-4" aria-hidden="true" />
             </AppButton>
+            <!-- Held results: the teacher lets them out when the room is done. -->
+            <AppButton
+              v-if="selected.settings.releaseResults === 'teacher' && !selected.resultsReleased"
+              variant="secondary"
+              @click="release()"
+            >
+              <Trophy class="size-3.5" aria-hidden="true" />
+              {{ t('teacher.sessionSettings.releaseAction') }}
+            </AppButton>
+            <span
+              v-else-if="selected.settings.releaseResults === 'teacher'"
+              class="inline-flex items-center gap-1.5 rounded-full bg-success-container px-2.5 py-1 text-[11px] font-semibold text-on-success-container"
+            >
+              <CircleCheck class="size-3.5" aria-hidden="true" />
+              {{ t('teacher.sessionSettings.released') }}
+            </span>
             <AppButton variant="secondary" :disabled="exporting" @click="exportCsv">
               <Download class="size-3.5" aria-hidden="true" />
               {{ t('teacher.live.exportCsv') }}
@@ -991,6 +1067,15 @@ onBeforeUnmount(() => {
           </div>
 
           <TagInput v-model="sessionTags" :label="t('teacher.tags.label')" />
+
+          <div class="rounded-xl border border-outline-variant bg-surface p-3">
+            <p class="text-xs font-semibold text-on-surface-variant">
+              {{ t('teacher.sessionSettings.title') }}
+            </p>
+            <div class="mt-3">
+              <SessionSettingsFields v-model="sessionSettings" />
+            </div>
+          </div>
         </div>
 
         <footer class="flex justify-end gap-2 border-t border-outline-variant p-4">

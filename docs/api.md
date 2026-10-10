@@ -227,9 +227,13 @@ Create a test. Body:
 - `400 VALIDATION` — any question payload is invalid, or `roomId` names a room
   the requester does not own
 
-`roomId` and `tags` are optional on create and on `PUT`. Duplicating a test
-keeps both: a copy is the same paper for the same class, and a stranger that has
-to be set up again is not a copy.
+`roomId`, `tags` and `settings` are optional on create and on `PUT`.
+Duplicating a test keeps all three: a copy is the same paper for the same class,
+and a stranger that has to be set up again is not a copy.
+
+`settings` is the teacher's defaults for a *run* of this test; a session copies
+them when it is created, so editing the test afterwards cannot change a run
+already in the lobby or under way.
 
 ### `GET /api/tests/:id`
 
@@ -664,8 +668,22 @@ A new session opens in the **lobby**: students may join and are counted, but
 nothing is timed and nothing can be submitted until it is started. The clock is
 not a property of the run until then — `startedAt` is `null`.
 
+The body may also carry `settings`, which overrides the test's defaults for this
+run only.
+
 - `400 VALIDATION` — the test has no questions yet, or `roomId` names no room
 - `403 FORBIDDEN` — the test, or the room, belongs to another teacher
+
+### What `settings` means
+
+| Field | Values | Default | Meaning |
+|-------|--------|---------|---------|
+| `shuffleQuestions` | boolean | `false` | each student's question order differs |
+| `shuffleOptions` | boolean | `false` | choices inside a question reordered per student, fixed at join |
+| `showCorrectAnswers` | `never` \| `after_submit` | `after_submit` | whether the result breakdown carries the key |
+| `releaseResults` | `immediate` \| `teacher` | `immediate` | shown at submit, or held until released |
+| `questionsPerPage` | `all` \| `one` | `all` | one page, or one question at a time |
+| `allowBack` | boolean | `true` | with one at a time, whether going back is allowed |
 
 ### `POST /api/sessions/:id/start`
 
@@ -673,6 +691,12 @@ Admin & teacher (owner). Leaves the lobby: stamps `startedAt`, flips the status
 to `active`, and broadcasts the change to every phone watching. Idempotent — a
 second call on a run that has started changes nothing — and `409` once the run is
 finished.
+
+### `POST /api/sessions/:id/release`
+
+Admin & teacher (owner). Lets held results out: from then on a submitting student
+sees their score, and `GET /api/sessions/:id/result` stops refusing. Only
+meaningful when the run has `releaseResults: teacher`.
 
 ### `PATCH /api/sessions/:id`
 
@@ -683,6 +707,10 @@ Admin & teacher (owner). Body `{ "status": "paused" }` and/or
 alone — a reload during a locked run must not throw anybody out. An unlocked
 session refuses a new student with `409 ENTRY_LOCKED`; a student who is already
 a participant is let through regardless.
+
+`settings` may also be sent, but only while the run is still a `lobby`; once it
+has started the paper is out and the rules are frozen, so a later attempt answers
+`409`.
 
 Answering before the run starts is refused with `409`: the paper has not been
 handed out, and grading one early would score a sheet the student never saw.
@@ -909,6 +937,7 @@ teacher who does not own it), `4404` unknown session.
 | `/api/rooms*` | + | + (own) | – (preview is public) |
 | `/api/tags*` | + | + (own) | – |
 | `POST /api/sessions/:id/start` | + | + (own) | – |
+| `POST /api/sessions/:id/release` | + | + (own) | – |
 | `GET /api/logs`, `/ws/server` | + | – | – |
 | `GET /api/settings` | + | + | + |
 | `PATCH /api/settings` | + | + | – |

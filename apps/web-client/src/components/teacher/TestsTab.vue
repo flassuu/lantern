@@ -27,11 +27,14 @@ import {
 } from './questionForm'
 import QuestionEditor from './QuestionEditor.vue'
 import TagInput from './TagInput.vue'
+import SessionSettingsFields from './SessionSettingsFields.vue'
 import TestPreviewDialog from './TestPreviewDialog.vue'
 import TestResultsView from './TestResultsView.vue'
 import { useConfirm } from '../../composables/confirm'
 import { getHealthState } from '../../composables/health'
 import { getRoomsState, loadRooms } from '../../composables/rooms'
+import { normalizeSettings } from '../../api/normalize'
+import type { TestSettings } from '../../api/types'
 import {
   deleteDraft,
   listDrafts,
@@ -70,6 +73,8 @@ const passingPercent = ref('')
 const questionForms = ref<QuestionForm[]>([])
 /** The editor's two extras: which room the test is for, and its labels. */
 const testTags = ref<string[]>([])
+/** The test's defaults for a run of it; a session copies them when it is created. */
+const testSettings = ref<TestSettings>(normalizeSettings(null))
 const testRoomId = ref<string | null>(null)
 const rooms = getRoomsState()
 const busyId = ref('')
@@ -138,6 +143,7 @@ function startCreate() {
   timeLimitMin.value = ''
   passingPercent.value = ''
   testTags.value = []
+  testSettings.value = normalizeSettings(null)
   testRoomId.value = null
   questionForms.value = [newQuestionForm()]
   editingId.value = null
@@ -154,6 +160,7 @@ async function startEdit(test: TestSummary) {
     passingPercent.value = details.passingPercent != null ? String(details.passingPercent) : ''
     questionForms.value = formsFromQuestions(details.questions)
     testTags.value = (details.tags ?? []).map((tag) => tag.name)
+    testSettings.value = details.settings
     testRoomId.value = details.roomId ?? null
     editingId.value = test.id
     isEditing.value = true
@@ -225,6 +232,7 @@ async function save() {
     passingPercent: passingPercent.value ? Number(passingPercent.value) : null,
     roomId: testRoomId.value,
     tags: testTags.value,
+    settings: testSettings.value,
     questions: built,
   }
   saving.value = true
@@ -455,6 +463,21 @@ onMounted(async () => {
 
         <div class="sm:col-span-2">
           <TagInput v-model="testTags" :label="t('teacher.tags.label')" />
+        </div>
+
+        <!-- The run's defaults. A session copies these when it is created and
+             they can be changed in its lobby, so this is the starting point
+             rather than the rules for every future run. -->
+        <div class="sm:col-span-2 rounded-xl border border-outline-variant bg-surface p-3">
+          <p class="text-xs font-semibold text-on-surface-variant">
+            {{ t('teacher.sessionSettings.defaults') }}
+          </p>
+          <p class="mt-0.5 text-[11px] text-on-surface-variant">
+            {{ t('teacher.sessionSettings.defaultsHint') }}
+          </p>
+          <div class="mt-3">
+            <SessionSettingsFields v-model="testSettings" />
+          </div>
         </div>
       </div>
     </AppCard>
