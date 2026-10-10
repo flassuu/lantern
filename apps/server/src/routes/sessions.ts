@@ -16,6 +16,9 @@ import {
   listParticipantEntries,
   listSessions,
   listStudentResults,
+  countSessions,
+  findSessionSummary,
+  type SessionSort,
   saveSubmission,
   setSessionStatus,
   toParticipation,
@@ -78,7 +81,10 @@ const listQuerySchema = {
     to: { type: 'string', maxLength: 40 },
     q: { type: 'string', maxLength: 120 },
     tag: { type: 'string', maxLength: 36 },
+    sort: { type: 'string', enum: ['created', 'name', 'status', 'submitted'] },
+    dir: { type: 'string', enum: ['asc', 'desc'] },
     limit: { type: 'integer', minimum: 1, maximum: 200 },
+    offset: { type: 'integer', minimum: 0 },
   },
 } as const
 
@@ -105,7 +111,10 @@ interface ListQuery {
   to?: string
   q?: string
   tag?: string
+  sort?: SessionSort
+  dir?: 'asc' | 'desc'
   limit?: number
+  offset?: number
 }
 
 interface CodeBody {
@@ -243,10 +252,10 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
       let ids: string[] | null = null
       if (query.tag) {
         const tag = findTagById(db, query.tag)
-        if (!tag) return reply.code(200).send({ sessions: [] })
+        if (!tag) return reply.code(200).send({ sessions: [], total: 0 })
         ids = entityIdsWithTag(db, tag.id, 'session')
       }
-      const sessions = listSessions(db, {
+      const filter = {
         ownerId: session.role === 'admin' ? null : session.userId,
         roomId: query.room ?? null,
         testId: query.test ?? null,
@@ -255,15 +264,42 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
         to: query.to ?? null,
         query: query.q ?? null,
         ids,
+        sort: query.sort,
+        dir: query.dir,
+        offset: query.offset,
         limit: query.limit,
-      })
+      }
+      const sessions = listSessions(db, filter)
       const bySession = tagsByEntity(db, 'session', sessions.map((entry) => entry.id))
       return {
         sessions: sessions.map((entry) => ({
           ...entry,
           tags: bySession.get(entry.id) ?? [],
         })),
+        // The total belongs to the filter, not to the page: it is what a
+        // library counts pages against.
+        total: countSessions(db, filter),
       }
+    },
+  )
+
+  /** One session, for a screen that arrived at it directly rather than by list. */
+  app.get(
+    '/api/sessions/:id',
+    {
+      preHandler: requireRoles('admin', 'teacher'),
+      schema: { params: idParamsSchema },
+    },
+    async (request, reply) => {
+      const session = request.session!
+      const params = request.params as { id: string }
+      const found = findSessionSummary(db, params.id)
+      if (!found) return sendError(reply, 404, 'NOT_FOUND', 'session not found')
+      if (session.role !== 'admin' && found.ownerId !== session.userId) {
+        return sendError(reply, 403, 'FORBIDDEN', 'insufficient role')
+      }
+      const tags = tagsByEntity(db, 'session', [found.id]).get(found.id) ?? []
+      return { session: { ...found, tags } }
     },
   )
 

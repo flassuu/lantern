@@ -324,14 +324,47 @@ export interface SessionFilter {
   /** Matched against the session name and the test title. */
   query?: string | null
   ids?: string[] | null
+  /** Which column the list is ordered by; newest first unless asked otherwise. */
+  sort?: SessionSort
+  dir?: 'asc' | 'desc'
+  /** Rows to skip, for paging; the pair with `limit` makes a page. */
+  offset?: number
   limit?: number
 }
 
+/** The columns a session list can be ordered by. */
+export type SessionSort = 'created' | 'name' | 'status' | 'submitted'
+
+const SESSION_SELECT = `
+      SELECT s.*, t.title AS title,
+              (SELECT COUNT(*) FROM participations p WHERE p.session_id = s.id) AS joined_count,
+              (SELECT COUNT(*) FROM participations p WHERE p.session_id = s.id AND p.status != 'joined') AS submitted_count
+         FROM live_sessions s
+         JOIN tests t ON t.id = s.test_id`
+
+interface SessionRowWithCounts extends LiveSessionRow {
+  title: string
+  joined_count: number
+  submitted_count: number
+}
+
+function toSummary(row: SessionRowWithCounts): SessionSummary {
+  return {
+    ...toSession(row),
+    title: row.title,
+    joinedCount: row.joined_count,
+    submittedCount: row.submitted_count,
+  }
+}
+
 /**
- * Sessions newest first, with the counts the board needs. Pass a filter to
- * narrow it; pass nothing for the owner's own last 50.
+ * The WHERE the list and its count share.
+ *
+ * Built once so paging cannot disagree with its own total: a count computed from
+ * a second, slightly different set of clauses is how a library ends up saying
+ * "37 sessions" above a list of twelve.
  */
-export function listSessions(db: DatabaseSync, filter: SessionFilter = {}): SessionSummary[] {
+function sessionWhere(filter: SessionFilter): { clause: string; values: Array<string | null> } {
   const where: string[] = []
   const values: Array<string | null> = []
 
@@ -360,37 +393,78 @@ export function listSessions(db: DatabaseSync, filter: SessionFilter = {}): Sess
     values.push(filter.to)
   }
   if (filter.query) {
-    where.push('(COALESCE(s.name, \'\') LIKE ? OR t.title LIKE ?)')
+    where.push("(COALESCE(s.name, '') LIKE ? OR t.title LIKE ?)")
     const like = `%${filter.query}%`
     values.push(like, like)
   }
   if (filter.ids) {
-    if (filter.ids.length === 0) return []
-    where.push(`s.id IN (${filter.ids.map(() => '?').join(', ')})`)
-    values.push(...filter.ids)
+    // A tag that is on nothing resolves to an empty set, which must match
+    // nothing rather than everything - and the count has to agree.
+    if (filter.ids.length === 0) {
+      where.push('1 = 0')
+    } else {
+      where.push(`s.id IN (${filter.ids.map(() => '?').join(', ')})`)
+      values.push(...filter.ids)
+    }
   }
 
+  return { clause: where.length > 0 ? `WHERE ${where.join(' AND ')}` : '', values }
+}
+
+/**
+ * Which column a list is ordered by. Every one of them is a column the teacher
+ * can see on the card - sorting by something invisible is a magic trick, not a
+ * feature - so `name` falls back to the test title the card shows instead.
+ */
+const SESSION_ORDER: Record<SessionSort, string> = {
+  created: 's.created_at',
+  name: 'COALESCE(s.name, t.title)',
+  status: 's.status',
+  submitted: 'submitted_count',
+}
+
+export interface SessionPage {
+  sessions: SessionSummary[]
+  total: number
+}
+
+/**
+ * One page of sessions, with the counts the board needs. Pass a filter to narrow
+ * it, a sort to order it, and a limit/offset pair to page it.
+ */
+export function listSessions(db: DatabaseSync, filter: SessionFilter = {}): SessionSummary[] {
+  const { clause, values } = sessionWhere(filter)
+  const dir = filter.dir === 'asc' ? 'ASC' : 'DESC'
   const limit = Math.min(Math.max(filter.limit ?? 50, 1), 200)
-  const sql = `
-      SELECT s.*, t.title AS title,
-              (SELECT COUNT(*) FROM participations p WHERE p.session_id = s.id) AS joined_count,
-              (SELECT COUNT(*) FROM participations p WHERE p.session_id = s.id AND p.status != 'joined') AS submitted_count
-         FROM live_sessions s
-         JOIN tests t ON t.id = s.test_id
-        ${where.length > 0 ? `WHERE ${where.join(' AND ')}` : ''}
-        ORDER BY s.created_at DESC
-        LIMIT ${limit}`
-  const rows = db
-    .prepare(sql)
-    .all(...values) as unknown as Array<
-    LiveSessionRow & { title: string; joined_count: number; submitted_count: number }
-  >
-  return rows.map((row) => ({
-    ...toSession(row),
-    title: row.title,
-    joinedCount: row.joined_count,
-    submittedCount: row.submitted_count,
-  }))
+  const offset = Math.max(filter.offset ?? 0, 0)
+  const order = SESSION_ORDER[filter.sort ?? 'created']
+  // Ties are broken down to the id, so the order is total: a second page can
+  // never repeat a row from the first, whatever the chosen column says.
+  const sql = `${SESSION_SELECT}
+        ${clause}
+        ORDER BY ${order} ${dir}, s.created_at DESC, s.id ASC
+        LIMIT ${limit} OFFSET ${offset}`
+  const rows = db.prepare(sql).all(...values) as unknown as SessionRowWithCounts[]
+  return rows.map(toSummary)
+}
+
+/** How many sessions the same filter matches, so a library can page honestly. */
+export function countSessions(db: DatabaseSync, filter: SessionFilter = {}): number {
+  const { clause, values } = sessionWhere(filter)
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS total FROM live_sessions s JOIN tests t ON t.id = s.test_id ${clause}`,
+    )
+    .get(...values) as { total: number }
+  return row.total
+}
+
+/** One session by id, in the same shape the list returns. */
+export function findSessionSummary(db: DatabaseSync, id: string): SessionSummary | null {
+  const row = db.prepare(`${SESSION_SELECT} WHERE s.id = ?`).get(id) as unknown as
+    | SessionRowWithCounts
+    | undefined
+  return row ? toSummary(row) : null
 }
 
 /** One row of the student's own result history, joined with test and session. */

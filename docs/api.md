@@ -615,10 +615,16 @@ match.
 
 ### `GET /api/sessions`
 
-Admin & teacher. The teacher's own sessions, newest first; an admin sees every
-teacher's. Any query parameter narrows the list, and all of them are optional:
-`room`, `test`, `status`, `from`, `to` (ISO dates), `q` (matches the run name
-and the test title), `tag` (a tag id) and `limit` (1–200, default 50).
+Admin & teacher. The teacher's own sessions; an admin sees every teacher's.
+Every query parameter is optional.
+
+Narrowing: `room`, `test`, `status`, `from`, `to` (ISO dates), `q` (matches the
+run name and the test title) and `tag` (a tag id).
+
+Ordering and paging: `sort` (`created` | `name` | `status` | `submitted`,
+default `created`), `dir` (`asc` | `desc`, default `desc`), `limit` (1–200,
+default 50) and `offset`. Ties are broken down to the id, so the order is total
+and a later page can never repeat a row from an earlier one.
 
 ```json
 { "sessions": [ { "id": "…", "joinCode": "JV8Z9B", "status": "active",
@@ -626,11 +632,23 @@ and the test title), `tag` (a tag id) and `limit` (1–200, default 50).
                   "name": "Monday revision", "roomId": "…",
                   "title": "Mixed quiz", "questionCount": 5,
                   "joinedCount": 2, "submittedCount": 1,
-                  "tags": [{ "id": "…", "name": "Algebra" }] } ] }
+                  "tags": [{ "id": "…", "name": "Algebra" }] } ],
+  "total": 137 }
 ```
+
+`total` is what the *filter* matches, not the size of the page: it is what a
+library counts pages against. Sorting by `name` sorts by what the card shows —
+the run's name, or the test title when the run was not named.
 
 A tag that exists but is on nothing answers with an empty list, not with an
 error — a filter that matched nothing is a result, not a failure.
+
+### `GET /api/sessions/:id`
+
+Admin & teacher (owner). One session in the same shape the list returns, so a
+screen that arrived at it directly gets the name, the room, the labels and the
+counts without a list call first. `404` for no such session, `403` for another
+teacher's.
 
 ### `POST /api/sessions`
 
