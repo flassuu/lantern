@@ -618,9 +618,9 @@ downloaded.
 Goal: a table of students against tests, with grades and dates, scoped to a room
 or to a course.
 
-- [ ] Server: `GET /api/journals/rooms/:id` and `/api/journals/courses/:id` —
+- [x] Server: `GET /api/journals/rooms/:id` and `/api/journals/courses/:id` —
       students against the tests of the room or course, each cell the last
-      percent, the attempt count and the last date; CSV export and print
+      percent, the attempt count and the last date; CSV export
 - [ ] Client: `JournalTable.vue` on `AppTable` — a sticky first column, sorting,
       a dash for an empty cell, a tooltip for "N attempts, date", printing
 - [ ] Client: a Journal screen reachable from a room and from a course, with the

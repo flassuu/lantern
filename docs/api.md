@@ -458,6 +458,38 @@ Flat course → student participation list (the admin "Participants" screen).
 
 Ordered by course title, then enrollment date.
 
+## Journals (`/api/journals`, admin & teacher)
+
+Students down the side, tests across the top, one cell per pair: the table a
+teacher wants *before* a lesson rather than after it.
+
+- `GET /api/journals/rooms/:id` → `{ journal }`
+- `GET /api/journals/courses/:id` → `{ journal }`
+- Either with `?format=csv` → the same numbers as `text/csv`, with a
+  `content-disposition: attachment`.
+
+```json
+{ "journal": { "scope": "room", "title": "Class 9A",
+  "tests": [{ "id": "…", "title": "Algebra" }],
+  "students": [{ "userId": "…", "username": "…", "fullName": "…" }],
+  "cells": [[{ "percent": 80, "attempts": 2, "lastSubmittedAt": "…" },
+             { "percent": null, "attempts": 0, "lastSubmittedAt": null }]] } }
+```
+
+A cell is the student's **last** attempt, not their best. A best is the
+flattering number, and it hides the student who guessed once and never came
+back. A student on the roster who has never attempted a test has an empty cell —
+`percent: null` — which is a different fact from a zero, and the CSV writes it
+as an empty field rather than `0%`.
+
+A **room** shows the tests it has actually been run, plus any run that predates
+naming a room whose test belongs to one of the room's courses. A **course**
+shows its whole plan, whether or not the test has ever been run: a planned test
+nobody has done is exactly the empty cell worth seeing before the next lesson.
+
+Owner only (`403` for a stranger, `404` for a room or course that does not
+exist); students are refused (`403`) — the roster of a class is the teacher's.
+
 ## Settings (`/api/settings`)
 
 `publicBaseUrl` is the address students open. It is what the join link and the QR

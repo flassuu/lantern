@@ -18,6 +18,7 @@ import { courseRoutes } from './routes/courses'
 import { assetRoutes } from './routes/assets'
 import { sessionRoutes } from './routes/sessions'
 import { adminRoutes } from './routes/admin'
+import { journalRoutes } from './routes/journals'
 import { roomRoutes } from './routes/rooms'
 import { tagRoutes } from './routes/tags'
 import { settingsRoutes } from './routes/settings'
@@ -144,6 +145,7 @@ export function buildApp(options: AppOptions): TestingApp {
 
   // Phase 5.2: class keys, so a teacher can seat a class without an admin.
   void app.register(roomRoutes, { database })
+  void app.register(journalRoutes, { database })
 
   void app.register(tagRoutes, { database })
 
