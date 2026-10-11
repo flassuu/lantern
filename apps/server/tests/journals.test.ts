@@ -234,7 +234,11 @@ describe('journals by room and by course', () => {
       percent: null,
       attempts: 0,
       lastSubmittedAt: null,
+      sessionId: null,
     })
+    // The cell carries the way into the attempt behind the number: the run the
+    // last submission was made in, which is the screen 6.5 opens.
+    expect(journal.cells[one]![0]!.sessionId).toBeString()
   })
 
   it('covers the course plan, not only the tests that were run', async () => {

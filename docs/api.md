@@ -472,8 +472,10 @@ teacher wants *before* a lesson rather than after it.
 { "journal": { "scope": "room", "title": "Class 9A",
   "tests": [{ "id": "…", "title": "Algebra" }],
   "students": [{ "userId": "…", "username": "…", "fullName": "…" }],
-  "cells": [[{ "percent": 80, "attempts": 2, "lastSubmittedAt": "…" },
-             { "percent": null, "attempts": 0, "lastSubmittedAt": null }]] } }
+  "cells": [[{ "percent": 80, "attempts": 2, "lastSubmittedAt": "…",
+               "sessionId": "…" },
+             { "percent": null, "attempts": 0, "lastSubmittedAt": null,
+               "sessionId": null }]] } }
 ```
 
 A cell is the student's **last** attempt, not their best. A best is the
@@ -486,6 +488,10 @@ A **room** shows the tests it has actually been run, plus any run that predates
 naming a room whose test belongs to one of the room's courses. A **course**
 shows its whole plan, whether or not the test has ever been run: a planned test
 nobody has done is exactly the empty cell worth seeing before the next lesson.
+
+A cell's `sessionId` is the run its last attempt was made in: the number is on
+the screen, and that id is how a teacher opens the attempt behind it — the same
+`GET /api/sessions/:id/participants/:userId` detail the run's own board opens.
 
 Owner only (`403` for a stranger, `404` for a room or course that does not
 exist); students are refused (`403`) — the roster of a class is the teacher's.

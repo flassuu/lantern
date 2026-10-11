@@ -19,6 +19,14 @@ export interface JournalCell {
   /** How many times they submitted it. */
   attempts: number
   lastSubmittedAt: string | null
+  /**
+   * The run the last attempt was made in, or null when there is none.
+   *
+   * The cell is a number, and a teacher who wants to know *why* it is what it
+   * is has to be able to open the attempt behind it - the same detail screen
+   * the run's own board opens - so the cell carries the way there.
+   */
+  sessionId: string | null
 }
 
 export interface JournalStudent {
@@ -43,6 +51,7 @@ interface CellRaw {
   attempts: number
   last_percent: number | null
   last_submitted_at: string | null
+  last_session_id: string | null
 }
 
 /**
@@ -63,7 +72,7 @@ function cellsFor(
   const rows = db
     .prepare(
       `WITH attempts AS (
-         SELECT p.user_id, s.test_id, p.percent, p.submitted_at,
+         SELECT p.user_id, s.test_id, p.percent, p.submitted_at, s.id AS session_id,
                 ROW_NUMBER() OVER (
                   PARTITION BY p.user_id, s.test_id ORDER BY p.submitted_at DESC
                 ) AS rn
@@ -74,7 +83,8 @@ function cellsFor(
        SELECT user_id, test_id,
               COUNT(*) AS attempts,
               MAX(CASE WHEN rn = 1 THEN percent END)        AS last_percent,
-              MAX(CASE WHEN rn = 1 THEN submitted_at END)   AS last_submitted_at
+              MAX(CASE WHEN rn = 1 THEN submitted_at END)   AS last_submitted_at,
+              MAX(CASE WHEN rn = 1 THEN session_id END)     AS last_session_id
          FROM attempts
         GROUP BY user_id, test_id`,
     )
@@ -87,6 +97,7 @@ function cellsFor(
       percent: row.last_percent,
       attempts: row.attempts,
       lastSubmittedAt: row.last_submitted_at,
+      sessionId: row.last_session_id,
     })
   }
   return byStudent
@@ -113,6 +124,7 @@ function buildJournal(
           percent: null,
           attempts: 0,
           lastSubmittedAt: null,
+          sessionId: null,
         }
       )
     }),
