@@ -40,6 +40,8 @@ import {
   type ParticipationRow,
   type LiveSessionStatus,
   type Participation,
+  type AnswerTiming,
+  attemptDetail,
 } from '../lib/sessions'
 import {
   addSocket,
@@ -117,7 +119,23 @@ const answersBodySchema = {
   type: 'object',
   required: ['answers'],
   additionalProperties: false,
-  properties: { answers: { type: 'object' } },
+  properties: {
+    answers: { type: 'object' },
+    // What each answer cost the student: how long they sat on it, and how many
+    // times they went back. Optional, because a client that never measured is
+    // an old client, not a broken one.
+    timings: { type: 'object' },
+  },
+} as const
+
+const participantParamsSchema = {
+  type: 'object',
+  required: ['id', 'userId'],
+  additionalProperties: false,
+  properties: {
+    id: { type: 'string', minLength: 36, maxLength: 36 },
+    userId: { type: 'string', minLength: 36, maxLength: 36 },
+  },
 } as const
 
 interface CreateBody {
@@ -149,6 +167,7 @@ interface CodeBody {
 
 interface AnswersBody {
   answers: Record<string, unknown>
+  timings?: Record<string, AnswerTiming>
 }
 
 interface SessionResponse {
@@ -598,6 +617,35 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
   )
 
   /**
+   * One student's run in full: what they got right, how long each question took,
+   * how many times they changed an answer, and when the window went hidden.
+   *
+   * This is the teacher's own run, so it carries the answer key the student was
+   * never shown - which is the point of looking at it after the fact.
+   */
+  app.get(
+    '/api/sessions/:id/participants/:userId',
+    {
+      preHandler: requireRoles('admin', 'teacher'),
+      schema: { params: participantParamsSchema },
+    },
+    async (request, reply) => {
+      const { id, userId } = request.params as { id: string; userId: string }
+      const row = findSessionRow(db, id)
+      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'session not found')
+      const session = toSession(row)
+      if (session.ownerId !== request.session?.userId && request.session?.role !== 'admin') {
+        return sendError(reply, 403, 'FORBIDDEN', 'this session belongs to another teacher')
+      }
+      const detail = attemptDetail(db, id, session.testId, userId)
+      if (detail === null) {
+        return sendError(reply, 404, 'NOT_FOUND', 'this student was not in this run')
+      }
+      return { detail }
+    },
+  )
+
+  /**
    * The same results in whichever shape the teacher picked in the save dialog.
    * One reader, three writers, so a column cannot mean two things across formats.
    */
@@ -769,7 +817,7 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
     },
     async (request, reply) => {
       const { id } = request.params as { id: string }
-      const { answers } = request.body as AnswersBody
+      const { answers, timings } = request.body as AnswersBody
       const sessionRow = findSessionRow(db, id)
       if (!sessionRow) return sendError(reply, 404, 'NOT_FOUND', 'session not found')
       const session = autoSubmitExpired(toSession(sessionRow))
@@ -795,6 +843,7 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
         graded.results,
         answers,
         graded.summary,
+        timings,
       )
       if (!saved) return sendError(reply, 500, 'INTERNAL', 'could not save the submission')
       announce(session)

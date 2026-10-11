@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { randomCode } from './codes'
 import type { DatabaseSync } from 'node:sqlite'
 import { nowIso } from './db'
-import type { QuestionType } from './tests'
+import { listQuestions, type QuestionType } from './tests'
 import { parseSettings, serializeSettings, type TestSettings } from './testSettings'
 
 export type LiveSessionStatus = 'lobby' | 'active' | 'paused' | 'finished'
@@ -64,6 +64,10 @@ export interface ParticipationRow {
   max_score: number | null
   percent: number | null
   passed: number | null
+  /** Sum of the per-question times the client reported; null until submitted. */
+  total_time_ms: number | null
+  /** How many times the window went hidden during the attempt. */
+  focus_lost: number
   joined_at: string
   submitted_at: string | null
 }
@@ -80,6 +84,8 @@ export interface Participation {
   maxScore: number | null
   percent: number | null
   passed: boolean | null
+  totalTimeMs: number | null
+  focusLost: number
   joinedAt: string
   submittedAt: string | null
 }
@@ -259,6 +265,8 @@ export function toParticipation(row: ParticipationRow): Participation {
     maxScore: row.max_score,
     percent: row.percent,
     passed: row.passed === null ? null : row.passed === 1,
+    totalTimeMs: row.total_time_ms,
+    focusLost: row.focus_lost,
     joinedAt: row.joined_at,
     submittedAt: row.submitted_at,
   }
@@ -371,6 +379,13 @@ export function recordParticipationEvent(
   db.prepare(
     'INSERT INTO participation_events (id, session_id, participation_id, kind, created_at) VALUES (?, ?, ?, ?, ?)',
   ).run(randomUUID(), input.sessionId, input.participationId, input.kind, nowIso())
+  // The counter on the participation follows the log as it grows, so it is right
+  // at the moment the detail view is opened rather than only at submit time: a
+  // socket that drops on the way out still leaves the number honest.
+  db.prepare('UPDATE participations SET focus_lost = ? WHERE id = ?').run(
+    countFocusLost(db, input.participationId),
+    input.participationId,
+  )
 }
 
 export function setSessionStatus(
@@ -768,6 +783,52 @@ export function listParticipantEntries(
   }))
 }
 
+/** What one answer cost the student, as the client measured it. */
+export interface AnswerTiming {
+  /** Milliseconds spent sitting on the question. */
+  timeMs?: number
+  /** How many times they went back and changed the answer. */
+  changed?: number
+}
+
+/** Nobody sits on one question for an hour; past that it is a clock fault. */
+const MAX_TIME_MS = 60 * 60 * 1000
+
+/** A timing is the client's word for it, so it is bounded before it is believed. */
+function timingOf(
+  timings: Record<string, AnswerTiming> | undefined,
+  questionId: string,
+): { timeMs: number | null; changed: number } {
+  const entry = timings?.[questionId]
+  const rawTime = entry?.timeMs
+  const timeMs =
+    typeof rawTime === 'number' && Number.isFinite(rawTime) && rawTime > 0
+      ? Math.min(Math.round(rawTime), MAX_TIME_MS)
+      : null
+  const rawChanged = entry?.changed
+  const changed =
+    typeof rawChanged === 'number' && Number.isFinite(rawChanged) && rawChanged > 0
+      ? Math.min(Math.round(rawChanged), 1000)
+      : 0
+  return { timeMs, changed }
+}
+
+/**
+ * How many times the window went hidden during one attempt.
+ *
+ * Counted here rather than taken from the client: the events were recorded as
+ * they happened, and a teacher deciding whether an answer was careful or quick
+ * deserves a number the student cannot edit.
+ */
+export function countFocusLost(db: DatabaseSync, participationId: string): number {
+  const row = db
+    .prepare(
+      "SELECT COUNT(*) AS count FROM participation_events WHERE participation_id = ? AND kind = 'hidden'",
+    )
+    .get(participationId) as { count: number } | undefined
+  return row?.count ?? 0
+}
+
 export function saveSubmission(
   db: DatabaseSync,
   participationId: string,
@@ -775,16 +836,26 @@ export function saveSubmission(
   results: Array<{ questionId: string; isCorrect: boolean; points: number }>,
   answers: Record<string, unknown>,
   summary: { score: number; maxScore: number; percent: number; passed: boolean | null },
+  timings?: Record<string, AnswerTiming>,
 ): ParticipationRow | null {
   db.exec('BEGIN')
   try {
     db.prepare('DELETE FROM participation_answers WHERE participation_id = ?').run(participationId)
     const insert = db.prepare(
       `INSERT INTO participation_answers
-         (id, participation_id, question_id, payload, is_correct, points_awarded)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+         (id, participation_id, question_id, payload, is_correct, points_awarded,
+          time_ms, answered_at, changed)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
+    const answeredAt = nowIso()
+    let totalMs = 0
+    let timed = false
     for (const result of results) {
+      const { timeMs, changed } = timingOf(timings, result.questionId)
+      if (timeMs !== null) {
+        totalMs += timeMs
+        timed = true
+      }
       insert.run(
         randomUUID(),
         participationId,
@@ -792,11 +863,15 @@ export function saveSubmission(
         JSON.stringify(answers[result.questionId] ?? null),
         result.isCorrect ? 1 : 0,
         result.points,
+        timeMs,
+        answeredAt,
+        changed,
       )
     }
     db.prepare(
       `UPDATE participations
-          SET status = ?, score = ?, max_score = ?, percent = ?, passed = ?, submitted_at = ?
+          SET status = ?, score = ?, max_score = ?, percent = ?, passed = ?, submitted_at = ?,
+              total_time_ms = ?, focus_lost = ?
         WHERE id = ?`,
     ).run(
       status,
@@ -804,7 +879,11 @@ export function saveSubmission(
       summary.maxScore,
       summary.percent,
       summary.passed === null ? null : summary.passed ? 1 : 0,
-      nowIso(),
+      answeredAt,
+      // No timing at all is not zero time: it is an answer from a client that
+      // never measured, and the two must not read the same in the detail view.
+      timed ? totalMs : null,
+      countFocusLost(db, participationId),
       participationId,
     )
     db.exec('COMMIT')
@@ -817,6 +896,163 @@ export function saveSubmission(
       | ParticipationRow
       | undefined) ?? null
   )
+}
+
+
+/** One question as this student answered it, with what it cost them. */
+export interface AttemptQuestion {
+  questionId: string
+  body: string
+  type: QuestionType
+  points: number
+  position: number
+  /** What they answered, or null when they never touched it. */
+  answer: unknown
+  /** The right answer, from the paper the teacher wrote. */
+  correct: unknown
+  isCorrect: boolean
+  pointsAwarded: number
+  timeMs: number | null
+  changed: number
+}
+
+export interface AttemptEvent {
+  kind: 'visible' | 'hidden'
+  at: string
+}
+
+/**
+ * Everything a teacher wants about one student's run: what they got right, how
+ * long each question took, and how the attempt behaved.
+ *
+ * The timings are the client's word, bounded when they were stored; the focus
+ * count is the server's own. A teacher deciding whether an answer was careful
+ * or quick deserves both halves.
+ */
+export interface AttemptDetail {
+  userId: string
+  username: string
+  fullName: string
+  status: ParticipationStatus
+  score: number | null
+  maxScore: number | null
+  percent: number | null
+  passed: boolean | null
+  joinedAt: string
+  submittedAt: string | null
+  totalTimeMs: number | null
+  focusLost: number
+  /** The mean over the questions that were timed; null when none were. */
+  averageMs: number | null
+  /** Where the time went: the question they sat on longest. */
+  slowest: { questionId: string; body: string; timeMs: number } | null
+  questions: AttemptQuestion[]
+  events: AttemptEvent[]
+}
+
+function readPayload(raw: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown
+  } catch {
+    return null
+  }
+}
+
+/** One student's run in one session, or null if they were not in it. */
+export function attemptDetail(
+  db: DatabaseSync,
+  sessionId: string,
+  testId: string,
+  userId: string,
+): AttemptDetail | null {
+  const row = db
+    .prepare(
+      `SELECT p.*, u.username, u.full_name
+         FROM participations p
+         JOIN users u ON u.id = p.user_id
+        WHERE p.session_id = ? AND p.user_id = ?`,
+    )
+    .get(sessionId, userId) as (ParticipationRow & { username: string; full_name: string }) | undefined
+  if (row === undefined) return null
+  const participation = toParticipation(row)
+
+  const answers = db
+    .prepare('SELECT * FROM participation_answers WHERE participation_id = ?')
+    .all(participation.id) as unknown as Array<{
+    question_id: string
+    payload: string
+    is_correct: number
+    points_awarded: number
+    time_ms: number | null
+    changed: number
+  }>
+  const stored = new Map(answers.map((answer) => [answer.question_id, answer]))
+
+  const byId = new Map(listQuestions(db, testId).map((question) => [question.id, question]))
+  // The student's own order, not the paper's: a shuffled run should read back in
+  // the order they actually saw it.
+  const questions: AttemptQuestion[] = participation.questionOrder.flatMap((id) => {
+    const question = byId.get(id)
+    if (question === undefined) return []
+    const answer = stored.get(id)
+    return [
+      {
+        questionId: id,
+        body: question.body,
+        type: question.type,
+        points: question.points,
+        position: question.position,
+        answer: answer === undefined ? null : readPayload(answer.payload),
+        correct: question.payload,
+        isCorrect: answer?.is_correct === 1,
+        pointsAwarded: answer?.points_awarded ?? 0,
+        timeMs: answer?.time_ms ?? null,
+        changed: answer?.changed ?? 0,
+      },
+    ]
+  })
+
+  const events = (
+    db
+      .prepare(
+        'SELECT kind, created_at FROM participation_events WHERE participation_id = ? ORDER BY created_at ASC',
+      )
+      .all(participation.id) as unknown as Array<{ kind: 'visible' | 'hidden'; created_at: string }>
+  ).map((event) => ({ kind: event.kind, at: event.created_at }))
+
+  const timed = questions.filter((question) => question.timeMs !== null)
+  const slowest = timed.reduce<AttemptQuestion | null>(
+    (worst, question) =>
+      worst === null || (question.timeMs ?? 0) > (worst.timeMs ?? 0) ? question : worst,
+    null,
+  )
+
+  return {
+    userId: participation.userId,
+    username: row.username,
+    fullName: row.full_name,
+    status: participation.status,
+    score: participation.score,
+    maxScore: participation.maxScore,
+    percent: participation.percent,
+    passed: participation.passed,
+    joinedAt: participation.joinedAt,
+    submittedAt: participation.submittedAt,
+    totalTimeMs: participation.totalTimeMs,
+    focusLost: participation.focusLost,
+    averageMs:
+      timed.length > 0
+        ? Math.round(
+            timed.reduce((sum, question) => sum + (question.timeMs ?? 0), 0) / timed.length,
+          )
+        : null,
+    slowest:
+      slowest === null
+        ? null
+        : { questionId: slowest.questionId, body: slowest.body, timeMs: slowest.timeMs ?? 0 },
+    questions,
+    events,
+  }
 }
 
 /** Unanswered participations of a session, for the timeout sweep. */

@@ -42,6 +42,11 @@ const REWIND_TO_V5 = `
   ALTER TABLE tests DROP COLUMN settings;
   ALTER TABLE participations DROP COLUMN option_order;
   ALTER TABLE live_sessions DROP COLUMN paused_at;
+  ALTER TABLE participations DROP COLUMN total_time_ms;
+  ALTER TABLE participations DROP COLUMN focus_lost;
+  ALTER TABLE participation_answers DROP COLUMN time_ms;
+  ALTER TABLE participation_answers DROP COLUMN answered_at;
+  ALTER TABLE participation_answers DROP COLUMN changed;
   UPDATE app_meta SET value = '5' WHERE key = 'schema_version';
 `
 
@@ -99,11 +104,11 @@ describe('migration v6', () => {
   })
 
   it('runs to the current version', () => {
-    expect(SCHEMA_VERSION).toBe(9)
+    expect(SCHEMA_VERSION).toBe(10)
     const version = db.raw
       .prepare("SELECT value FROM app_meta WHERE key = 'schema_version'")
       .get() as { value: string }
-    expect(version.value).toBe('9')
+    expect(version.value).toBe('10')
   })
 
   it('has rooms where classrooms used to be, with their keys intact', () => {

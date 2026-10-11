@@ -54,6 +54,7 @@ interface QuestionStatRaw {
   points: number
   answers: number
   correct: number
+  avg_ms: number | null
 }
 
 /**
@@ -89,7 +90,8 @@ export function testResults(db: DatabaseSync, testId: string): TestResults {
     .prepare(
       `SELECT q.id AS question_id, q.body, q.type, q.points,
               COUNT(pa.id)          AS answers,
-              COALESCE(SUM(pa.is_correct), 0) AS correct
+              COALESCE(SUM(pa.is_correct), 0) AS correct,
+              AVG(pa.time_ms)      AS avg_ms
          FROM questions q
          LEFT JOIN participation_answers pa ON pa.question_id = q.id
         WHERE q.test_id = ?
@@ -118,6 +120,7 @@ export function testResults(db: DatabaseSync, testId: string): TestResults {
     answers: row.answers,
     correct: row.correct,
     percent: row.answers > 0 ? Math.round((row.correct / row.answers) * 100) : 0,
+    averageMs: row.avg_ms === null ? null : Math.round(row.avg_ms),
   }))
 
   const submissions = rows.reduce((sum, row) => sum + row.attempts, 0)

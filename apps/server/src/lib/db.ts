@@ -12,7 +12,7 @@ export function nowIso(): string {
   return new Date().toISOString()
 }
 
-export const SCHEMA_VERSION = 9
+export const SCHEMA_VERSION = 10
 
 const MIGRATIONS: Array<{ version: number; up: string }> = [
   {
@@ -340,6 +340,24 @@ const MIGRATIONS: Array<{ version: number; up: string }> = [
       -- phone - reads one honest number without keeping its own bookkeeping.
       -- This column is the record of when that pause began.
       ALTER TABLE live_sessions ADD COLUMN paused_at TEXT;
+    `,
+  },
+  {
+    version: 10,
+    up: `
+      -- How an attempt actually went, not only what it scored: how long each
+      -- question took, when it was answered, and how many times the student went
+      -- back and changed it. The change count is the honest number here - a
+      -- student who rewrote an answer three times was not as sure of it as the
+      -- final row suggests.
+      ALTER TABLE participation_answers ADD COLUMN time_ms INTEGER;
+      ALTER TABLE participation_answers ADD COLUMN answered_at TEXT;
+      ALTER TABLE participation_answers ADD COLUMN changed INTEGER NOT NULL DEFAULT 0;
+      -- The attempt's own totals. focus_lost counts the times the window went
+      -- hidden, which is what a teacher wants to know before they read a quiet
+      -- answer as a confident one.
+      ALTER TABLE participations ADD COLUMN total_time_ms INTEGER;
+      ALTER TABLE participations ADD COLUMN focus_lost INTEGER NOT NULL DEFAULT 0;
     `,
   },
 ]
