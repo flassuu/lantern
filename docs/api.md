@@ -380,6 +380,45 @@ the reference dropped on write rather than stored. The import endpoint reports
 how many went missing as `imagesDropped`.
 
 
+### Topics
+
+A topic is a lesson: an ordered heading a test or a material can be filed under.
+A course reads as a plan rather than as whatever was uploaded last.
+
+- `POST /api/courses/:id/topics` `{ "title": "…" }` → `201 { topic }`. A new
+  lesson lands **at the end**: adding one is not renumbering the plan the teacher
+  already has.
+- `PATCH /api/courses/:id/topics/:topicId` `{ "title": "…" }` → `200 { topic }`.
+- `DELETE /api/courses/:id/topics/:topicId` → `204`. What was filed under it is
+  **left behind** with `topicId: null` — taking a heading down is not a way to
+  delete the reading under it.
+- `PUT /api/courses/:id/topics/order` `{ "ids": [...] }` → `200 { topics }`. Ids
+  that are not in this course are ignored rather than obeyed.
+- `PATCH /api/courses/:id/tests/:testId` `{ "topicId": "…" | null }` → the test's
+  new lesson, or out of every lesson.
+- `PATCH /api/courses/:id/materials/:materialId` `{ "topicId": "…" | null }` —
+  the same for a material.
+
+A `topicId` naming a lesson in another course is `404 NOT_FOUND`, not a quiet
+no-op: filing a test where the teacher cannot see it would be worse than failing.
+
+### Announcements
+
+What the teacher says to the class about a course. The body is required and the
+file optional, because a reading for tomorrow and a note about tomorrow both
+happen.
+
+- `POST /api/courses/:id/announcements` `{ "body": "…", "materialId"?: "…" }` →
+  `201 { announcements }`, the whole feed newest first. A `materialId` from
+  another course is `404` — the note is for this class, and this class is not in
+  that course.
+- `DELETE /api/courses/:id/announcements/:announcementId` → `204`. **Author only**
+  (`403` otherwise): another teacher who can see the course cannot delete words
+  said to somebody else's class.
+
+A material is served `inline` when it is an image or plain text and
+`attachment` otherwise — a picture in a lesson is looked at, not only saved.
+
 ## Admin insights (`/api/admin`, admin only)
 
 ### `GET /api/admin/stats`

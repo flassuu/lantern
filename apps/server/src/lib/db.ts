@@ -12,7 +12,7 @@ export function nowIso(): string {
   return new Date().toISOString()
 }
 
-export const SCHEMA_VERSION = 11
+export const SCHEMA_VERSION = 12
 
 const MIGRATIONS: Array<{ version: number; up: string }> = [
   {
@@ -382,6 +382,43 @@ const MIGRATIONS: Array<{ version: number; up: string }> = [
         created_at TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_assets_owner ON assets(owner_id);
+    `,
+  },
+  {
+    version: 12,
+    up: `
+      -- Lessons. A course was a flat pile of tests and files, and the order they
+      -- arrived in said nothing about the order they were meant to be taught in;
+      -- a topic is that order, and it is a row rather than a number on the test
+      -- because two teachers can disagree about where a lesson begins.
+      CREATE TABLE IF NOT EXISTS course_topics (
+        id         TEXT PRIMARY KEY,
+        course_id  TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        title      TEXT NOT NULL,
+        position   INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_course_topics_course ON course_topics(course_id);
+
+      -- What belongs to a lesson. Nullable on purpose: a test added to a course
+      -- on Friday and a lesson planned for Monday are both real, and neither has
+      -- to pretend to be the other. Removing a topic sets it to null rather than
+      -- deleting the test or the file with it.
+      ALTER TABLE materials ADD COLUMN topic_id TEXT REFERENCES course_topics(id) ON DELETE SET NULL;
+      ALTER TABLE course_tests ADD COLUMN topic_id TEXT REFERENCES course_topics(id) ON DELETE SET NULL;
+
+      -- What the teacher says to the class. An announcement may carry a material,
+      -- which is how a correction sheet or a reading for tomorrow gets out; the
+      -- body alone is enough for the common case.
+      CREATE TABLE IF NOT EXISTS announcements (
+        id          TEXT PRIMARY KEY,
+        course_id   TEXT NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+        author_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        body        TEXT NOT NULL,
+        material_id TEXT REFERENCES materials(id) ON DELETE SET NULL,
+        created_at  TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_announcements_course ON announcements(course_id, created_at DESC);
     `,
   },
 ]

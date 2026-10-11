@@ -114,6 +114,33 @@ a test can sit in several courses at once.
 | size_bytes | INTEGER | |
 | created_at | TEXT | |
 
+### course_topics
+
+Lessons, in the order the teacher put them in. A course was a flat pile; this is
+the plan.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | TEXT PK | UUID |
+| course_id | TEXT FK courses.id | |
+| title | TEXT | |
+| position | INTEGER | new lessons go to the end |
+| created_at | TEXT | |
+
+### announcements
+
+What the teacher says to the class. The file is optional: a reading for tomorrow
+and a note about tomorrow both happen.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | TEXT PK | UUID |
+| course_id | TEXT FK courses.id | |
+| author_id | TEXT FK users.id | only the author may delete it |
+| body | TEXT | |
+| material_id | TEXT FK materials.id | nullable |
+| created_at | TEXT | |
+
 ### tests
 
 A test is a set of questions; it can be shared directly or via courses.
@@ -395,5 +422,11 @@ checked by the routes, not here.
   Question payloads grow `media` on the question, `image` on each option and
   `leftImage`/`rightImage` on each matching side - ids, never URLs, so a paper
   can only ever point at a picture this server holds.
+- v12 adds `course_topics` (course, title, position), a nullable `topic_id` on
+  `materials` and `course_tests`, and `announcements` (course, author, body, an
+  optional material). Both `topic_id` columns are nullable on purpose: a test
+  added on Friday and a lesson planned for Monday are both real. `ON DELETE SET
+  NULL` is what makes a deleted lesson leave its contents behind — taking a
+  heading down must not delete the reading filed under it.
 - Migrations run idempotently at startup, in order; each is wrapped in a
   transaction and versioned in `schema_migrations`.

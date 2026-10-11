@@ -26,7 +26,11 @@ export interface Course {
 
 export interface CourseWithRelations extends Course {
   materials: Material[]
-  tests: Array<{ id: string; title: string }>
+  /** The lessons, in the order the teacher put them in. */
+  topics: Topic[]
+  /** What the teacher said to the class, newest first. */
+  announcements: Announcement[]
+  tests: Array<{ id: string; title: string; topicId: string | null }>
   students: Array<{ id: string; username: string; fullName: string }>
   /** The teacher's own labels; a course carries them wherever it goes. */
   tags: Tag[]
@@ -39,6 +43,7 @@ export interface MaterialRow {
   file_path: string
   mime_type: string
   size_bytes: number
+  topic_id: string | null
   created_at: string
 }
 
@@ -48,6 +53,8 @@ export interface Material {
   title: string
   mimeType: string
   sizeBytes: number
+  /** The lesson it sits under, or null when it is not part of one. */
+  topicId: string | null
   createdAt: string
 }
 
@@ -132,6 +139,7 @@ export function listMaterials(db: DatabaseSync, courseId: string): Material[] {
     title: row.title,
     mimeType: row.mime_type,
     sizeBytes: row.size_bytes,
+    topicId: row.topic_id ?? null,
     createdAt: row.created_at,
   }))
 }
@@ -218,6 +226,7 @@ export function createMaterial(
     title: row!.title,
     mimeType: row!.mime_type,
     sizeBytes: row!.size_bytes,
+    topicId: row!.topic_id ?? null,
     createdAt: row!.created_at,
   }
 }
@@ -232,4 +241,220 @@ export function findMaterialRow(
 
 export function deleteMaterial(db: DatabaseSync, id: string): void {
   db.prepare('DELETE FROM materials WHERE id = ?').run(id)
+}
+// ------------------------------------------------------------------- topics
+
+/**
+ * A lesson inside a course: an ordered heading that a test or a material can
+ * be put under, so a course reads as a plan rather than as whatever was uploaded
+ * last.
+ *
+ * Nothing requires a topic. A test added on Friday and a lesson planned for
+ * Monday are both real, and neither has to pretend to be the other - which is
+ * why `topic_id` on both tables is nullable and a deleted topic leaves its
+ * contents behind rather than taking them with it.
+ */
+export interface TopicRow {
+  id: string
+  course_id: string
+  title: string
+  position: number
+  created_at: string
+}
+
+export interface Topic {
+  id: string
+  courseId: string
+  title: string
+  position: number
+  createdAt: string
+}
+
+export function toTopic(row: TopicRow): Topic {
+  return {
+    id: row.id,
+    courseId: row.course_id,
+    title: row.title,
+    position: row.position,
+    createdAt: row.created_at,
+  }
+}
+
+export function findTopicRow(db: DatabaseSync, id: string): TopicRow | null {
+  const row = db.prepare('SELECT * FROM course_topics WHERE id = ?').get(id)
+  return (row as TopicRow | undefined) ?? null
+}
+
+/** The course's lessons in the order the teacher put them in. */
+export function listTopics(db: DatabaseSync, courseId: string): Topic[] {
+  const rows = db
+    .prepare(
+      'SELECT * FROM course_topics WHERE course_id = ? ORDER BY position ASC, created_at ASC',
+    )
+    .all(courseId) as unknown as TopicRow[]
+  return rows.map(toTopic)
+}
+
+export function createTopic(
+  db: DatabaseSync,
+  courseId: string,
+  input: { title: string },
+): Topic {
+  const id = randomUUID()
+  // A new lesson goes to the end rather than the top: the teacher is adding it
+  // now, and pushing their existing plan down a lesson is not what "add" means.
+  const next = db
+    .prepare('SELECT COALESCE(MAX(position), -1) + 1 AS next FROM course_topics WHERE course_id = ?')
+    .get(courseId) as { next: number }
+  db.prepare(
+    'INSERT INTO course_topics (id, course_id, title, position, created_at) VALUES (?, ?, ?, ?, ?)',
+  ).run(id, courseId, input.title.trim(), next.next, nowIso())
+  return toTopic(findTopicRow(db, id) as TopicRow)
+}
+
+export function updateTopic(
+  db: DatabaseSync,
+  topic: TopicRow,
+  input: { title: string },
+): Topic {
+  db.prepare('UPDATE course_topics SET title = ? WHERE id = ?').run(
+    input.title.trim(),
+    topic.id,
+  )
+  return toTopic(findTopicRow(db, topic.id) as TopicRow)
+}
+
+/**
+ * Puts the course's lessons in the order given.
+ *
+ * Written as one statement over the given ids rather than a swap per pair: two
+ * lessons swapping places is a coincidence, and a drag across six of them is not.
+ * Ids that are not in this course are ignored rather than obeyed - a body from
+ * another tenant must not be able to renumber this one.
+ */
+export function reorderTopics(db: DatabaseSync, courseId: string, ids: string[]): void {
+  const owned = new Set(listTopics(db, courseId).map((topic) => topic.id))
+  const update = db.prepare('UPDATE course_topics SET position = ? WHERE id = ? AND course_id = ?')
+  ids.forEach((id, position) => {
+    if (owned.has(id)) update.run(position, id, courseId)
+  })
+}
+
+export function deleteTopic(db: DatabaseSync, id: string): void {
+  db.prepare('DELETE FROM course_topics WHERE id = ?').run(id)
+}
+
+/** Moves a test into a lesson, or out of every lesson when `topicId` is null. */
+export function setTestTopic(
+  db: DatabaseSync,
+  courseId: string,
+  testId: string,
+  topicId: string | null,
+): void {
+  db.prepare('UPDATE course_tests SET topic_id = ? WHERE course_id = ? AND test_id = ?').run(
+    topicId,
+    courseId,
+    testId,
+  )
+}
+
+/** The same for a material. */
+export function setMaterialTopic(
+  db: DatabaseSync,
+  courseId: string,
+  materialId: string,
+  topicId: string | null,
+): void {
+  db.prepare('UPDATE materials SET topic_id = ? WHERE course_id = ? AND id = ?').run(
+    topicId,
+    courseId,
+    materialId,
+  )
+}
+
+// ------------------------------------------------------------- announcements
+
+/**
+ * What the teacher says to the class about a course.
+ *
+ * An announcement may carry a material, which is how a reading or a correction
+ * sheet gets out; the body alone is enough for the common case, so the file is
+ * optional rather than required. Only the author may take one down - an admin
+ * can, because an admin manages the teacher too, but a second teacher who
+ * happens to see the course cannot delete someone else's words to their class.
+ */
+export interface AnnouncementRow {
+  id: string
+  course_id: string
+  author_id: string
+  body: string
+  material_id: string | null
+  created_at: string
+}
+
+export interface Announcement {
+  id: string
+  courseId: string
+  authorId: string
+  authorName: string
+  body: string
+  material: Material | null
+  createdAt: string
+}
+
+function toAnnouncement(row: AnnouncementRow, authorName: string): Announcement {
+  return {
+    id: row.id,
+    courseId: row.course_id,
+    authorId: row.author_id,
+    authorName,
+    body: row.body,
+    material: null,
+    createdAt: row.created_at,
+  }
+}
+
+export function findAnnouncementRow(
+  db: DatabaseSync,
+  id: string,
+): AnnouncementRow | null {
+  const row = db.prepare('SELECT * FROM announcements WHERE id = ?').get(id)
+  return (row as AnnouncementRow | undefined) ?? null
+}
+
+/** Newest first: the thing a student needs today is at the top. */
+export function listAnnouncements(db: DatabaseSync, courseId: string): Announcement[] {
+  const rows = db
+    .prepare(
+      `SELECT a.*, u.full_name FROM announcements a JOIN users u ON u.id = a.author_id
+        WHERE a.course_id = ? ORDER BY a.created_at DESC, a.id DESC`,
+    )
+    .all(courseId) as unknown as Array<AnnouncementRow & { full_name: string }>
+  const materials = new Map(listMaterials(db, courseId).map((material) => [material.id, material]))
+  return rows.map((row) => {
+    const announcement = toAnnouncement(row, row.full_name)
+    if (row.material_id === null) return announcement
+    return {
+      ...announcement,
+      material: materials.get(row.material_id) ?? null,
+    }
+  })
+}
+
+export function createAnnouncement(
+  db: DatabaseSync,
+  courseId: string,
+  authorId: string,
+  input: { body: string; materialId: string | null },
+): AnnouncementRow {
+  const id = randomUUID()
+  db.prepare(
+    `INSERT INTO announcements (id, course_id, author_id, body, material_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(id, courseId, authorId, input.body.trim(), input.materialId, nowIso())
+  return findAnnouncementRow(db, id) as AnnouncementRow
+}
+
+export function deleteAnnouncement(db: DatabaseSync, id: string): void {
+  db.prepare('DELETE FROM announcements WHERE id = ?').run(id)
 }

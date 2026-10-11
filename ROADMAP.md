@@ -594,12 +594,13 @@ prettier result for both teacher and student.
 Goal: lesson topics, teacher announcements, and images viewed rather than only
 downloaded.
 
-- [ ] Migration **v11**: `course_topics`; a nullable `topic_id` on `materials`
+- [x] Migration **v12**: `course_topics`; a nullable `topic_id` on `materials`
       and `course_tests`; `announcements` (course, author, body, optional
       material, timestamps)
-- [ ] Server: topics CRUD and ordering; attach/detach tests and materials to a
+- [x] Server: topics CRUD and ordering; attach/detach tests and materials to a
       topic; announcements CRUD (author only); the student's course payload
-      carries topics, announcements and materials
+      carries topics, announcements and materials; an image material is served
+      inline
 - [ ] Client (teacher): `CourseDetails` shows ordered topics, each with its tests
       and materials; create and edit a topic; an announcement form (text plus an
       optional file); materials show a preview with a lightbox and a GIF plays
