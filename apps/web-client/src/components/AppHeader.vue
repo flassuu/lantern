@@ -22,7 +22,8 @@ const roleLabel = computed(() => t(`role.${user.value?.role ?? 'student'}`))
   -->
   <header class="sticky top-0 z-30 bg-surface-container shadow-[0_1px_0_0_var(--outline-variant)]">
     <div class="flex h-14 items-center gap-2 px-3 sm:gap-3 sm:px-4">
-      <BrandMark :size="24" class="shrink-0" />
+      <!-- The mark picks the header colour so it follows the theme just like the wordmark. -->
+      <BrandMark :size="24" class="shrink-0 text-primary" />
       <!--
         The wordmark is the name, so the heading carries the artwork and keeps the
         name as text for screen readers and for anything reading the page - the

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BookOpen, FileQuestion, Grid3x3, Radio, Users } from '@lucide/vue'
+import { BookOpen, ClipboardList, NotebookPen, Radio, Users } from '@lucide/vue'
 import AppHeader from '../components/AppHeader.vue'
 import TabStrip from '../components/common/TabStrip.vue'
 import TestsTab from '../components/teacher/TestsTab.vue'
@@ -61,10 +61,10 @@ onMounted(async () => {
         :aria-label="t('teacher.heading')"
         :items="[
           { value: 'live', label: t('teacher.tabs.live'), icon: Radio },
-          { value: 'tests', label: t('teacher.tabs.tests'), icon: FileQuestion },
+          { value: 'tests', label: t('teacher.tabs.tests'), icon: ClipboardList },
           { value: 'courses', label: t('teacher.tabs.courses'), icon: BookOpen },
           { value: 'rooms', label: t('teacher.tabs.rooms'), icon: Users },
-          { value: 'journal', label: t('teacher.tabs.journal'), icon: Grid3x3 },
+          { value: 'journal', label: t('teacher.tabs.journal'), icon: NotebookPen },
         ]"
       />
 
