@@ -543,66 +543,67 @@ onMounted(() => {
           as="section"
           :class="sessions[0]?.id === selectedId ? 'rounded-tl-none' : ''"
         >
-          <div class="flex flex-wrap items-start justify-between gap-3">
-            <!-- The run, and immediately to its right what it is and what it
-                 asks: the chips are the footnote to the run, so they stand
-                 beside it rather than being pushed to the far edge of the row. -->
-            <div class="flex min-w-0 items-start gap-3">
+          <div class="flex flex-col gap-2">
+            <!-- Header row: run name + status -->
+            <div class="flex items-start justify-between gap-3">
+              <h4 class="truncate text-lg font-semibold text-on-surface">{{ selectedName }}</h4>
+              <span
+                class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                :class="statusChip[boardStatus]"
+              >
+                <span class="size-1.5 rounded-full" :class="statusDot[boardStatus]" />
+                {{ t(`teacher.live.status.${boardStatus}`) }}
+              </span>
+            </div>
+
+            <!-- Row 2: test info + room -->
+            <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
-                <h4 class="truncate text-lg font-semibold text-on-surface">{{ selectedName }}</h4>
-                <!-- A run the teacher named shows the paper it ran as well: the
-                     name says which lesson this was, the title says what was
-                     asked. -->
+                <p class="text-sm text-on-surface">
+                  Test: {{ selected.name || selected.title || '-' }}
+                  <span
+                    v-if="selectedTest"
+                    class="ml-1.5 inline-flex items-center gap-1 rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant"
+                  >
+                    {{ t('teacher.tests.questionCount', { count: selectedTest.questionCount }) }}
+                    <template v-if="selected.timeLimitSec">
+                      · {{ Math.round(selected.timeLimitSec / 60) }} {{ t('teacher.tests.minutes') }}
+                    </template>
+                  </span>
+                </p>
                 <p
                   v-if="selected.name && selected.title"
                   class="mt-0.5 truncate text-xs text-on-surface-variant"
                 >
                   {{ selected.title }}
                 </p>
-                <div
-                  v-if="roomNameOf(selected.roomId) || selected.tags.length"
-                  class="mt-1.5 flex flex-wrap items-center gap-1.5"
-                >
-                  <span
-                    v-if="roomNameOf(selected.roomId)"
-                    class="inline-flex items-center gap-1 rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant"
-                  >
-                    <Users class="size-3" aria-hidden="true" />
-                    {{ roomNameOf(selected.roomId) }}
-                  </span>
-                  <span
-                    v-for="tag in selected.tags"
-                    :key="tag.id"
-                    class="rounded-full bg-secondary-container px-2 py-0.5 text-[11px] font-semibold text-on-secondary-container"
-                  >
-                    {{ tag.name }}
-                  </span>
-                </div>
-                <p v-if="selected.startedAt" class="mt-0.5 text-xs text-on-surface-variant">
-                  {{ t('teacher.live.startedAt', { time: formatTime(selected.startedAt) }) }}
-                </p>
               </div>
-
-              <div class="flex shrink-0 flex-col items-start gap-1.5 pt-0.5">
-                <span
-                  class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                  :class="statusChip[boardStatus]"
-                >
-                  <span class="size-1.5 rounded-full" :class="statusDot[boardStatus]" />
-                  {{ t(`teacher.live.status.${boardStatus}`) }}
-                </span>
-                <span
-                  v-if="selectedTest"
-                  class="whitespace-nowrap text-[11px] text-on-surface-variant"
-                >
-                  {{ t('teacher.tests.questionCount', { count: selectedTest.questionCount }) }}
-                  <template v-if="selected.timeLimitSec">
-                    · {{ Math.round(selected.timeLimitSec / 60) }}
-                    {{ t('teacher.tests.minutes') }}
-                  </template>
+              <div v-if="roomNameOf(selected.roomId)" class="shrink-0 text-right">
+                <span class="text-xs text-on-surface-variant">Rooms:</span>
+                <span class="ml-1 inline-flex items-center gap-1 rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant">
+                  <Users class="size-3" aria-hidden="true" />
+                  {{ roomNameOf(selected.roomId) }}
                 </span>
               </div>
             </div>
+
+            <!-- Row 3: started + labels -->
+            <div class="flex items-start justify-between gap-3">
+              <p v-if="selected.startedAt" class="text-xs text-on-surface-variant">
+                {{ t('teacher.live.startedAt', { time: formatTime(selected.startedAt) }) }}
+              </p>
+              <div v-if="selected.tags.length" class="shrink-0 text-right">
+                <span class="text-xs text-on-surface-variant">Labels:</span>
+                <span
+                  v-for="tag in selected.tags"
+                  :key="tag.id"
+                  class="ml-1 inline-flex items-center rounded-full bg-secondary-container px-2 py-0.5 text-[11px] font-semibold text-on-secondary-container"
+                >
+                  {{ tag.name }}
+                </span>
+              </div>
+            </div>
+          </div>
 
             <!-- The clock, and the one thing a teacher reaches for when a class
                  is running out of time. A lobby has no clock to show; the tiles
