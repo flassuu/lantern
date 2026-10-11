@@ -50,8 +50,8 @@ finding is noise while the spine is broken.
 - [ ] Open the test from the list to preview it. Check the preview is what the
       student will get
 - [ ] Live tab → start a session with that test. A six-character code appears
-- [ ] On a phone (or a narrow window): register a student **with the class key**
-      from admin → Classes. They get in without approval
+- [ ] On a phone (or a narrow window): register a student **with the room key**
+      from the teacher → Rooms. They get in without approval
 - [ ] Student enters the code, answers all five, changes one answer, submits
 - [ ] Result screen: score, percent, passed, and the correct answers shown
 - [ ] Teacher's live board showed the student move while they answered
@@ -63,7 +63,7 @@ finding is noise while the spine is broken.
 Work top to bottom. Tick what works, note what does not.
 
 **Auth**
-- [ ] Register with a class key → approved instantly
+- [ ] Register with a room key → approved instantly
 - [ ] Register without one → stays pending, sign-in says "awaits approval"
 - [ ] A teacher's key still creates a **student**, never a teacher
 - [ ] Wrong password, and a blocked account, are refused
@@ -179,7 +179,7 @@ rather than a bug goes into `ROADMAP.md`, not into a patch.
 Decided on purpose — do not report these:
 
 - Restart is not an API call. Only the machine owning the process can restart it.
-- A class key approves a student and nothing else. The role is hard-coded.
+- A room key approves a student and nothing else. The role is hard-coded.
 - POST answers 200, not 201. Consistent everywhere.
 - The export format stays `knowledge-testing.test`. Renaming it would break
   every file exported before 0.5.0.

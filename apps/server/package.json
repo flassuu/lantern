@@ -1,6 +1,6 @@
 {
   "name": "@lantern/server",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "type": "module",
   "description": "LANtern server: local REST/WebSocket API (Fastify + node:sqlite), compiles to a single binary",

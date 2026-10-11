@@ -21,7 +21,7 @@ Probe used by clients to confirm the local server is up. Public.
 ```json
 {
   "status": "ok",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "database": "ok",
   "uptime_ms": 1234,
   "timestamp": "2026-01-01T00:00:00.000Z"
@@ -158,14 +158,14 @@ Admin creates a teacher (approved immediately). Request body like
 
 ### `GET /api/users/pending`
 
-Admin **or teacher**. Students who registered without a class key and are waiting
+Admin **or teacher**. Students who registered without a room key and are waiting
 to be let in. Only ever pending students, never the roster.
 
 ```json
 { "users": [ { "id": "…", "username": "student1", "status": "pending", … } ] }
 ```
 
-The teacher's **Classes** tab shows this list with an Approve / Refuse pair for
+The teacher's **Rooms** tab shows this list with an Approve / Refuse pair for
 each entry. Without it, a student who typed no key waits for an admin that a lone
 setup does not have.
 
@@ -428,7 +428,7 @@ Aggregated DB health and table counts — the admin "System & DB" screen.
 ```json
 {
   "stats": {
-    "version": "0.6.0",
+    "version": "0.7.0",
     "uptimeMs": 1234,
     "schemaVersion": 5,
     "database": "ok",

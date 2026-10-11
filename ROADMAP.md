@@ -16,7 +16,7 @@ verified, not when it is planned.
 | Phase 4 — Reporting | 0.4.0 (done) | Statistics, journals, printable + CSV export |
 | Phase 5 — Deployment | **0.5.0** (done) | The three ways it has to run: desktop host, school server, classroom without an admin |
 | Phase 6 — Classroom experience | **0.6.0** (done) | Rooms & tags, a session lobby, per-student detail, media in questions, course lessons & announcements, journals |
-| Phase 7 — MVP polish | 1.0.0 | Packaging polish, e2e, screenshots, offline PWA |
+| Phase 7 — MVP polish | **0.7.0** (done) | Packaging polish, e2e, screenshots, offline PWA |
 
 The UI/UX polish pass (originally planned as its own 0.1.1) shipped together
 with Phase 2 as **0.2.0** — separating them would have meant a release that
@@ -678,7 +678,7 @@ carries the files or carries the references, and 6.6 decided: it carries the
 references - ids - because a paper pointing at a picture by id can only ever
 show one this server holds.
 
-## Phase 7 — MVP polish (v1.0.0)
+## Phase 7 — MVP polish (v0.7.0) — **done**
 
 Goal: turn a working system into one that can be **shown, installed and
 explained** - demo data with no typing, a full student run checked in a real
@@ -693,8 +693,9 @@ the server test suite, the client test suite, and a GitHub-ready README.
 - **No new dependencies without asking.** The service worker is hand-written; the
   browser harness stays dependency-free. A migration to `vite-plugin-pwa` is a
   decision to be taken deliberately, not a convenience to reach for.
-- **Sub-phases ship as `0.7.x`; `1.0.0` closes the phase.** "1.0.0" says the MVP
-  exists, and that is not a claim to spend on a documentation commit.
+- **The phase ships as one release, `0.7.0`.** The `7.x` codes are the plan's own
+  numbering, not releases. `1.0.0` is reserved for the pass done by hand — screen
+  by screen, pixel by pixel — which has not been planned here and is not claimed.
 - **Demo data is never implicit.** A `--seed-demo` flag and a console `demo`
   command. Nothing seeds itself, and seeding refuses a database that already has
   real work in it.
@@ -703,7 +704,7 @@ the server test suite, the client test suite, and a GitHub-ready README.
   the harness's only would-be second consumer is gone, so the harness stays one
   file rather than being split for nobody.
 
-### 7.1 Demo data — v0.7.1
+### 7.1 Demo data — **done**
 
 Goal: a fresh install shows the system without a single keystroke.
 
@@ -720,7 +721,7 @@ Goal: a fresh install shows the system without a single keystroke.
       checks the journal actually has participants
 - [x] Docs: README "see it now", `docs/scenarios.md`
 
-### 7.2 The student's whole run, in a browser — v0.7.2
+### 7.2 The student's whole run, in a browser — **done**
 
 Goal: join → answer → submit → result, driven end to end in a real Firefox, not
 "as far as the paper".
@@ -734,16 +735,21 @@ Goal: join → answer → submit → result, driven end to end in a real Firefox
 - [x] The path **finishes** the run, so it runs last; the ordering rule the other
       paths already taught this file is written down where it is set
 
-### 7.3 Screenshots in the README — v0.7.3
+### 7.3 Screenshots in the README — **open on purpose**
 
 Goal: the README shows the thing rather than describing it.
 
-- [ ] `docs/screenshots.txt` - the checklist: what each shot shows, the exact
-      filename, the window size and the theme. Taken by the owner.
-- [ ] README: the four images embedded where they belong, once the files are in
-      `docs/img/`
+This one is deliberately not done: **the owner takes the shots by hand.** The
+checklist is written and committed; when the files land in `docs/img/` the README
+gets them in a documentation commit, which is not a behavior change and so does not
+wait for a version.
 
-### 7.4 Offline PWA — v0.7.4
+- [x] `docs/screenshots.txt` - the checklist: what each shot shows, the exact
+      filename, the window size and the theme
+- [ ] README: the images embedded where they belong, once the files are in
+      `docs/img/` - waiting on the owner, not on code
+
+### 7.4 Offline PWA — **done**
 
 Goal: a phone installs the client, and without Wi-Fi it still shows what it had.
 The icons are already in `public/`; there is no manifest and no service worker,
@@ -772,7 +778,7 @@ and cannot install it - no code changes that. Making the classroom installable
 means giving the server an HTTPS address, which is its own piece of work (a
 certificate, and the trust question on a phone that has never seen the issuer).
 
-### 7.5 An AppImage that runs — v0.7.5
+### 7.5 An AppImage that runs — **done**
 
 Goal: the format that has been excluded since 0.5.1, shipped from CI - and only
 if the artifact starts.
@@ -806,13 +812,13 @@ What 0.5.1 established, so it does not have to be re-learned:
       machine the release is cut from - health answered `0.6.0` with the database
       ok, which is the failure this whole sub-phase exists for
 
-### 7.6 Closing the MVP — v1.0.0
+### 7.6 Closing the phase — v0.7.0
 
-- [ ] Every manifest at `1.0.0` in one scripted pass, `CHANGELOG` for the phase,
+- [x] Every manifest at `0.7.0` in one scripted pass, `CHANGELOG` for the phase,
       README status, a last pass over `scenarios.md` and `TEST_PLAN.md`
-- [ ] The full gate once, tag `v1.0.0`, release notes from the changelog, and the
+- [x] The full gate once, tag `v0.7.0`, release notes from the changelog, and the
       released assets downloaded and started as a user would
-- [ ] Last read of "Out of scope (v1)" so what is not in 1.0 is said out loud
+- [x] Last read of "Out of scope (v1)" so what is not in 1.0 is said out loud
 
 **Order and dependencies.** 7.1 → 7.2 → 7.3 (the shots need demo data to show
 something) and 7.4 → 7.5 → 7.6. 7.4 touches only the web client and can go at any

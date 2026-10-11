@@ -65,7 +65,7 @@ Windows)`. Watch with `gh run watch <id> --repo flassuu/lantern`.
 ### The AppImage, and the one thing that can go wrong with it
 
 CI builds the `.deb`, the Windows installers **and the AppImage**. The AppImage
-was missing from every release between 0.5.1 and 0.7.5, and the reason is worth
+was missing from every release between 0.5.1 and 0.7.0, and the reason is worth
 keeping written down, because it is invisible to every check except one:
 
 - `linuxdeploy` assembles the AppImage by running `patchelf` over **every ELF in

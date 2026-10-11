@@ -130,7 +130,7 @@ release page, unpack the client, then:
 
 ```bash
 TEACHER_PASSWORD='choose-a-real-one' \
-  ./lantern-server_0.6.0_linux-x64 \
+  ./lantern-server_0.7.0_linux-x64 \
     --port 3300 \
     --data ./data \
     --webroot ./dist

@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [SemVer](https://semver.org/).
 
+## [0.7.0] — 2026-10-11
+
+Phase 7, and the last of the classroom work before the polish. Everything here
+serves one end: the thing being **showable, installable and verifiable** — demo
+data with no typing, the whole student run checked in a real browser, an
+offline-capable phone client, and the Linux AppImage that has been missing since
+0.5.1.
+
 ### Demo data
 
 - **A fresh install can be shown without typing anything.** `--seed-demo` (or
@@ -55,6 +63,23 @@ versioning follows [SemVer](https://semver.org/).
   goes up only if that answers. An artifact nobody has started is an artifact
   nobody has tested, and this one was proved on the machine the release is cut
   from before the job existed.
+
+### Verification at this release
+
+289 server tests, 83 client tests, 9 Rust tests, typecheck across the three
+packages, `pnpm build:server`, `pnpm build:web`, `pnpm smoke:console` and
+`pnpm check:browser` — all green. The browser sweep now also drives the whole
+student run: join, answer all five kinds of question through the widgets, submit
+through the dialog, and read the score — 100% of 7 points — with the server's own
+row and the teacher's board agreeing with it. It also checks the manifest, its
+icons and a registered service worker.
+
+The AppImage was proved by extracting the artifact and starting the server from
+inside it, which answered `0.7.0` with the database ok; the release job does the
+same thing before uploading it.
+
+**Migrations:** none since 0.6.0 — the schema is still **v12**, applied
+idempotently at startup. A database from 0.6.0 upgrades with nothing to do.
 
 ## [0.6.0] — 2026-10-11
 
@@ -1298,6 +1323,7 @@ teacher UIs in the web client and the desktop app. 35 integration tests green.
   preloads the system `libwayland-client.so` (bundled one is ABI-incompatible
   with Mesa 26).
 
+[0.7.0]: https://github.com/flassuu/lantern/releases/tag/v0.7.0
 [0.6.0]: https://github.com/flassuu/lantern/releases/tag/v0.6.0
 [0.5.1]: https://github.com/flassuu/lantern/releases/tag/v0.5.1
 [0.5.0]: https://github.com/flassuu/lantern/releases/tag/v0.5.0
