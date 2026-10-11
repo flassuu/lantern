@@ -621,15 +621,18 @@ or to a course.
 - [x] Server: `GET /api/journals/rooms/:id` and `/api/journals/courses/:id` —
       students against the tests of the room or course, each cell the last
       percent, the attempt count and the last date; CSV export
-- [ ] Client: `JournalTable.vue` on `AppTable` — a sticky first column, sorting,
-      a dash for an empty cell, a tooltip for "N attempts, date", printing
-- [ ] Client: a Journal screen reachable from a room and from a course, with the
-      scope switch and the test columns; a link into the student detail (6.5)
-- [ ] Client: the dashboard menu settles as `Live`, `Tests`, `Courses`, `Rooms`,
+- [x] Client: `JournalTable.vue` — a plain `<table>` (the roadmap said
+      `AppTable`, which does not exist in this repo) with a sticky first column,
+      sorting, a dash for an empty cell, a tooltip for "N attempts, date",
+      printing
+- [x] Client: a Journal screen reachable from a room and from a course, with the
+      scope switch and the test columns; a cell opens the student detail (6.5)
+- [x] Client: the dashboard menu settles as `Live`, `Tests`, `Courses`, `Rooms`,
       `Journal`
-- [ ] i18n: `teacher.journal.*`
-- [ ] Tests: journal aggregates for both scopes and their permissions; the
-      browser harness covers the table and the empty cells
+- [x] i18n: `teacher.journal.*`
+- [x] Tests: journal aggregates for both scopes and their permissions; the
+      browser harness covers the table, the empty cells, a cell opening an
+      attempt, and the way in from a course
 
 ### 6.9 Documentation, i18n, tests, e2e — v0.6.9
 

@@ -34,6 +34,9 @@ const saving = ref(false)
 
 const openCourseId = ref<string | null>(null)
 
+// "Journal" on a course is a hand over to the dashboard's journal tab.
+const emit = defineEmits<{ journal: [courseId: string] }>()
+
 /** The one dialog on this screen: a course is a title, a description and labels. */
 const panel = ref<HTMLElement | null>(null)
 const cancelRef = ref<HTMLButtonElement | null>(null)
@@ -128,6 +131,7 @@ onMounted(load)
       v-if="openCourseId"
       :course-id="openCourseId"
       @close="openCourseId = null; load()"
+      @journal="(courseId) => emit('journal', courseId)"
     />
 
     <template v-else>

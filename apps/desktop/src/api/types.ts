@@ -152,6 +152,32 @@ export interface Material {
   createdAt: string
 }
 
+/** One cell of the journal: a student's last attempt at one test. */
+export interface JournalCell {
+  /** The last percent, or null when the student never attempted this test. */
+  percent: number | null
+  attempts: number
+  lastSubmittedAt: string | null
+  /** The run the last attempt was made in; null when there is no attempt. */
+  sessionId: string | null
+}
+
+export interface JournalStudent {
+  userId: string
+  username: string
+  fullName: string
+}
+
+/** Students against tests: what a teacher wants before a lesson, not after. */
+export interface Journal {
+  scope: 'room' | 'course'
+  title: string
+  tests: Array<{ id: string; title: string }>
+  students: JournalStudent[]
+  /** One row of cells per student, in the same order as `students`. */
+  cells: JournalCell[][]
+}
+
 export interface ParticipationEntry {
   courseId: string
   courseTitle: string

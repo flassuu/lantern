@@ -6,6 +6,7 @@ import {
   BookOpen,
   CircleCheck,
   Copy,
+  Grid3x3,
   KeyRound,
   Pencil,
   Plus,
@@ -66,6 +67,10 @@ const errorKey = ref('')
 
 const members = ref<Record<string, RoomMember[]>>({})
 const openDetails = ref<string | null>(null)
+
+// The journal is a tab of its own; a room asking for it hands over to the
+// dashboard, which switches tabs with this in hand.
+const emit = defineEmits<{ journal: [roomId: string] }>()
 const showQr = ref<string | null>(null)
 const copiedKey = ref<string | null>(null)
 const renaming = ref<string | null>(null)
@@ -550,6 +555,10 @@ onMounted(() => {
             >
               <Users class="size-3.5" aria-hidden="true" />
               {{ t('teacher.rooms.students') }}
+            </AppButton>
+            <AppButton variant="secondaryPlain" size="sm" @click="emit('journal', room.id)">
+              <Grid3x3 class="size-3.5" aria-hidden="true" />
+              {{ t('teacher.tabs.journal') }}
             </AppButton>
             <AppButton
               v-if="renaming !== room.id"

@@ -422,6 +422,8 @@ async function seed() {
     teacher,
     student: await tokenOf(NAMES.student, 'browsercheck-pass-1'),
     key: room.room.key,
+    courseId: course.id,
+    sessionId: session.session.id,
     testId: test.test.id,
     testTitle: `Browser check ${SUFFIX}`,
     assetId,
@@ -1751,6 +1753,222 @@ async function roleCardText(session, context, index) {
 // with the token in a header, held as an object URL, and drawn by an <img>. A
 // check that only asserted the id would pass against a component that renders
 // nothing at all.
+/**
+ * The journal: students down the side, tests across the top, one cell per pair.
+ *
+ * The fixture is put into the three states this screen has to distinguish, and
+ * each one is a different fact: a column with a real attempt behind it, a column
+ * planned and never run (its cells are empty), and a course that opens its own
+ * journal rather than the room's.
+ */
+async function journalPath(session, fixtures) {
+  // The run never named a room, so the room's journal only sees it through the
+  // course - and a course with nothing planned into it is a table with no
+  // columns at all.
+  await api(`/api/courses/${fixtures.courseId}/tests`, {
+    token: fixtures.teacher,
+    method: 'POST',
+    body: { testId: fixtures.testId },
+  })
+  const neverRun = await api('/api/tests', {
+    token: fixtures.teacher,
+    method: 'POST',
+    body: {
+      title: `Planned ${SUFFIX}`,
+      questions: [
+        {
+          type: 'true_false',
+          position: 0,
+          body: 'Never answered?',
+          points: 1,
+          payload: { correct: true },
+        },
+      ],
+    },
+  })
+  created.tests.push(neverRun.test.id)
+  await api(`/api/courses/${fixtures.courseId}/tests`, {
+    token: fixtures.teacher,
+    method: 'POST',
+    body: { testId: neverRun.test.id },
+  })
+
+  // One real attempt, so a cell can be a number instead of only a dash. Joining
+  // and submitting have both already happened in the paths above, so a refusal
+  // here means "already there", not "could not get in".
+  try {
+    const details = await api(`/api/tests/${fixtures.testId}`, { token: fixtures.teacher })
+    const questionId = details.test.questions[0].id
+    await api('/api/sessions/join', {
+      token: fixtures.student,
+      method: 'POST',
+      body: { code: fixtures.code },
+    }).catch(() => null)
+    await api(`/api/sessions/${fixtures.sessionId}/submit`, {
+      token: fixtures.student,
+      method: 'POST',
+      body: { answers: { [questionId]: { key: 'a' } } },
+    }).catch(() => null)
+  } catch {
+    // Without an attempt the cells are all dashes, which the check below still
+    // reads as a journal - it just has nothing to open.
+  }
+
+  const context = await session.page(1100, 1000)
+  await openApp(session, context, { token: fixtures.teacher, locale: 'en', width: 1100, height: 1000 })
+  await settle(session, context, 'tabs')
+  await clickTab(session, context, '^Journal$', 1800)
+
+  const table = await session.run(
+    context,
+    `
+    let text = document.body.textContent;
+    for (let i = 0; i < 40; i += 1) {
+      text = document.body.textContent;
+      if (document.querySelector('tbody td')) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    const cells = [...document.querySelectorAll('tbody td')];
+    return {
+      student: text.includes('Check Student'),
+      columns: [...document.querySelectorAll('thead th')].map((th) => th.textContent.trim()),
+      cells: cells.length,
+      dashes: cells.filter((c) => c.textContent.trim() === '—').length,
+      percents: cells.filter((c) => /^\\d+%$/.test(c.textContent.trim())).length,
+      untranslated: /\\bteacher\\.[a-z]+\\.[a-z]+\\b/.test(text),
+      page: text.replace(/\\s+/g, ' ').slice(0, 200),
+    };
+  `,
+  )
+  check(
+    'teacher: the journal lists the students against the tests',
+    table.student && table.cells > 0,
+    table.page,
+  )
+  check(
+    'teacher: a room shows the tests it has run',
+    table.columns.some((column) => /Browser check/.test(column)),
+    `columns: ${table.columns.join(' / ')}`,
+  )
+  check('teacher: no untranslated keys on the journal', !table.untranslated)
+  await session.screenshot(context, join(SHOTS, 'teacher-journal.png'))
+
+  // A cell is a number; the attempt behind it is the screen 6.5 opened.
+  const opened = await session.run(
+    context,
+    `
+    const cell = [...document.querySelectorAll('tbody td button')].find((b) =>
+      /^\\d+%$/.test(b.textContent.trim()),
+    );
+    if (!cell) return { ok: false, why: 'no filled cell to open' };
+    cell.click();
+    for (let i = 0; i < 40; i += 1) {
+      if (document.querySelector('[role=dialog]')) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    const dialog = document.querySelector('[role=dialog]');
+    return {
+      ok: !!dialog,
+      text: (dialog ? dialog.textContent : '').replace(/\\s+/g, ' ').trim().slice(0, 120),
+    };
+  `,
+  )
+  check('teacher: a cell opens the attempt behind it', opened.ok, opened.why ?? opened.text)
+  await session.screenshot(context, join(SHOTS, 'teacher-journal-attempt.png'))
+  await session.run(context, `
+    const dialog = document.querySelector('[role=dialog]');
+    if (dialog) dialog.querySelector('button')?.click();
+    return true;
+  `)
+
+  // The plan, not the run: a course shows every test it carries, including the
+  // one nobody has done, and that column is where an empty cell lives.
+  const plan = await session.run(
+    context,
+    `
+    const byCourse = [...document.querySelectorAll('button')].find((b) =>
+      /^By course$/.test(b.textContent.trim()),
+    );
+    if (!byCourse) return { ok: false, why: 'no By course button' };
+    byCourse.click();
+    let cells = [];
+    for (let i = 0; i < 40; i += 1) {
+      cells = [...document.querySelectorAll('tbody td')];
+      if (cells.length >= 2) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    const headers = [...document.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+    return {
+      planned: headers.some((header) => /Planned/.test(header)),
+      dashes: cells.filter((c) => c.textContent.trim() === '—').length,
+      cells: cells.length,
+      headers: headers.join(' / '),
+    };
+  `,
+  )
+  check(
+    'teacher: an empty cell is a dash, not a zero',
+    plan.ok !== false && plan.planned && plan.dashes >= 1,
+    plan.why ??
+      `${plan.dashes} dashes of ${plan.cells} cells, columns: ${plan.headers}`,
+  )
+  await session.screenshot(context, join(SHOTS, 'teacher-journal-plan.png'))
+  await contextClose(session, context)
+
+  // Reachable from the course it belongs to: the tab the button hands over to
+  // has to arrive on the course, not on whichever room it lists first.
+  const courseContext = await session.page(1100, 1000)
+  await openApp(session, courseContext, {
+    token: fixtures.teacher,
+    locale: 'en',
+    width: 1100,
+    height: 1000,
+  })
+  await settle(session, courseContext, 'tabs')
+  await clickTab(session, courseContext, '^Courses$', 1800)
+  const fromCourse = await session.run(
+    courseContext,
+    `
+    const row = [...document.querySelectorAll('li button')].find((b) =>
+      /Browser course/.test(b.textContent),
+    );
+    if (!row) return { ok: false, why: 'no course row' };
+    row.click();
+    let journalButton = null;
+    for (let i = 0; i < 40 && !journalButton; i += 1) {
+      // Every button named "Journal" except the tab: the strip carries one too,
+      // and it is first in the document, so taking it would open the journal the
+      // teacher was already looking at rather than this course's own.
+      journalButton = [...document.querySelectorAll('button')].find(
+        (b) => /^Journal$/.test(b.textContent.trim()) && !b.closest('[role=tab]'),
+      );
+      if (!journalButton) await new Promise((r) => setTimeout(r, 250));
+    }
+    if (!journalButton) return { ok: false, why: 'no Journal button on the course' };
+    journalButton.click();
+    for (let i = 0; i < 40; i += 1) {
+      if (document.querySelector('tbody td')) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    const pressed = [...document.querySelectorAll('button[aria-pressed=true]')].map((b) =>
+      b.textContent.replace(/\\s+/g, ' ').trim(),
+    );
+    return {
+      ok: !!document.querySelector('tbody td'),
+      onCourse: pressed.some((label) => /Browser course/.test(label)),
+      pressed: pressed.join(' / '),
+    };
+  `,
+  )
+  check(
+    'teacher: a course opens its own journal',
+    fromCourse.ok && fromCourse.onCourse,
+    fromCourse.why ?? `pressed: ${fromCourse.pressed}`,
+  )
+  await session.screenshot(courseContext, join(SHOTS, 'teacher-journal-from-course.png'))
+  await contextClose(session, courseContext)
+}
+
 async function mediaPath(session, fixtures) {
   const context = await session.page(1100, 1000)
 
@@ -2154,6 +2372,10 @@ async function main() {
     // and out of the run, and this one joins a run.
     console.log('\npictures in questions')
     await mediaPath(session, fixtures)
+
+    // Last: it closes the run the picture path left open by submitting to it.
+    console.log('\nthe journal')
+    await journalPath(session, fixtures)
 
     await session.close()
   } catch (error) {

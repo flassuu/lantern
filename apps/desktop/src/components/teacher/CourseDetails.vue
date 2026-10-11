@@ -6,6 +6,7 @@ import {
   ArrowLeft,
   ArrowUp,
   ClipboardList,
+  Grid3x3,
   Megaphone,
   Paperclip,
   Plus,
@@ -47,7 +48,9 @@ const props = defineProps<{
   courseId: string
 }>()
 
-const emit = defineEmits<{ close: [] }>()
+// The journal lives on its own tab, so a course asking for its own is a hand
+// over rather than a view: the dashboard switches tabs with this in hand.
+const emit = defineEmits<{ close: []; journal: [courseId: string] }>()
 
 const { t } = useI18n()
 const confirm = useConfirm()
@@ -272,6 +275,11 @@ onMounted(load)
           </ul>
         </div>
       </div>
+
+      <AppButton variant="secondary" size="sm" @click="emit('journal', props.courseId)">
+        <Grid3x3 class="size-3.5" aria-hidden="true" />
+        {{ t('teacher.tabs.journal') }}
+      </AppButton>
     </div>
 
     <p v-if="actionError" role="alert" class="rounded-lg bg-error-container px-3 py-2 text-sm text-on-error-container">

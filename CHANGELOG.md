@@ -6,6 +6,24 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### The journal
+
+- **The table a teacher wants before a lesson.** Students down the side, tests
+  across the top, one cell per pair, for a **room** or for a **course**. A cell
+  is the student's **last** attempt rather than their best: a best is the
+  flattering number, and it is the one that hides a student who guessed once and
+  never came back. The attempt count sits beside it, so "80%, once" and "80%, six
+  times" read as the different things they are.
+- **Nobody is dropped for having done nothing.** A student on the roster who has
+  never attempted a test keeps their row, and their cell is a dash. An empty cell
+  and a `0%` are different facts - "no attempt" and "attempted and scored
+  nothing" - so the export writes the first as an empty field.
+- **A room shows what it ran, a course shows its plan.** A test that is planned
+  but never run is exactly the empty column worth seeing before the next lesson.
+- A cell **opens the attempt behind it** - the same per-student detail the run's
+  board opens - and the table exports to CSV or prints. Both screens link to it:
+  a room card and a course page each hand over to their own journal.
+
 ### Lessons and announcements inside a course
 
 - **A course can be a plan, not a pile.** A **lesson** is an ordered heading; any
