@@ -635,7 +635,6 @@ onMounted(() => {
                 :paused-at="selected.pausedAt"
               />
             </div>
-          </div>
           <div class="mt-4 rounded-2xl border border-outline-variant bg-surface-container-high p-3 sm:p-4">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div class="min-w-0">
