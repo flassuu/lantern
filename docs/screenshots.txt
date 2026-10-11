@@ -1,0 +1,112 @@
+Screenshots for the README
+==========================
+
+Who does what
+-------------
+You take the pictures. Put the finished PNG files into the folder `docs/img/`
+(create it if it is not there), with the exact file names listed below. I then
+wire them into README.md where they belong.
+
+If any name or crop changes, tell me - the README will be edited to match.
+
+
+House rules for every shot
+--------------------------
+- Format: PNG.
+- Theme: LIGHT (the dark theme is not needed for the README).
+- Language: ENGLISH.
+- No browser chrome, no bookmarks bar, no dev tools, no cursor, no system
+  notifications. A clean window (or a clean crop) only.
+- No error banners, no "Server unreachable", no toasts mid-fade. If a toast is on
+  screen, wait for it to go.
+- No real names, no real e-mail anywhere. The demo data below uses invented ones.
+- Sharp is better than big: a Retina/2x capture is welcome. GitHub scales the
+  image, so capture the window a little wider than the content and crop the empty
+  margin away. Keep the aspect ratio when cropping.
+- Widths below are guidelines, not laws. What matters is that the shot shows the
+  thing named and is not cut off.
+
+
+Getting the data on screen
+--------------------------
+The demo seed (Phase 7.1) fills a throwaway database with exactly the pictures
+below want: one teacher, a course with two lessons, four tests, a picture
+material, a room, four approved students, one finished run with submissions (so
+the journal has numbers, not only dashes) and an announcement.
+
+    pnpm build:server
+    ./apps/server/dist/lantern-server \
+      --port 3300 --data /tmp/lantern-demo --webroot apps/web-client/dist --seed-demo
+
+Then open http://127.0.0.1:3300 , sign in as the demo teacher (the seed prints
+the username and password in the console), and set the theme to light.
+
+If the seed is not in the build yet, any hand-made data works - the shots only
+have to look like the real thing. Keep passwords and names invented.
+
+To reach the student shots, open the address on a phone (or a responsive 390 x 844
+window) and sign in as one of the demo students.
+
+
+The shots
+---------
+
+1) docs/img/teacher-tests.png                       REQUIRED
+   Window: about 1440 x 900, desktop.
+   Screen: Teacher workbench, "Tests" tab.
+   Show: the tab strip (Live, Tests, Courses, Rooms, Journal), two or three test
+   cards with their chips (labels, question count, room), and the search field.
+   Nothing else on screen. This is the "what the product is" shot.
+
+2) docs/img/teacher-board.png                       REQUIRED
+   Window: about 1440 x 900, desktop.
+   Screen: Teacher workbench, "Live" tab, with a run under way.
+   Show: the run's name, the live board with the student list - some joined, some
+   submitted, at least one with a percentage - the join code, the copy-link and QR
+   controls, and the run's clock with the pause and "+15s" controls beside it.
+   If the QR block is open, it should be the demo server's real address, not
+   localhost. This is the "it runs a class" shot.
+
+3) docs/img/teacher-journal.png                     REQUIRED
+   Window: about 1440 x 900, desktop.
+   Screen: Teacher workbench, "Journal" tab.
+   Show: the table with students down the left and tests across the top, the
+   scope switch ("By room" / "By course"), the room chips, at least one cell with
+   a real percentage, and at least one dash (a test nobody has done). The first
+   column pinned while the table is a little wider than the screen is a bonus,
+   not a requirement.
+
+4) docs/img/teacher-course.png                      OPTIONAL
+   Window: about 1440 x 900, desktop.
+   Screen: Teacher workbench, "Courses" tab, one course open.
+   Show: the course header, the "Lessons" block with two lessons and an item filed
+   under one of them, an announcement with its author, and a material with its
+   picture thumbnail. This is the "a course is a plan, not a pile" shot.
+
+5) docs/img/student-course.png                      REQUIRED
+   Window: about 390 x 844 (a phone).
+   Screen: The student's course, signed in as a demo student.
+   Show: the announcement at the top, then the lessons with what is filed under
+   each one. Nothing should be cut off horizontally and nothing should scroll
+   sideways. This is "what the student sees" shot, and the phone-first one.
+
+6) docs/img/student-paper.png                       OPTIONAL
+   Window: about 390 x 844 (a phone).
+   Screen: The paper, a question with a picture.
+   Show: one question with its picture drawn at a readable size, the answer
+   controls below it, and the countdown if the run has one. This is the "a
+   question can carry a picture" shot.
+
+If only the four REQUIRED ones happen, the README is complete. The two OPTIONAL
+ones make it better, and they can be added later without touching anything else.
+
+
+Where they end up
+-----------------
+- docs/img/teacher-tests.png   -> README, "What's inside"
+- docs/img/teacher-board.png   -> README, "Roles" or "Architecture"
+- docs/img/teacher-journal.png -> README, near the reporting description
+- docs/img/teacher-course.png  -> README, near the pencil entry if that section
+                                  stays in the roadmap only, it is left unused
+- docs/img/student-course.png  -> README, "Testing from a phone"
+- docs/img/student-paper.png   -> README, "Testing from a phone"

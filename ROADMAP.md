@@ -680,60 +680,147 @@ show one this server holds.
 
 ## Phase 7 — MVP polish (v1.0.0)
 
-- [x] Server unit and integration tests: scoring over all five question types,
-      the grade journal and CSV export, the session runtime, auth and the role
-      boundaries (104 tests)
-- [x] Client tests for the logic worth testing: the session clock and answer
-      payloads, the QR generator, the download helper, the offline drafts, and an
-      i18n catalogue check that compiles both locales (45 tests)
-- [x] GitHub-ready README: what the project is, the three roles, the topology,
-      headless install with the CLI flags, badges
-- [ ] Seed demo data, so a fresh install can be shown without typing anything in
-- [ ] Screenshots in the README (teacher workbench, live board, journal, student)
-- [ ] Browser e2e for the student flow: join → answer → submit → result
-- [ ] Offline PWA caching polish: a manifest and a service worker, so a phone can
-      install the client and a room without Wi-Fi still shows what it has
-- [ ] A Linux AppImage that actually runs, from CI — the format is off in CI for
-      a reason, and 0.5.1 is where that was found. See below.
+Goal: turn a working system into one that can be **shown, installed and
+explained** - demo data with no typing, a full student run checked in a real
+browser, an offline-capable phone client, and, at last, an AppImage that starts.
+No new functionality: packaging, verifiability and the first five minutes.
 
-### The AppImage, and what 0.5.1 established about it
+Three things from the phase's own founding list were finished before this plan:
+the server test suite, the client test suite, and a GitHub-ready README.
 
-The desktop ships a `.deb` from CI and an AppImage built locally. The AppImage is
-excluded from CI not because it is flaky but because it is **wrong**: the bundle
-builds, uploads, and the app inside it segfaults on startup.
+**Decisions taken before the phase (binding):**
 
-The cause is `linuxdeploy`. Assembling an AppImage, it runs `patchelf` over
-every ELF in the AppDir's `usr/bin` to give it the bundle's rpath. Our sidecar is
-a `bun build --compile` binary, and that rewrite corrupts it. The `.deb` does not
-go through any of this — `dpkg-deb` rewrites nothing — and its sidecar starts and
-serves, which is how the two formats differ.
+- **No new dependencies without asking.** The service worker is hand-written; the
+  browser harness stays dependency-free. A migration to `vite-plugin-pwa` is a
+  decision to be taken deliberately, not a convenience to reach for.
+- **Sub-phases ship as `0.7.x`; `1.0.0` closes the phase.** "1.0.0" says the MVP
+  exists, and that is not a claim to spend on a documentation commit.
+- **Demo data is never implicit.** A `--seed-demo` flag and a console `demo`
+  command. Nothing seeds itself, and seeding refuses a database that already has
+  real work in it.
+- **Screenshots are taken by hand, once, by the owner**, from the checklist in
+  `docs/screenshots.txt`, and wired in afterwards. There is no screenshot script:
+  the harness's only would-be second consumer is gone, so the harness stays one
+  file rather than being split for nobody.
 
-What is already established, so this does not have to be re-learned:
+### 7.1 Demo data — v0.7.1
 
-- **Nothing structural notices.** `readelf` reads the header, the program headers
-  and the dynamic section without complaint. Comparing hashes does not work
-  either: adding the rpath is `patchelf`'s job, so the bytes are *meant* to
-  change, and that test can only ever fail. `ldd` is content wherever the
-  libraries happen to resolve, and unhappy where they do not.
-- **Only running the artifact sees it.** Give the sidecar a data directory and
-  eight seconds: a live server is killed by the timeout (124), a corrupted one
-  dies on its own (139).
+Goal: a fresh install shows the system without a single keystroke.
+
+- [ ] Server: `lib/demo.ts` - deterministic seed over a `DatabaseSync`: one
+      **teacher** (no admin: the project seeds one on purpose), a course with two
+      lessons, four tests (one per question type, one carrying a picture), a
+      picture material, a room linked to the course, four approved students, one
+      **finished run with submissions** so the journal shows numbers rather than
+      dashes, and an announcement
+- [ ] Server: `--seed-demo` in `config.ts`/`index.ts` and a `demo` console command;
+      a marker in `app_meta` makes it idempotent, and it refuses a database that
+      already holds a test, course or user beyond the seed
+- [ ] Tests: seeds twice (second is a no-op), refuses a populated database, and
+      checks the journal actually has participants
+- [ ] Docs: README "see it now", `docs/scenarios.md`
+
+### 7.2 The student's whole run, in a browser — v0.7.2
+
+Goal: join → answer → submit → result, driven end to end in a real Firefox, not
+"as far as the paper".
+
+- [ ] Harness: a run whose test uses all five question types; join by code, answer
+      every widget through the UI, submit through the confirmation dialog, wait
+      for the result screen and check the percent, the pass mark and the answer
+      key
+- [ ] Harness: the teacher's board shows that student as `submitted`, and the
+      journal shows a number in the cell
+- [ ] The path **finishes** the run, so it runs last; the ordering rule the other
+      paths already taught this file is written down where it is set
+
+### 7.3 Screenshots in the README — v0.7.3
+
+Goal: the README shows the thing rather than describing it.
+
+- [ ] `docs/screenshots.txt` - the checklist: what each shot shows, the exact
+      filename, the window size and the theme. Taken by the owner.
+- [ ] README: the four images embedded where they belong, once the files are in
+      `docs/img/`
+
+### 7.4 Offline PWA — v0.7.4
+
+Goal: a phone installs the client, and without Wi-Fi it still shows what it had.
+The icons are already in `public/`; there is no manifest and no service worker,
+so today a phone cannot install it and a reload offline shows nothing.
+
+- [ ] Client: `public/manifest.webmanifest` (name, short_name, start_url,
+      standalone, theme/background, the 192/512 icons and the maskable one) and
+      the `<link rel="manifest">` in `index.html`
+- [ ] Client: the service worker as its own Vite entry (`src/pwa/sw.ts` →
+      `sw.js`), so the policy lives in tested pure functions
+      (`src/pwa/policy.ts`) and the worker itself stays thin
+- [ ] Policy (binding): mutations are **never** cached, WebSocket never
+      intercepted, API reads are network-first with a cached fallback, hashed
+      assets are cache-first, and the shell is precached under a cache name
+      versioned from the build. A new worker activates and the app offers one
+      reload
+- [ ] Client: registration in `main.ts`, production only, never inside Tauri, and
+      with a kill switch (`?nosw`) for a worker that lives too long on a phone
+- [ ] Tests: the cache policy as pure functions; the changelog and i18n entries
+
+### 7.5 An AppImage that runs — v0.7.5
+
+Goal: the format that has been excluded since 0.5.1, shipped from CI - and only
+if the artifact starts.
+
+What 0.5.1 established, so it does not have to be re-learned:
+
+- **The cause is `linuxdeploy`.** Assembling an AppImage, it runs `patchelf` over
+  every ELF in the AppDir's `usr/bin` to set an rpath. Our sidecar is a
+  `bun build --compile` binary, and that rewrite **corrupts it**: the bundle
+  builds, uploads, and the app segfaults in silence on startup. The `.deb` goes
+  through none of this - `dpkg-deb` rewrites nothing - which is how the two
+  formats differ.
+- **Nothing structural notices.** `readelf` reads the header and the dynamic
+  section without complaint, `ldd` is content wherever the libraries resolve, and
+  a hash comparison can only ever fail because the bytes are *meant* to change.
+- **Only running the artifact sees it.** A data directory and eight seconds: a
+  live server is killed by the timeout (124), a corrupted one dies on its own
+  (139).
 - **`NO_STRIP`, `APPIMAGE_EXTRACT_AND_RUN` and an `ldd` shim are not the fix.**
-  The shim does make the bundle build — which is precisely how a broken file got
-  onto the download list before it was caught by hand. Those three address
-  `linuxdeploy`'s environment, not its rewrite of our binary.
-- **The same command works on a workstation.** Building it locally on Arch is
-  fine, and that is what AGENTS.md documents. The failure is specific to
-  `linuxdeploy` touching the sidecar, not to the machine.
+  The shim makes the bundle build - which is exactly how a broken file reached
+  the download list once.
 
-What the fix therefore looks like, and what is left to do: move the Bun binary
-out of `usr/bin` into a directory `linuxdeploy` does not scan — resources, where
-it is shipped as data rather than as an executable — and put a small wrapper in
-the sidecar slot that execs it. That means resolving the bundled path in Rust
-(`resource_dir()`), keeping the `.deb` and Windows layouts working, and proving
-the result by running the produced AppImage before it goes on the release page.
-The verification step is the part worth keeping whatever the packaging ends up
-being: an artifact nobody has started is an artifact nobody has tested.
+- [ ] Desktop: the Bun binary moves out of `usr/bin` into **resources**, shipped
+      as data, and a small wrapper in the sidecar slot execs it; the bundled path
+      resolved in Rust through `resource_dir()`, with the `.deb` and Windows
+      layouts still working
+- [ ] CI: an Ubuntu job, `best_effort: true` so it cannot fail a release, which
+      builds the AppImage and then **runs it** - the artifact is uploaded only if
+      that run passed
+- [ ] Proof: the produced AppImage started on the machine the release is cut from
+      (and through `scripts/run-linux-appimage.sh` where Mesa 26 and Wayland need
+      it)
+
+### 7.6 Closing the MVP — v1.0.0
+
+- [ ] Every manifest at `1.0.0` in one scripted pass, `CHANGELOG` for the phase,
+      README status, a last pass over `scenarios.md` and `TEST_PLAN.md`
+- [ ] The full gate once, tag `v1.0.0`, release notes from the changelog, and the
+      released assets downloaded and started as a user would
+- [ ] Last read of "Out of scope (v1)" so what is not in 1.0 is said out loud
+
+**Order and dependencies.** 7.1 → 7.2 → 7.3 (the shots need demo data to show
+something) and 7.4 → 7.5 → 7.6. 7.4 touches only the web client and can go at any
+point; 7.5 is the heaviest and goes last. Each sub-phase is a commit, and its own
+release once verified.
+
+**Assumptions to keep in view.** There is no internet in the classroom, so the
+offline shell must depend on the local server and nothing else; the PWA is the
+student web client only, the desktop stays Tauri; screenshots are taken once by
+hand, so no script has to be kept working; demo data is not a production path.
+
+**Risks.** A service worker is the classic "works here, stale on the phone" -
+versioned caches, no caching of mutations and a kill switch are the answer. Demo
+data could land on top of real work - it refuses a populated database. The
+AppImage could take a release down again - its job is best-effort and its asset is
+published only after a successful run.
 
 ## Out of scope (v1)
 
