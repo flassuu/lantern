@@ -21,7 +21,7 @@ import {
   setSessionStatus,
   startSession,
 } from './sessions'
-import { createTest, listQuestions, type QuestionInput } from './tests'
+import { createTest, listQuestions, validateQuestion, type QuestionInput } from './tests'
 import { createUser, findUserByUsername } from './users'
 
 /**
@@ -204,6 +204,7 @@ const QUESTIONS: Record<string, (media: { assetId: string } | null) => QuestionI
         pairs: [
           { left: 'Normal', right: 'Perpendicular to the surface' },
           { left: 'Incident ray', right: 'Arrives at the surface' },
+          { left: 'Reflected ray', right: 'Leaves the surface' },
         ],
       },
     },
@@ -311,6 +312,14 @@ function build(db: DatabaseSync, options: DemoSeedOptions): DemoSeedResult {
     { key: 'diagrams', title: 'Ray diagrams: matching', lesson: null, limit: null },
     { key: 'shortAnswers', title: 'Optics: short answers', lesson: null, limit: null },
   ].map((entry) => {
+    const questions = QUESTIONS[entry.key]!(entry.key === 'refraction' ? { assetId: asset.id } : null)
+    // The library writes what it is given; the API is where shapes are checked.
+    // The seed goes through the library, so it checks them itself - a demo paper
+    // the API would refuse is a paper the product does not really make.
+    for (const question of questions) {
+      const problem = validateQuestion(question)
+      if (problem !== null) throw new Error(`demo question "${question.body}": ${problem}`)
+    }
     const row = createTest(
       db,
       teacher.id,
@@ -320,7 +329,7 @@ function build(db: DatabaseSync, options: DemoSeedOptions): DemoSeedResult {
         timeLimitSec: entry.limit,
         passingPercent: entry.key === 'refraction' ? 50 : null,
       },
-      QUESTIONS[entry.key]!(entry.key === 'refraction' ? { assetId: asset.id } : null),
+      questions,
     )
     attachTest(db, course.id, row.id)
     // A test filed under a lesson is what the course screen groups; the rest

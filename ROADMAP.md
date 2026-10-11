@@ -725,13 +725,13 @@ Goal: a fresh install shows the system without a single keystroke.
 Goal: join → answer → submit → result, driven end to end in a real Firefox, not
 "as far as the paper".
 
-- [ ] Harness: a run whose test uses all five question types; join by code, answer
+- [x] Harness: a run whose test uses all five question types; join by code, answer
       every widget through the UI, submit through the confirmation dialog, wait
       for the result screen and check the percent, the pass mark and the answer
       key
-- [ ] Harness: the teacher's board shows that student as `submitted`, and the
+- [x] Harness: the teacher's board shows that student as `submitted`, and the
       journal shows a number in the cell
-- [ ] The path **finishes** the run, so it runs last; the ordering rule the other
+- [x] The path **finishes** the run, so it runs last; the ordering rule the other
       paths already taught this file is written down where it is set
 
 ### 7.3 Screenshots in the README — v0.7.3

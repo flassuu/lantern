@@ -2279,6 +2279,296 @@ async function pagedPath(session, fixtures) {
   )
   await session.screenshot(context, join(SHOTS, 'student-paged-runner.png'))
   await contextClose(session, context)
+  // Left open, this run would be the student's current one and would follow them
+  // into the next path, where the dashboard would show a paper instead of a code.
+  await api(`/api/sessions/${run.session.id}`, {
+    token: fixtures.teacher,
+    method: 'PATCH',
+    body: { status: 'finished' },
+  })
+}
+
+
+/**
+ * The whole student run, end to end: join, answer all five kinds of question
+ * through the widgets a student actually taps, submit through the dialog, and
+ * read the result that comes back.
+ *
+ * The other paths stop at the paper - they prove a picture arrives and a question
+ * is drawn. This one proves the paper can be *answered*: every control writes the
+ * shape the runner sends, the submit adds up the same way the server does, and the
+ * score the student sees is the score the row carries.
+ */
+async function studentResultPath(session, fixtures) {
+  const paper = await api('/api/tests', {
+    token: fixtures.teacher,
+    method: 'POST',
+    body: {
+      title: `Result ${SUFFIX}`,
+      passingPercent: 50,
+      questions: [
+        {
+          type: 'single_choice',
+          position: 0,
+          body: 'Which one is a noble gas?',
+          points: 1,
+          payload: {
+            options: [
+              { key: 'a', text: 'Helium' },
+              { key: 'b', text: 'Hydrogen' },
+            ],
+            correct: 'a',
+          },
+        },
+        {
+          type: 'multiple_choice',
+          position: 1,
+          body: 'Which are metals?',
+          points: 2,
+          payload: {
+            options: [
+              { key: 'a', text: 'Iron' },
+              { key: 'b', text: 'Copper' },
+              { key: 'c', text: 'Oxygen' },
+            ],
+            correct: ['a', 'b'],
+          },
+        },
+        {
+          type: 'true_false',
+          position: 2,
+          body: 'Water boils at 100 degrees at sea level.',
+          points: 1,
+          payload: { correct: true },
+        },
+        {
+          type: 'short_answer',
+          position: 3,
+          body: 'Which gas do plants take in?',
+          points: 1,
+          payload: { accepted: ['carbon dioxide', 'co2'] },
+        },
+        {
+          type: 'matching',
+          position: 4,
+          body: 'Match the animal to its group.',
+          points: 2,
+          payload: {
+            pairs: [
+              { left: 'Cat', right: 'Mammal' },
+              { left: 'Eagle', right: 'Bird' },
+            ],
+          },
+        },
+      ],
+    },
+  })
+  created.tests.push(paper.test.id)
+  const run = await api('/api/sessions', {
+    token: fixtures.teacher,
+    method: 'POST',
+    body: { testId: paper.test.id, name: `Result run ${SUFFIX}` },
+  })
+  created.sessions.push(run.session.id)
+  await api(`/api/sessions/${run.session.id}/start`, { token: fixtures.teacher, method: 'POST' })
+
+  const context = await session.page(390, 844)
+  await openApp(session, context, { token: fixtures.student, locale: 'uk', width: 390, height: 844 })
+  await settle(session, context, 'content')
+
+  const code = run.session.joinCode
+  const seen = await session.run(
+    context,
+    `
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const button = (pattern) =>
+      [...document.querySelectorAll('button')].find((b) => new RegExp(pattern).test(b.textContent.trim()));
+    const write = (el, value) => {
+      const desc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value');
+      desc.set.call(el, value);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+
+    // Join: the same door the other paths use.
+    let field = null;
+    for (let i = 0; i < 40 && !field; i += 1) {
+      field = document.querySelector('input[inputmode=text]');
+      if (!field) await sleep(250);
+    }
+    if (!field) return { ok: false, why: 'no join field', page: document.body.textContent.slice(0, 120) };
+    write(field, ${JSON.stringify(code)});
+    await sleep(250);
+    const join = button('^Join$|^Приєднатися$');
+    if (!join) return { ok: false, why: 'no join button' };
+    join.click();
+
+    // The paper arrives over the network; wait for the first answer control
+    // rather than for a number of milliseconds.
+    for (let i = 0; i < 60; i += 1) {
+      if (document.querySelector('input[type=radio]')) break;
+      await sleep(250);
+    }
+    const answered = {};
+    // Let Vue settle between the taps. The answer widgets write their model on
+    // the event, and the component only sees that model again after it
+    // re-renders: two taps in the same tick both read the value from before the
+    // first, and the second overwrites it. Nobody taps twice in one frame, so
+    // this is the harness catching up with a person, not a way around a bug.
+    const settle = () => sleep(180);
+
+    // single choice: the radio is the control, so clicking it is the answer.
+    const radio = [...document.querySelectorAll('input[type=radio]')].find((r) => r.value === 'a');
+    if (radio) {
+      radio.click();
+      await settle();
+      answered.single = radio.checked;
+    }
+
+    // multiple choice: two boxes, and the third must stay clear.
+    const boxes = [...document.querySelectorAll('input[type=checkbox]')];
+    for (const value of ['a', 'b']) {
+      const box = boxes.find((b) => b.value === value);
+      if (box) {
+        box.click();
+        await settle();
+      }
+    }
+    answered.multiple = boxes.filter((b) => b.checked).map((b) => b.value).join(',');
+
+    // true / false: the two pressed-state buttons of the third question.
+    const toggles = [...document.querySelectorAll('button[aria-pressed]')];
+    if (toggles[0]) {
+      toggles[0].click();
+      await settle();
+      answered.boolean = toggles[0].getAttribute('aria-pressed');
+    }
+
+    // the free-text answer.
+    const area = document.querySelector('textarea[aria-label]');
+    if (area) {
+      write(area, 'carbon dioxide');
+      await settle();
+      answered.text = area.value;
+    }
+
+    // matching: every left side needs a value before the paper counts as done.
+    const selects = [...document.querySelectorAll('select')];
+    const wanted = ['Mammal', 'Bird'];
+    for (const [index, select] of selects.entries()) {
+      const value = wanted[index] ?? wanted[0];
+      const option = [...select.options].find((o) => o.value === value);
+      if (!option) continue;
+      select.value = value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      await settle();
+    }
+    answered.matching = selects.map((select) => select.value).join(',');
+
+    // Submit, and confirm it: the dialog is the point of the button.
+    const send = button('^Submit answers$|^Надіслати відповіді$');
+    if (!send) return { ok: false, why: 'no submit button', answered };
+    send.click();
+    let dialog = null;
+    for (let i = 0; i < 40 && !dialog; i += 1) {
+      dialog = document.querySelector('[role=dialog]');
+      if (!dialog) await sleep(250);
+    }
+    if (!dialog) return { ok: false, why: 'no confirmation dialog', answered };
+    const yes = [...dialog.querySelectorAll('button')].find((b) =>
+      /^Confirm$|^Підтвердити$/.test(b.textContent.trim()),
+    );
+    if (!yes) return { ok: false, why: 'no confirm button in the dialog', answered };
+    yes.click();
+
+    // The result screen, waited for: a percent is what it says.
+    let resultText = '';
+    let percent = null;
+    for (let i = 0; i < 60; i += 1) {
+      resultText = document.body.textContent.replace(/\\s+/g, ' ');
+      const found = resultText.match(/(\\d+)%/);
+      if (found && /Результат|Result|Бал|score/i.test(resultText)) {
+        percent = Number(found[1]);
+        break;
+      }
+      await sleep(250);
+    }
+    return {
+      ok: percent !== null,
+      answered,
+      percent,
+      page: resultText.slice(0, 200),
+    };
+  `,
+  )
+  check(
+    'student: every kind of question can be answered',
+    seen.ok === true &&
+      seen.answered?.single === true &&
+      seen.answered?.multiple === 'a,b' &&
+      seen.answered?.boolean === 'true' &&
+      seen.answered?.text === 'carbon dioxide' &&
+      seen.answered?.matching === 'Mammal,Bird',
+    seen.why ?? `answered: ${JSON.stringify(seen.answered)}`,
+  )
+  check(
+    'student: submitting through the dialog shows the score',
+    seen.percent === 100,
+    seen.why ?? `percent=${seen.percent} page: ${seen.page}`,
+  )
+  await session.screenshot(context, join(SHOTS, 'student-result.png'))
+  await contextClose(session, context)
+
+  // The server agrees, from outside the screen: the row the result came from.
+  const submitted = await api(`/api/sessions/${run.session.id}/participants`, {
+    token: fixtures.teacher,
+  })
+  const row = submitted.participants.find((entry) => entry.username.startsWith('browsercheck_s'))
+  // The attempt in full, so a wrong score says *which* question disagrees with
+  // the paper rather than only how far off the total is.
+  const attempt =
+    row === undefined
+      ? null
+      : await api(`/api/sessions/${run.session.id}/participants/${row.userId}`, {
+          token: fixtures.teacher,
+        })
+  check(
+    'student: the run recorded what the paper showed',
+    row !== undefined && row.status !== 'joined' && row.percent === 100,
+    `row=${JSON.stringify(row ?? null)} questions=${JSON.stringify(
+      attempt?.detail?.questions?.map((q) => ({
+        type: q.type,
+        answer: q.answer,
+        correct: q.correct,
+        isCorrect: q.isCorrect,
+      })) ?? null,
+    )}`,
+  )
+
+  // And the teacher's board carries the same number, on the run it belongs to.
+  const boardContext = await session.page(1100, 1000)
+  await openApp(session, boardContext, { token: fixtures.teacher, locale: 'en', width: 1100, height: 1000 })
+  await settle(session, boardContext, 'tabs')
+  await clickTab(session, boardContext, '^Live$', 1800)
+  const board = await session.run(
+    boardContext,
+    `
+    const row = [...document.querySelectorAll('li, article, button')].find((el) =>
+      /Result run/.test(el.textContent || ''),
+    );
+    if (!row) return { ok: false, why: 'no run card on the board' };
+    const target = row.querySelector('button') ?? row;
+    target.click();
+    for (let i = 0; i < 60; i += 1) {
+      const text = document.body.textContent.replace(/\\s+/g, ' ');
+      if (/Check Student/.test(text) && /100%/.test(text)) return { ok: true, page: text.slice(0, 200) };
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return { ok: false, why: 'the board never showed the score', page: document.body.textContent.replace(/\\s+/g, ' ').slice(0, 200) };
+  `,
+  )
+  check('teacher: the board shows the submitted score', board.ok === true, board.why ?? board.page)
+  await session.screenshot(boardContext, join(SHOTS, 'teacher-board-submitted.png'))
+  await contextClose(session, boardContext)
 }
 
 /** Closes a tab the harness opened, so a failure screenshot is of one page. */
@@ -2495,6 +2785,10 @@ async function main() {
 
     console.log('\none question per page')
     await pagedPath(session, fixtures)
+
+    // Last of all: it submits, which closes the run the others were answering in.
+    console.log('\nthe whole student run')
+    await studentResultPath(session, fixtures)
 
     await session.close()
   } catch (error) {
