@@ -38,8 +38,8 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": [
-      "binaries/lantern-server"
-    ]
+    "resources": {
+      "resources/lantern-server": "lantern-server"
+    }
   }
 }

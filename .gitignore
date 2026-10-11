@@ -5,8 +5,10 @@ node_modules/
 # Build output
 dist/
 
-# The server sidecar is built by scripts/desktop-sidecar.sh, not committed.
+# The server binary is staged as a bundle resource by scripts/desktop-sidecar.sh,
+# not committed: it is 85 MB, and it is built from the source next to it.
 apps/desktop/src-tauri/binaries/
+apps/desktop/src-tauri/resources/
 target/
 apps/desktop/src-tauri/target/
 

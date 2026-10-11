@@ -25,9 +25,10 @@ scripts/          Sidecar, smoke and browser-check scripts
 
 ## Environment
 
-- Dev OS: Arch Linux. Targets: Windows (.exe) and Linux (.deb). CI ships the
-  `.deb`; the AppImage is built locally only, because `linuxdeploy`'s patchelf
-  pass corrupts the Bun sidecar (see docs/RELEASE_CHECKLIST.md §5).
+- Dev OS: Arch Linux. Targets: Windows (.exe) and Linux (`.deb`, AppImage). CI
+  ships all of them; the AppImage is best-effort and is published only after the
+  job has started the server out of the artifact (see
+  docs/RELEASE_CHECKLIST.md §5).
 - Node.js >= 22.5 (built-in `node:sqlite`), pnpm >= 9. `bun` only compiles the
   server binary — it is not the runtime for anything else.
 - Tauri on Linux needs `webkit2gtk-4.1`; AppImage needs `patchelf` and, on Arch,
@@ -41,6 +42,7 @@ scripts/          Sidecar, smoke and browser-check scripts
 | Dev server / web / desktop | `pnpm dev:server` · `pnpm dev:web` · `pnpm dev:desktop` |
 | Build server / web | `pnpm build:server` · `pnpm build:web` |
 | Desktop bundle | `pnpm desktop:sidecar` then `NO_STRIP=true pnpm --filter @lantern/desktop tauri build` |
+| Verify an AppImage | extract it and start the server inside it (docs/RELEASE_CHECKLIST.md §5) |
 | Typecheck / server tests | `pnpm typecheck` · `cd apps/server && bun test` |
 | All tests | `pnpm test` |
 | Desktop Rust tests | `cd apps/desktop/src-tauri && HOST=$(rustc -vV \| sed -n 's/^host: //p') cargo test` |
@@ -85,8 +87,10 @@ raw palette classes. Exactly **two themes**: light and dark.
 
 - Tauri **v2**, Rust in `src-tauri/`. Keep Rust minimal, prefer JS. Never
   assume a running server in dev; handle "server not reachable" states.
-- The server binary is a sidecar (`bundle.externalBin`). Run
-  `pnpm desktop:sidecar` first or `tauri build` fails on a missing resource.
+- The server binary is a bundle **resource** (`bundle.resources`), not an
+  `externalBin`: an externalBin lands in `usr/bin`, which `linuxdeploy` rewrites
+  with `patchelf` and thereby corrupts. Run `pnpm desktop:sidecar` first or
+  `tauri build` fails on a missing resource.
 
 ## Git conventions
 

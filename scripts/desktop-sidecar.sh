@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 #
-# Puts the server binary where Tauri expects a sidecar.
+# Puts the server binary where Tauri bundles it as a **resource**.
 #
-# Tauri looks for `binaries/<name>-<target-triple>` next to `tauri.conf.json`
-# and renames it to `<name>` inside the bundle. Nothing else in the build can
-# produce that file, so both `tauri build` and `tauri dev` fail without this
-# step - and a dev build that cannot start is exactly what the scenario this
-# exists for needs to be able to run.
+# It used to be an `externalBin` (a "sidecar"), which Tauri copies into the
+# bundle's `usr/bin`. That is what broke the AppImage: `linuxdeploy` runs
+# `patchelf` over every ELF in `usr/bin` to set an rpath, and that rewrite
+# corrupts a `bun build --compile` binary - the bundle builds, uploads, and the
+# app segfaults in silence. A resource is shipped as data, in a directory
+# linuxdeploy does not scan, and the Rust host already looks for the server in
+# `resource_dir()`; `docs/RELEASE_CHECKLIST.md` has the whole story.
 #
 # Usage:
 #   scripts/desktop-sidecar.sh            # build the server, then copy it
@@ -16,38 +18,31 @@ set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 server_dist="$root/apps/server/dist/lantern-server"
-binaries="$root/apps/desktop/src-tauri/binaries"
+resources="$root/apps/desktop/src-tauri/resources"
 
 if [ "${1:-}" != "--no-build" ]; then
   echo "building the server…"
   (cd "$root" && pnpm build:server)
 fi
 
-if [ ! -f "$server_dist" ]; then
+if [ ! -f "$server_dist" ] && [ ! -f "$server_dist.exe" ]; then
   echo "no server binary at $server_dist" >&2
   echo "run: pnpm build:server" >&2
   exit 1
 fi
 
-# The triple rustc is building for; that is the one Tauri will look for.
-host="$(rustc -vV | sed -n 's/^host: //p')"
-if [ -z "$host" ]; then
-  echo "could not read the rust host triple (is rustc installed?)" >&2
-  exit 1
-fi
-
-# On Windows the compiler produces lantern-server.exe, and Tauri expects the
-# suffix on the target name too.
+# On Windows the compiler produces lantern-server.exe, and the name has to match
+# what the host looks for next to the resources.
 if [ "${OS:-}" = "Windows_NT" ] || [ -f "$server_dist.exe" ]; then
   source="$server_dist.exe"
-  target="$binaries/lantern-server-$host.exe"
+  target="$resources/lantern-server.exe"
 else
   source="$server_dist"
-  target="$binaries/lantern-server-$host"
+  target="$resources/lantern-server"
 fi
 
-mkdir -p "$binaries"
+mkdir -p "$resources"
 cp "$source" "$target"
 chmod +x "$target" 2>/dev/null || true
 
-echo "sidecar ready: apps/desktop/src-tauri/binaries/lantern-server-$host"
+echo "server staged as a resource: apps/desktop/src-tauri/resources/$(basename "$target")"

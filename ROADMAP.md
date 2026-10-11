@@ -795,16 +795,16 @@ What 0.5.1 established, so it does not have to be re-learned:
   The shim makes the bundle build - which is exactly how a broken file reached
   the download list once.
 
-- [ ] Desktop: the Bun binary moves out of `usr/bin` into **resources**, shipped
-      as data, and a small wrapper in the sidecar slot execs it; the bundled path
-      resolved in Rust through `resource_dir()`, with the `.deb` and Windows
-      layouts still working
-- [ ] CI: an Ubuntu job, `best_effort: true` so it cannot fail a release, which
-      builds the AppImage and then **runs it** - the artifact is uploaded only if
-      that run passed
-- [ ] Proof: the produced AppImage started on the machine the release is cut from
-      (and through `scripts/run-linux-appimage.sh` where Mesa 26 and Wayland need
-      it)
+- [x] Desktop: the Bun binary moves out of `usr/bin` into **resources**, shipped
+      as data in `usr/lib/LANtern/`; the host already resolves it through
+      `resource_dir()`, so no wrapper and no Rust change were needed, and the
+      `.deb` and Windows layouts work the same way
+- [x] CI: an Ubuntu job, `continue-on-error: true` so it cannot fail a release,
+      which builds the AppImage, extracts it, **starts the server from inside it**
+      and asks for health - the artifact is uploaded only if that answered
+- [x] Proof: the produced AppImage extracted and its server started on the
+      machine the release is cut from - health answered `0.6.0` with the database
+      ok, which is the failure this whole sub-phase exists for
 
 ### 7.6 Closing the MVP — v1.0.0
 

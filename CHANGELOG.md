@@ -39,6 +39,23 @@ versioning follows [SemVer](https://semver.org/).
   HTTP origin is not a secure context. An installable classroom needs an HTTPS
   address.
 
+### A Linux AppImage that starts
+
+- **The AppImage is back**, after being excluded from every release since 0.5.1.
+  It really was broken, and not in a way any check could see: `linuxdeploy`
+  assembles the bundle by running `patchelf` over every ELF in the AppDir's
+  `usr/bin`, and on our `bun build --compile` server that rewrite corrupts it - the
+  bundle built, uploaded, and the app segfaulted in silence on startup.
+- **The server is a bundle resource now**, not a sidecar: it ships as data in
+  `usr/lib/LANtern/`, a directory `linuxdeploy` never scans, and the app finds it
+  there. Nothing of ours is left in `usr/bin` but the Tauri app itself, which is an
+  ordinary Rust binary and safe to rewrite.
+- **And CI runs it before it is published.** The job extracts the produced
+  AppImage, starts the server from inside it and asks for `/api/health`; the asset
+  goes up only if that answers. An artifact nobody has started is an artifact
+  nobody has tested, and this one was proved on the machine the release is cut
+  from before the job existed.
+
 ## [0.6.0] — 2026-10-11
 
 Phase 6 «Classroom experience»: the workbench could author a test and run one

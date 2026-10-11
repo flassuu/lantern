@@ -62,32 +62,54 @@ placeholder notes.
 Both workflows must succeed: `Release` and `Build desktop app (Linux +
 Windows)`. Watch with `gh run watch <id> --repo flassuu/lantern`.
 
-### There is no AppImage, and that is deliberate
+### The AppImage, and the one thing that can go wrong with it
 
-CI builds the `.deb` and the Windows installers. It does not build the AppImage,
-and it is not waiting on a fix — the format is excluded because of a known
-conflict that CI cannot route around:
+CI builds the `.deb`, the Windows installers **and the AppImage**. The AppImage
+was missing from every release between 0.5.1 and 0.7.5, and the reason is worth
+keeping written down, because it is invisible to every check except one:
 
-- **`.deb`** is built by `dpkg-deb`, which rewrites nothing. Its sidecar is
-  intact and the bundle works.
-- **AppImage** is assembled by `linuxdeploy`, which runs `patchelf` over every
-  ELF in the AppDir's `usr/bin` to set an rpath. On our sidecar — a
-  `bun build --compile` binary — that rewrite **corrupts it**. The bundle builds,
-  uploads, and the app inside segfaults silently on startup.
+- `linuxdeploy` assembles the AppImage by running `patchelf` over **every ELF in
+  the AppDir's `usr/bin`** to set an rpath. On a `bun build --compile` binary
+  that rewrite **corrupts it**: the bundle builds, uploads, and the app segfaults
+  in silence on startup.
 - Nothing structural notices. `readelf` reads the header, the program headers and
-  the dynamic section without complaint, and `ldd` is content wherever the
-  libraries happen to resolve. Only running it tells you.
-- `linuxdeploy` also runs `ldd` on each ELF and aborts on a non-zero exit, which
-  `ldd` gives for a Bun binary it cannot trace. A shim for that was tried and did
-  make the bundle build — which is how the corrupt artifact got as far as the
-  download list before it was caught by hand. Neither the shim nor `NO_STRIP`
-  nor `APPIMAGE_EXTRACT_AND_RUN` addresses the corruption.
+  the dynamic section without complaint; `ldd` is content wherever the libraries
+  resolve; a hash comparison can only ever fail, because the bytes are *meant* to
+  change. Only running it tells you.
+- A `NO_STRIP`, `APPIMAGE_EXTRACT_AND_RUN` or `ldd` shim does not address the
+  corruption either — the shim only makes the bundle *build*, which is exactly how
+  a broken file once reached the download list.
 
-Shipping a working AppImage therefore means moving the Bun binary out of
-`usr/bin` into a directory `linuxdeploy` does not scan, with a small wrapper in
-the sidecar slot. Until that is done, expect Linux users to take the `.deb`, or
-to build the AppImage locally — which works, and is what AGENTS.md already
-documents for Arch.
+**The fix is where the binary lives, not what the bundler is told.** The server is
+a bundle **resource** now (`bundle.resources` in `tauri.conf.json`, staged by
+`scripts/desktop-sidecar.sh` into `apps/desktop/src-tauri/resources/`), so it is
+shipped as data in `usr/lib/LANtern/` — a directory `linuxdeploy` never scans. The
+Rust host finds it through `resource_dir()`, which it already looked in. Nothing in
+`usr/bin` is ours any more except the Tauri app itself, which is an ordinary Rust
+ELF and safe to rewrite.
+
+**And the job proves it by running it.** The `appimage` job in `release.yml`
+builds the bundle, extracts the produced AppImage, starts the **server out of the
+extracted artifact** and asks it for `/api/health` — the failure this whole
+section is about is a server that starts and dies, and no log says so. The asset
+is uploaded only if that answered. It needs no display, so it needs no `xvfb`.
+
+The job is `continue-on-error` on purpose: a package that might not build must
+never be able to take a release down with it. If it fails, the release is still
+good — it just has no AppImage, and Linux users take the `.deb`.
+
+To check a locally built AppImage by hand:
+
+```bash
+cd apps/desktop/src-tauri/target/release/bundle/appimage
+APPIMAGE_EXTRACT_AND_RUN=1 ./LANtern_*_amd64.AppImage --appimage-extract >/dev/null
+./squashfs-root/usr/lib/LANtern/lantern-server --port 3499 --data /tmp/lantern-check --no-console &
+curl -s http://127.0.0.1:3499/api/health     # version must match, database ok
+```
+
+Stop it by PID (`ss -lptn 'sport = :3499'`), never by a `pkill` pattern. On Arch
+the AppImage also needs `scripts/run-linux-appimage.sh` to open its window
+(WebKitGTK on Mesa 26 + Wayland), which is a rendering problem and not this one.
 
 ## 6. Publish the notes
 
@@ -114,6 +136,9 @@ curl -s http://127.0.0.1:3499/ | grep '<title>' # LANtern
 
 Confirm the asset names match the release conventions: `lantern-server_<v>_linux-x64`,
 `lantern-web_<v>.tar.gz`, and `LANtern_<v>_*` for the desktop bundles (those come
-from `productName`, so mixed case is correct there).
+from `productName`, so mixed case is correct there) — `.deb`, `.AppImage`, `.exe`
+and `.msi`. The AppImage appears only when its job got as far as starting the
+server inside it; a release without one is a release whose AppImage job failed,
+not a release missing a part nobody built.
 
 Stop the process by PID (`ss -lptn 'sport = :3499'`), never by a `pkill` pattern.
