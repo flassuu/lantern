@@ -368,6 +368,42 @@ describe('session csv export', () => {
     expect('"He said ""hi"""').toBe('"He said ""hi"""')
   })
 
+  it('serves the same report as txt and as a PDF', async () => {
+    const teacherToken = await login('teacher1', 'teacher-pass-1')
+    const testId = await makeTest(teacherToken, 50)
+    const sessionId = await runSession(
+      teacherToken,
+      testId,
+      await makeStudent('halyna'),
+      (q) => (q.type === 'true_false' ? { boolean: true } : { key: 'a' }),
+    )
+
+    const text = await app.server.inject({
+      method: 'GET',
+      url: `/api/sessions/${sessionId}/results?format=txt`,
+      headers: bearer(teacherToken),
+    })
+    expect(text.statusCode).toBe(200)
+    expect(text.headers['content-type']).toContain('text/plain')
+    expect(text.payload as string).toContain('Test: Journal quiz')
+    expect(text.payload as string).toContain('halyna')
+    expect(text.headers['content-disposition']).toContain('.txt"')
+
+    const pdf = await app.server.inject({
+      method: 'GET',
+      url: `/api/sessions/${sessionId}/results?format=pdf`,
+      headers: bearer(teacherToken),
+    })
+    expect(pdf.statusCode).toBe(200)
+    expect(pdf.headers['content-type']).toContain('application/pdf')
+    expect(pdf.headers['content-disposition']).toContain('.pdf"')
+    const bytes = pdf.rawPayload
+    // A PDF that parses is a PDF that starts right and ends right.
+    expect(bytes.subarray(0, 5).toString()).toBe('%PDF-')
+    expect(bytes.subarray(-6).toString()).toContain('%%EOF')
+    expect(bytes.toString('latin1')).toContain('/BaseFont /Helvetica')
+  })
+
   it('refuses the export of another teacher session', async () => {
     const teacherToken = await login('teacher1', 'teacher-pass-1')
     const testId = await makeTest(teacherToken, null)

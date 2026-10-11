@@ -26,6 +26,8 @@ export interface LiveSessionRow {
   settings: string | null
   /** 1 once the teacher has let results out; only meaningful when they hold them. */
   results_released: number
+  /** Set while the run is on hold; the resume moves `started_at` past it. */
+  paused_at: string | null
   created_at: string
   /** Null until the teacher starts the run; the lobby has no clock. */
   started_at: string | null
@@ -45,6 +47,7 @@ export interface LiveSession {
   entryLocked: boolean
   settings: TestSettings
   resultsReleased: boolean
+  pausedAt: string | null
   startedAt: string | null
   finishedAt: string | null
 }
@@ -212,6 +215,7 @@ export function toSession(row: LiveSessionRow): LiveSession {
     entryLocked: row.entry_locked === 1,
     settings: parseSettings(row.settings),
     resultsReleased: row.results_released === 1,
+    pausedAt: row.paused_at,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
   }
@@ -374,10 +378,44 @@ export function setSessionStatus(
   id: string,
   status: LiveSessionStatus,
 ): LiveSession | null {
-  const finishedAt = status === 'finished' ? nowIso() : null
+  const row = findSessionRow(db, id)
+  if (!row) return null
+  const now = nowIso()
+
+  if (status === 'paused' && row.status !== 'paused') {
+    db.prepare("UPDATE live_sessions SET status = 'paused', paused_at = ? WHERE id = ?").run(now, id)
+  } else if (status === 'active' && row.paused_at !== null) {
+    // Resuming: the run's clock owes nothing to the time it spent on hold, so
+    // the start mark moves forward by exactly that much. Every client then
+    // reads one honest number without keeping its own tally of pauses, and a
+    // board that reloads mid-run agrees with one that never left.
+    const pausedMs = Math.max(0, Date.parse(now) - Date.parse(row.paused_at))
+    const startedAt =
+      row.started_at === null
+        ? row.started_at
+        : new Date(Date.parse(row.started_at) + pausedMs).toISOString()
+    db.prepare(
+      "UPDATE live_sessions SET status = 'active', started_at = ?, paused_at = NULL WHERE id = ?",
+    ).run(startedAt, id)
+  } else {
+    const finishedAt = status === 'finished' ? now : null
+    db.prepare(
+      'UPDATE live_sessions SET status = ?, finished_at = COALESCE(?, finished_at) WHERE id = ?',
+    ).run(status, finishedAt, id)
+  }
+
+  const updated = findSessionRow(db, id)
+  return updated ? toSession(updated) : null
+}
+
+/**
+ * Gives a run more time. Only a run that has a clock has one to give, so a run
+ * with no limit is left alone rather than handed a limit nobody asked for.
+ */
+export function extendSession(db: DatabaseSync, id: string, seconds: number): LiveSession | null {
   db.prepare(
-    'UPDATE live_sessions SET status = ?, finished_at = COALESCE(?, finished_at) WHERE id = ?',
-  ).run(status, finishedAt, id)
+    'UPDATE live_sessions SET time_limit_sec = time_limit_sec + ? WHERE id = ? AND time_limit_sec IS NOT NULL',
+  ).run(seconds, id)
   const row = findSessionRow(db, id)
   return row ? toSession(row) : null
 }

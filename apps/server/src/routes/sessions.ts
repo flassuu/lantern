@@ -22,6 +22,7 @@ import {
   listSessions,
   recordParticipationEvent,
   setEntryLocked,
+  extendSession,
   setResultsReleased,
   setSessionSettings,
   startSession,
@@ -55,7 +56,7 @@ import {
 } from '../lib/live'
 import { requireRoles } from '../plugins/auth'
 import { resolveSession } from '../lib/tokens'
-import { sessionResultsCsv } from '../lib/results'
+import { sessionExport, sessionResultsCsv, type ExportFormat } from '../lib/results'
 
 export interface SessionRoutesDeps {
   database: Database
@@ -165,6 +166,8 @@ interface ParticipationResponse {
     settings: TestSettings
     /** Null while the run is still a lobby: there is no clock yet. */
     startedAt: string | null
+    /** Set while the run is on hold; the runner's clock stops at this mark. */
+    pausedAt: string | null
     serverNow: string
   }
   questions: Array<{
@@ -412,6 +415,41 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
   )
 
   /**
+   * Gives the run more time: a teacher watching a class run out of a minute can
+   * add one without restarting anything. Only a run that has a clock has one to
+   * give, so a run with no limit is left as it is.
+   */
+  app.post(
+    '/api/sessions/:id/extend',
+    {
+      preHandler: requireRoles('admin', 'teacher'),
+      schema: {
+        params: idParamsSchema,
+        body: {
+          type: 'object',
+          required: ['seconds'],
+          additionalProperties: false,
+          properties: { seconds: { type: 'integer', minimum: 1, maximum: 3600 } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const session = request.session!
+      const { id } = request.params as { id: string }
+      const row = findSessionRow(db, id)
+      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'session not found')
+      const current = toSession(row)
+      if (current.ownerId !== session.userId && session.role !== 'admin') {
+        return sendError(reply, 403, 'FORBIDDEN', 'this session belongs to another teacher')
+      }
+      const { seconds } = request.body as { seconds: number }
+      const updated = extendSession(db, id, seconds) ?? current
+      announce(updated)
+      return sessionPayload(updated)
+    },
+  )
+
+  /**
    * Lets the results out. Only meaningful when the run holds them; from then on
    * submitting students see their score, and `released` flips for the board.
    */
@@ -559,6 +597,46 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
     },
   )
 
+  /**
+   * The same results in whichever shape the teacher picked in the save dialog.
+   * One reader, three writers, so a column cannot mean two things across formats.
+   */
+  app.get(
+    '/api/sessions/:id/results',
+    {
+      preHandler: requireRoles('admin', 'teacher'),
+      schema: {
+        params: idParamsSchema,
+        querystring: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { format: { type: 'string', enum: ['csv', 'txt', 'pdf'] } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string }
+      const row = findSessionRow(db, id)
+      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'session not found')
+      const session = toSession(row)
+      if (session.ownerId !== request.session?.userId && request.session?.role !== 'admin') {
+        return sendError(reply, 403, 'FORBIDDEN', 'this session belongs to another teacher')
+      }
+      const test = findTestRow(db, session.testId)
+      const format = (request.query as { format?: ExportFormat }).format ?? 'csv'
+      const { filename, contentType, body } = sessionExport(
+        db,
+        id,
+        test ? test.title : '',
+        format,
+      )
+      return reply
+        .type(contentType)
+        .header('content-disposition', `attachment; filename="${filename}"`)
+        .send(body instanceof Uint8Array ? Buffer.from(body) : body)
+    },
+  )
+
   /** Questions plus the answer key, for the teacher's own review screen. */
   app.get(
     '/api/sessions/:id/review',
@@ -629,6 +707,7 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
           passingPercent: session.passingPercent,
           settings: session.settings,
           startedAt: session.startedAt,
+          pausedAt: session.pausedAt,
           serverNow: new Date().toISOString(),
         },
         questions: studentQuestions(questions, order, participation.optionOrder),
@@ -672,6 +751,7 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
           passingPercent: session.passingPercent,
           settings: session.settings,
           startedAt: session.startedAt,
+          pausedAt: session.pausedAt,
           serverNow: new Date().toISOString(),
         },
         questions: studentQuestions(questions, order, participation.optionOrder),

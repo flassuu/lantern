@@ -12,7 +12,7 @@ export function nowIso(): string {
   return new Date().toISOString()
 }
 
-export const SCHEMA_VERSION = 8
+export const SCHEMA_VERSION = 9
 
 const MIGRATIONS: Array<{ version: number; up: string }> = [
   {
@@ -329,6 +329,17 @@ const MIGRATIONS: Array<{ version: number; up: string }> = [
       -- A student's own option order, per question, when options are shuffled:
       -- fixed at join so a reload shows the same paper, not a new shuffle.
       ALTER TABLE participations ADD COLUMN option_order TEXT;
+    `,
+  },
+  {
+    version: 9,
+    up: `
+      -- When the run was put on hold. The clock is not stopped by freezing a
+      -- counter: the start mark is moved forward by exactly the time spent
+      -- paused when the run resumes, so every client - the board and every
+      -- phone - reads one honest number without keeping its own bookkeeping.
+      -- This column is the record of when that pause began.
+      ALTER TABLE live_sessions ADD COLUMN paused_at TEXT;
     `,
   },
 ]

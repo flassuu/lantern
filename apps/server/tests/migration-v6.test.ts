@@ -41,6 +41,7 @@ const REWIND_TO_V5 = `
   -- still has them is a duplicate-column error rather than a no-op.
   ALTER TABLE tests DROP COLUMN settings;
   ALTER TABLE participations DROP COLUMN option_order;
+  ALTER TABLE live_sessions DROP COLUMN paused_at;
   UPDATE app_meta SET value = '5' WHERE key = 'schema_version';
 `
 
@@ -98,11 +99,11 @@ describe('migration v6', () => {
   })
 
   it('runs to the current version', () => {
-    expect(SCHEMA_VERSION).toBe(8)
+    expect(SCHEMA_VERSION).toBe(9)
     const version = db.raw
       .prepare("SELECT value FROM app_meta WHERE key = 'schema_version'")
       .get() as { value: string }
-    expect(version.value).toBe('8')
+    expect(version.value).toBe('9')
   })
 
   it('has rooms where classrooms used to be, with their keys intact', () => {

@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { QuestionType } from './tests'
+import { buildPdf } from './pdf'
 
 /** One row of the grade journal: a student's record for one test. */
 export interface JournalRow {
@@ -145,21 +146,46 @@ function csvField(value: string | number | null): string {
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
 }
 
-export interface SessionCsv {
-  filename: string
-  csv: string
+export interface SessionReportRow {
+  fullName: string
+  username: string
+  status: string
+  score: number | null
+  maxScore: number | null
+  percent: number | null
+  passed: number | null
+  submittedAt: string | null
+}
+
+export interface SessionReport {
+  title: string
+  joinCode: string
+  status: string
+  startedAt: string
+  finishedAt: string | null
+  passMark: string
+  rows: SessionReportRow[]
 }
 
 /**
- * One session as a spreadsheet: a header block with the test and session, then
- * one row per participant. Spreadsheet apps open the BOM'd UTF-8 happily, so
- * non-ASCII student names survive the round trip.
+ * Everything an export needs, read once so the three formats cannot drift.
+ *
+ * The rows are ordered by name, which is how a teacher reads a class list and
+ * therefore how every format presents it.
  */
-export function sessionResultsCsv(db: DatabaseSync, sessionId: string, title: string): SessionCsv {
+export function sessionReport(db: DatabaseSync, sessionId: string, title: string): SessionReport {
   const session = db
-    .prepare('SELECT join_code, status, started_at, finished_at, passing_percent FROM live_sessions WHERE id = ?')
+    .prepare(
+      'SELECT join_code, status, started_at, finished_at, passing_percent FROM live_sessions WHERE id = ?',
+    )
     .get(sessionId) as
-    | { join_code: string; status: string; started_at: string; finished_at: string | null; passing_percent: number | null }
+    | {
+        join_code: string
+        status: string
+        started_at: string
+        finished_at: string | null
+        passing_percent: number | null
+      }
     | undefined
   const rows = db
     .prepare(
@@ -180,38 +206,171 @@ export function sessionResultsCsv(db: DatabaseSync, sessionId: string, title: st
     submitted_at: string | null
   }>
 
-  const passMark =
-    session?.passing_percent === null || session?.passing_percent === undefined
-      ? ''
-      : `${session.passing_percent}%`
-
-  const lines: string[][] = [
-    ['Test', title],
-    ['Join code', session?.join_code ?? ''],
-    ['Status', session?.status ?? ''],
-    ['Started', session?.started_at ?? ''],
-    ['Finished', session?.finished_at ?? ''],
-    ['Pass mark', passMark],
-    [],
-    ['Student', 'Username', 'Status', 'Score', 'Max', 'Percent', 'Passed', 'Submitted at'],
-  ]
-  for (const row of rows) {
-    lines.push([
-      row.full_name,
-      row.username,
-      row.status,
-      String(row.score ?? ''),
-      String(row.max_score ?? ''),
-      row.percent === null ? '' : `${row.percent}%`,
-      row.passed === null ? 'n/a' : row.passed === 1 ? 'yes' : 'no',
-      row.submitted_at ?? '',
-    ])
-  }
-  const csv = lines.map((line) => line.map(csvField).join(',')).join('\r\n')
   return {
-    filename: `session-${session?.join_code ?? sessionId}.csv`,
-    // BOM so Excel reads UTF-8 instead of guessing a code page.
-    csv: `\uFEFF${csv}\r\n`,
+    title,
+    joinCode: session?.join_code ?? '',
+    status: session?.status ?? '',
+    startedAt: session?.started_at ?? '',
+    finishedAt: session?.finished_at ?? null,
+    passMark:
+      session?.passing_percent === null || session?.passing_percent === undefined
+        ? ''
+        : `${session.passing_percent}%`,
+    rows: rows.map((row) => ({
+      fullName: row.full_name,
+      username: row.username,
+      status: row.status,
+      score: row.score,
+      maxScore: row.max_score,
+      percent: row.percent,
+      passed: row.passed,
+      submittedAt: row.submitted_at,
+    })),
   }
 }
 
+function passedText(passed: number | null): string {
+  return passed === null ? 'n/a' : passed === 1 ? 'yes' : 'no'
+}
+
+/**
+ * The spreadsheet form: a header block with the run, then one row per student.
+ * Spreadsheet apps open the BOM'd UTF-8 happily, so non-ASCII names survive.
+ */
+export function sessionCsv(report: SessionReport): string {
+  const lines: string[][] = [
+    ['Test', report.title],
+    ['Join code', report.joinCode],
+    ['Status', report.status],
+    ['Started', report.startedAt],
+    ['Finished', report.finishedAt ?? ''],
+    ['Pass mark', report.passMark],
+    [],
+    ['Student', 'Username', 'Status', 'Score', 'Max', 'Percent', 'Passed', 'Submitted at'],
+  ]
+  for (const row of report.rows) {
+    lines.push([
+      row.fullName,
+      row.username,
+      row.status,
+      String(row.score ?? ''),
+      String(row.maxScore ?? ''),
+      row.percent === null ? '' : `${row.percent}%`,
+      passedText(row.passed),
+      row.submittedAt ?? '',
+    ])
+  }
+  const csv = lines.map((line) => line.map(csvField).join(',')).join('\r\n')
+  // BOM so Excel reads UTF-8 instead of guessing a code page.
+  return `\uFEFF${csv}\r\n`
+}
+
+/** For reading rather than opening: the same report, lined up in plain text. */
+export function sessionTxt(report: SessionReport): string {
+  const columns = ['Student', 'Status', 'Score', 'Percent', 'Passed']
+  const cells = report.rows.map((row) => [
+    row.fullName,
+    row.status,
+    row.score === null ? '' : `${row.score}/${row.maxScore ?? ''}`,
+    row.percent === null ? '' : `${row.percent}%`,
+    passedText(row.passed),
+  ])
+  const widths = columns.map((label, index) =>
+    Math.max(label.length, ...cells.map((row) => (row[index] ?? '').length)),
+  )
+  const line = (row: string[]): string =>
+    row
+      .map((value, index) => (value ?? '').padEnd(widths[index] ?? 0))
+      .join('  ')
+      .trimEnd()
+  return [
+    `Test: ${report.title}`,
+    `Join code: ${report.joinCode}`,
+    `Status: ${report.status}`,
+    `Started: ${report.startedAt}`,
+    `Finished: ${report.finishedAt ?? ''}`,
+    `Pass mark: ${report.passMark}`,
+    '',
+    line(columns),
+    ...cells.map(line),
+    '',
+  ].join('\n')
+}
+
+/** The student table as a PDF. See ./pdf.ts for what the font can and cannot do. */
+export function sessionPdf(report: SessionReport): Uint8Array {
+  return buildPdf({
+    title: report.title,
+    metaLines: [
+      `Join code: ${report.joinCode}`,
+      `Status: ${report.status}`,
+      `Started: ${report.startedAt}`,
+      `Finished: ${report.finishedAt ?? ''}`,
+      `Pass mark: ${report.passMark}`,
+    ],
+    columns: [
+      { label: 'Student', width: 28 },
+      { label: 'Username', width: 16 },
+      { label: 'Status', width: 15 },
+      { label: 'Score', width: 12, align: 'right' },
+      { label: 'Percent', width: 15, align: 'right' },
+      { label: 'Passed', width: 14 },
+    ],
+    rows: report.rows.map((row) => [
+      row.fullName,
+      row.username,
+      row.status,
+      row.score === null ? '' : `${row.score}/${row.maxScore ?? ''}`,
+      row.percent === null ? '' : `${row.percent}%`,
+      passedText(row.passed),
+    ]),
+  })
+}
+
+export type ExportFormat = 'csv' | 'txt' | 'pdf'
+
+export interface SessionExport {
+  filename: string
+  contentType: string
+  body: string | Uint8Array
+}
+
+/** One session in the format the teacher asked for. */
+export function sessionExport(
+  db: DatabaseSync,
+  sessionId: string,
+  title: string,
+  format: ExportFormat,
+): SessionExport {
+  const report = sessionReport(db, sessionId, title)
+  const base = `session-${report.joinCode === '' ? sessionId : report.joinCode}`
+  if (format === 'pdf') {
+    return { filename: `${base}.pdf`, contentType: 'application/pdf', body: sessionPdf(report) }
+  }
+  if (format === 'txt') {
+    return {
+      filename: `${base}.txt`,
+      contentType: 'text/plain; charset=utf-8',
+      body: `\uFEFF${sessionTxt(report)}`,
+    }
+  }
+  return {
+    filename: `${base}.csv`,
+    contentType: 'text/csv; charset=utf-8',
+    body: sessionCsv(report),
+  }
+}
+
+export interface SessionCsv {
+  filename: string
+  csv: string
+}
+
+/** The CSV alone, for the route that has always served it. */
+export function sessionResultsCsv(db: DatabaseSync, sessionId: string, title: string): SessionCsv {
+  const report = sessionReport(db, sessionId, title)
+  return {
+    filename: `session-${report.joinCode === '' ? sessionId : report.joinCode}.csv`,
+    csv: sessionCsv(report),
+  }
+}
