@@ -1,4 +1,4 @@
-import { apiFetch } from './client'
+import { apiFetch, fetchBlob } from './client'
 import { normalizeSession } from './normalize'
 import type { Tag, TestSettings } from './types'
 
@@ -62,6 +62,8 @@ export interface LiveSession {
   /** Null until the teacher starts the run; the lobby has no clock. */
   startedAt: string | null
   finishedAt: string | null
+  /** Set while the run is on hold; the clock stops at this mark. */
+  pausedAt: string | null
   test: { id: string; title: string; questionCount: number }
 }
 
@@ -76,6 +78,8 @@ export interface SessionState {
     settings: TestSettings
     /** Null while the run is still a lobby. */
     startedAt: string | null
+    /** Set while the run is on hold; the runner's clock stops here. */
+    pausedAt: string | null
     serverNow: string
   }
   questions: StudentQuestion[]
@@ -245,6 +249,26 @@ export async function setSessionSettings(
   const result = await apiFetch<{ session: LiveSession }>(`/api/sessions/${sessionId}`, {
     method: 'PATCH',
     body: JSON.stringify({ settings }),
+  })
+  return normalizeSession(result.session)
+}
+
+/** The formats a session's results can be written as. */
+export type SessionExportFormat = 'csv' | 'txt' | 'pdf'
+
+/** One session's results, in the format the save dialog asked for. */
+export async function sessionResultsBlob(
+  sessionId: string,
+  format: SessionExportFormat,
+): Promise<Blob> {
+  return fetchBlob(`/api/sessions/${encodeURIComponent(sessionId)}/results?format=${format}`)
+}
+
+/** Gives the run more time. Only a run with a clock has one to give. */
+export async function extendSession(sessionId: string, seconds: number): Promise<LiveSession> {
+  const result = await apiFetch<{ session: LiveSession }>(`/api/sessions/${sessionId}/extend`, {
+    method: 'POST',
+    body: JSON.stringify({ seconds }),
   })
   return normalizeSession(result.session)
 }

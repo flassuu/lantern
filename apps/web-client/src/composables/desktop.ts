@@ -16,3 +16,20 @@ declare const __APP_VERSION__: string
 export function appVersion(): string {
   return __APP_VERSION__
 }
+
+
+export interface SaveFilter {
+  name: string
+  extensions: string[]
+}
+
+/** A browser has no system save dialog of this shape; the caller uses its own. */
+export async function nativeSavePath(_input: {
+  defaultName: string
+  filters: SaveFilter[]
+}): Promise<string | null> {
+  return null
+}
+
+/** Nothing native to write to: the browser path never reaches this. */
+export async function nativeWrite(_path: string, _bytes: Uint8Array): Promise<void> {}

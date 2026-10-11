@@ -68,6 +68,7 @@ const deadline = computed(() =>
         props.state.session.timeLimitSec,
         props.state.session.serverNow,
         now.value,
+        props.state.session.pausedAt,
       ),
 )
 const clock = computed(() => (deadline.value === null ? '' : formatClock(deadline.value)))

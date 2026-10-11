@@ -18,6 +18,8 @@ const props = defineProps<{
   finishedAt: string | null
   timeLimitSec: number | null
   status: LiveSessionStatus
+  /** Set while the run is on hold; the clock reads this instead of now. */
+  pausedAt: string | null
 }>()
 
 const { t } = useI18n()
@@ -41,7 +43,16 @@ const elapsedSeconds = computed(() => {
   if (props.startedAt === null) return 0
   const start = Date.parse(props.startedAt)
   if (Number.isNaN(start)) return 0
-  const end = props.finishedAt ? Date.parse(props.finishedAt) : now.value
+  // On hold, the clock reads the moment it was put on hold and stops there:
+  // the second hand is not a counter to be frozen, it is a deadline to look at.
+  // Resuming has already moved `startedAt` past the hold, so the next tick
+  // picks up exactly where this left off.
+  const end =
+    props.finishedAt !== null
+      ? Date.parse(props.finishedAt)
+      : props.status === 'paused' && props.pausedAt !== null
+        ? Date.parse(props.pausedAt)
+        : now.value
   return Math.max(0, Math.floor((end - start) / 1000))
 })
 

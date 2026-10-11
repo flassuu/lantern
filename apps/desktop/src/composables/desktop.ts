@@ -239,3 +239,33 @@ export async function onServerExit(handler: (code: number | null) => void): Prom
   const unlisten = await listen<number | null>('server-exit', (event) => handler(event.payload))
   return unlisten
 }
+
+
+export interface SaveFilter {
+  name: string
+  extensions: string[]
+}
+
+/**
+ * The system save dialog, when there is one to show.
+ *
+ * Returns the chosen path, or null where the platform has no such dialog - on
+ * the web the browser picks its own way and the caller falls back to it. One
+ * dialog settles both questions at once: the filters are the formats, and the
+ * extension that comes back is the format that was chosen.
+ */
+export async function nativeSavePath(input: {
+  defaultName: string
+  filters: SaveFilter[]
+}): Promise<string | null> {
+  if (!isDesktop()) return null
+  const { save } = await import('@tauri-apps/plugin-dialog')
+  return await save({ defaultPath: input.defaultName, filters: input.filters })
+}
+
+/** Writes the bytes the teacher just chose a home for. */
+export async function nativeWrite(path: string, bytes: Uint8Array): Promise<void> {
+  if (!isDesktop()) return
+  const { writeFile } = await import('@tauri-apps/plugin-fs')
+  await writeFile(path, bytes)
+}

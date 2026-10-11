@@ -114,11 +114,16 @@ export function remainingMs(
   timeLimitSec: number | null,
   serverNow: string,
   clientNow: number = Date.now(),
+  pausedAt: string | null = null,
 ): number | null {
   if (timeLimitSec === null) return null
   const clockSkewMs = Date.parse(serverNow) - clientNow
   const deadline = Date.parse(startedAt) + timeLimitSec * 1000
-  return Math.max(0, deadline - (clientNow + clockSkewMs))
+  // While the run is on hold the remaining time stops shrinking: it is read as
+  // of the moment the hold began rather than as of now. `pausedAt` is already
+  // server time, which is the frame `deadline` is in, so it needs no skew.
+  const serverMs = pausedAt !== null ? Date.parse(pausedAt) : clientNow + clockSkewMs
+  return Math.max(0, deadline - serverMs)
 }
 
 /** `mm:ss`, or `h:mm:ss` once the clock passes an hour. */

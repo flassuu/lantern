@@ -95,6 +95,11 @@ fn default_data_dir(app: &AppHandle) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(init())
+        // The save dialog and the write that follows it. The dialog hands back a
+        // path and Tauri adds it to the filesystem scope itself, so a teacher can
+        // save a report anywhere they like without a path being allowed up front.
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             let handle = app.handle().clone();
             let data_dir = default_data_dir(&handle);

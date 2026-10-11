@@ -108,3 +108,12 @@ export async function downloadFile(path: string, filename: string): Promise<void
   // Revoking right after the click can cancel the download in some browsers.
   setTimeout(() => URL.revokeObjectURL(objectUrl), 1000)
 }
+
+/**
+ * Fetches a path as a blob, for an export that is written to a file the teacher
+ * picked in a save dialog rather than handed to the browser as a download.
+ */
+export async function fetchBlob(path: string): Promise<Blob> {
+  const res = await request(path, {})
+  return res.blob()
+}

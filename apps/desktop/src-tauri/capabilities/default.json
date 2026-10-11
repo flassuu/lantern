@@ -6,6 +6,9 @@
   "permissions": [
     "core:default",
     "opener:default",
+    "dialog:allow-save",
+    "fs:allow-write-text-file",
+    "fs:allow-write-file",
     "core:app:allow-version",
     "core:window:allow-set-title",
     "core:window:allow-set-decorations",

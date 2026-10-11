@@ -6,6 +6,22 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Export asks where and in what format
+
+- **Export** (was *Export CSV*) opens the **system save dialog**, so the file
+  goes where the teacher wants it and in the format they pick there: **CSV**,
+  **TXT** or **PDF**. The filter list in the dialog is the format choice - one
+  gesture, not two. It stays disabled until the run is finished, since there is
+  nothing final to write out before that.
+- The three formats come from **one reader** on the server
+  (`GET /api/sessions/:id/results?format=`), so a column cannot come to mean two
+  things across them. CSV and TXT keep every character; the PDF uses the standard
+  Helvetica, which has no Cyrillic, so names outside Latin-1 are transliterated -
+  use CSV or TXT when the exact spelling matters.
+- The desktop reads the dialog through Tauri's **dialog** and **fs** plugins;
+  in a browser Chromium's own file picker does the same job, and a browser with
+  neither falls back to a download.
+
 ### The board sits still, and a run's rules fit on one screen
 
 - **The session tabs sit on the board.** The first tab's left edge lines up with

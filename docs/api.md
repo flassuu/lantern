@@ -692,6 +692,14 @@ to `active`, and broadcasts the change to every phone watching. Idempotent — a
 second call on a run that has started changes nothing — and `409` once the run is
 finished.
 
+### `GET /api/sessions/:id/results?format=csv|txt|pdf`
+
+Admin & teacher (owner). One session's report, in any of the three shapes the
+save dialog offers; `format` defaults to `csv`. All three are built from one
+reader, so the columns agree. The PDF is a student table and uses the standard
+Helvetica - names outside Latin-1 are transliterated, which is why CSV and TXT
+exist for when the exact spelling matters.
+
 ### `POST /api/sessions/:id/release`
 
 Admin & teacher (owner). Lets held results out: from then on a submitting student

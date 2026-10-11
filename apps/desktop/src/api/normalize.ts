@@ -22,6 +22,7 @@ export function normalizeSession<
     tags?: Tag[] | null
     entryLocked?: boolean | null
     resultsReleased?: boolean | null
+    pausedAt?: string | null
     settings?: Partial<TestSettings> | null
   },
 >(session: T): T & {
@@ -30,6 +31,7 @@ export function normalizeSession<
   tags: Tag[]
   entryLocked: boolean
   resultsReleased: boolean
+  pausedAt: string | null
   settings: TestSettings
 } {
   return {
@@ -39,6 +41,7 @@ export function normalizeSession<
     tags: session.tags ?? [],
     entryLocked: session.entryLocked ?? false,
     resultsReleased: session.resultsReleased ?? false,
+    pausedAt: session.pausedAt ?? null,
     settings: normalizeSettings(session.settings),
   }
 }
