@@ -6,6 +6,7 @@ import {
   createTest,
   deleteTest,
   duplicateTest,
+  countMedia,
   exportTest,
   findTestRow,
   listQuestions,
@@ -284,6 +285,7 @@ export const testRoutes: FastifyPluginAsync<TestsDeps> = async (
         return sendError(reply, 400, 'VALIDATION', parsed.error ?? 'the file could not be read')
       }
       const document = parsed.value
+      const before = countMedia(document.questions)
       const created = createTest(
         db,
         session.userId,
@@ -295,7 +297,16 @@ export const testRoutes: FastifyPluginAsync<TestsDeps> = async (
         },
         document.questions,
       )
-      return reply.code(201).send({ test: fullTest(db, created, listQuestions(db, created.id)) })
+      const questions = listQuestions(db, created.id)
+      // An image travels in the file as an id, and an id means nothing on
+      // another teacher's machine. The diagrams are dropped there rather than
+      // pointed at an image that is not ours - but a paper that quietly lost its
+      // pictures is worse than one that says so.
+      const missing = before - countMedia(questions)
+      return reply.code(201).send({
+        test: fullTest(db, created, questions),
+        ...(missing > 0 ? { imagesDropped: missing } : {}),
+      })
     },
   )
 

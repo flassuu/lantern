@@ -129,7 +129,7 @@ describe('room keys', () => {
   })
 
   it('runs the new migration', () => {
-    expect(SCHEMA_VERSION).toBe(10)
+    expect(SCHEMA_VERSION).toBe(11)
   })
 
   it('generates keys from the join-code alphabet, with no 0/O or 1/I', async () => {

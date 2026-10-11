@@ -15,6 +15,7 @@ import { authRoutes } from './routes/auth'
 import { userRoutes } from './routes/users'
 import { testRoutes } from './routes/tests'
 import { courseRoutes } from './routes/courses'
+import { assetRoutes } from './routes/assets'
 import { sessionRoutes } from './routes/sessions'
 import { adminRoutes } from './routes/admin'
 import { roomRoutes } from './routes/rooms'
@@ -130,6 +131,7 @@ export function buildApp(options: AppOptions): TestingApp {
   // Phase 2 foundation: tests & courses.
   void app.register(testRoutes, { database })
   void app.register(courseRoutes, { database, uploadsDir })
+  void app.register(assetRoutes, { database, uploadsDir })
 
   // Phase 3: live session runtime (teacher run + student join/submit).
   void app.register(sessionRoutes, { database })

@@ -130,16 +130,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * keys), matching keeps both sides minus the mapping is not stored anyway, and
  * short answers lose the accepted list.
  */
+/**
+ * What the student is shown of a question: its text, its pictures, and nothing
+ * that would hand over the answer.
+ *
+ * Media travels because a question whose diagram is missing is not the question
+ * the teacher wrote. The ids are safe to hand out - they name images this server
+ * holds, and the student can only fetch those - while `correct` and `accepted`
+ * stay behind, as they always have.
+ */
 export function toStudentPayload(
   type: QuestionType,
   payload: Record<string, unknown>,
   optionOrder?: string[],
 ): Record<string, unknown> {
+  const media = isRecord(payload.media) ? { media: payload.media } : {}
   if (type === 'single_choice' || type === 'multiple_choice') {
     const options = (Array.isArray(payload.options) ? payload.options : []).flatMap((option) =>
-      isRecord(option) ? [{ key: option.key, text: option.text }] : [],
+      isRecord(option)
+        ? [{ key: option.key, text: option.text, image: option.image }]
+        : [],
     )
-    if (!optionOrder || optionOrder.length === 0) return { options }
+    if (!optionOrder || optionOrder.length === 0) return { ...media, options }
     // The student's own order, with anything it does not mention left at the
     // end: a question edited after they joined must not lose an option.
     const byKey = new Map(options.map((option) => [String(option.key), option]))
@@ -149,19 +161,27 @@ export function toStudentPayload(
       byKey.delete(key)
       return [option]
     })
-    return { options: [...ordered, ...byKey.values()] }
+    return { ...media, options: [...ordered, ...byKey.values()] }
   }
-  if (type === 'true_false') return {}
-  if (type === 'short_answer') return {}
+  if (type === 'true_false') return media
+  if (type === 'short_answer') return media
   if (type === 'matching') {
     const pairs = Array.isArray(payload.pairs) ? payload.pairs : []
     return {
+      ...media,
       pairs: pairs.map((pair) =>
-        isRecord(pair) ? { left: pair.left, right: pair.right } : pair,
+        isRecord(pair)
+          ? {
+              left: pair.left,
+              right: pair.right,
+              leftImage: pair.leftImage,
+              rightImage: pair.rightImage,
+            }
+          : pair,
       ),
     }
   }
-  return {}
+  return media
 }
 
 export function generateJoinCode(db: DatabaseSync): string {

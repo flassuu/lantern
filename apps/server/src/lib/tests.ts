@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { findAssetRow } from './assets'
 import type { DatabaseSync } from 'node:sqlite'
 import { nowIso } from './db'
 import type { Tag } from './tags'
@@ -91,6 +92,101 @@ function isStringArray(value: unknown): value is string[] {
     value.length > 0 &&
     value.every((item) => typeof item === 'string' && item.trim().length > 0)
   )
+}
+
+/**
+ * A picture a question points at: an id and nothing else.
+ *
+ * Storing an id rather than a URL is the whole of the trust model. A teacher
+ * pasting an address into a question could point a classroom at anything on
+ * their machine's network; an id can only be an image this server holds, and
+ * the server checks that it does.
+ */
+export interface MediaRef {
+  assetId: string
+}
+
+function isMediaRef(value: unknown): value is MediaRef {
+  return (
+    isRecord(value) &&
+    typeof value.assetId === 'string' &&
+    /^[0-9a-f-]{36}$/.test(value.assetId)
+  )
+}
+
+/** How many pictures a question or a set of them claims. */
+export function countMedia(source: QuestionInput[] | Question[]): number {
+  let total = 0
+  for (const question of source) {
+    const payload = question.payload as Record<string, unknown>
+    for (const list of [payload.options, payload.pairs]) {
+      if (!Array.isArray(list)) continue
+      for (const item of list) {
+        if (!isRecord(item)) continue
+        if (isRecord(item.image)) total += 1
+        if (isRecord(item.leftImage)) total += 1
+        if (isRecord(item.rightImage)) total += 1
+      }
+    }
+    if (isRecord(payload.media)) total += 1
+  }
+  return total
+}
+
+/**
+ * Every picture the payload claims, checked against the images this server
+ * actually holds. Ids nobody uploaded are dropped rather than stored: a paper
+ * with a diagram that cannot load is worse than a paper without one, and the
+ * teacher sees the hole on their next edit.
+ *
+ * `media` on the question, `image` on each option, `leftImage` and `rightImage`
+ * on each matching side.
+ */
+export function sanitizePayload(
+  db: DatabaseSync,
+  type: QuestionType,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const clean: Record<string, unknown> = { ...payload }
+  const media = resolveMedia(db, payload.media)
+  if (media === null) delete clean.media
+  else clean.media = { assetId: media }
+
+  if (type === 'single_choice' || type === 'multiple_choice') {
+    if (Array.isArray(payload.options)) {
+      clean.options = payload.options.map((option) => {
+        if (!isRecord(option)) return option
+        const image = resolveMedia(db, option.image)
+        if (image === null) {
+          const { image: _dropped, ...rest } = option
+          return rest
+        }
+        return { ...option, image: { assetId: image } }
+      })
+    }
+  }
+
+  if (type === 'matching' && Array.isArray(payload.pairs)) {
+    clean.pairs = payload.pairs.map((pair) => {
+      if (!isRecord(pair)) return pair
+      const next: Record<string, unknown> = { ...pair }
+      const left = resolveMedia(db, pair.leftImage)
+      if (left === null) delete next.leftImage
+      else next.leftImage = { assetId: left }
+      const right = resolveMedia(db, pair.rightImage)
+      if (right === null) delete next.rightImage
+      else next.rightImage = { assetId: right }
+      return next
+    })
+  }
+
+  return clean
+}
+
+/** One picture reference: an id the server has actually stored, or nothing. */
+function resolveMedia(db: DatabaseSync, value: unknown): string | null {
+  if (!isMediaRef(value)) return null
+  return findAssetRow(db, value.assetId) === null ? null : value.assetId
 }
 
 /** Validates the type-specific payload; returns an error message or null. */
@@ -277,7 +373,7 @@ export function replaceQuestions(
       testId,
       question.type,
       question.body.trim(),
-      JSON.stringify(question.payload),
+      JSON.stringify(sanitizePayload(db, question.type, question.payload)),
       question.points,
       question.position,
     )

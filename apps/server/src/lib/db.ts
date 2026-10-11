@@ -12,7 +12,7 @@ export function nowIso(): string {
   return new Date().toISOString()
 }
 
-export const SCHEMA_VERSION = 10
+export const SCHEMA_VERSION = 11
 
 const MIGRATIONS: Array<{ version: number; up: string }> = [
   {
@@ -358,6 +358,30 @@ const MIGRATIONS: Array<{ version: number; up: string }> = [
       -- answer as a confident one.
       ALTER TABLE participations ADD COLUMN total_time_ms INTEGER;
       ALTER TABLE participations ADD COLUMN focus_lost INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
+  {
+    version: 11,
+    up: `
+      -- Images a question points at. The file itself lives on disk next to the
+      -- database like a material does; this table is the name on it, so a
+      -- question carries an id rather than a path and the server decides what
+      -- that id may be fetched for.
+      --
+      -- owner_id is a user, not a course: an image used in a question outlives
+      -- the course it was written for, and a test can be in several courses at
+      -- once, so tying the image to either would delete it out from under a
+      -- paper that is still being run.
+      CREATE TABLE IF NOT EXISTS assets (
+        id         TEXT PRIMARY KEY,
+        owner_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title      TEXT NOT NULL,
+        file_path  TEXT NOT NULL,
+        mime_type  TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_assets_owner ON assets(owner_id);
     `,
   },
 ]

@@ -47,6 +47,7 @@ const REWIND_TO_V5 = `
   ALTER TABLE participation_answers DROP COLUMN time_ms;
   ALTER TABLE participation_answers DROP COLUMN answered_at;
   ALTER TABLE participation_answers DROP COLUMN changed;
+  DROP TABLE IF EXISTS assets;
   UPDATE app_meta SET value = '5' WHERE key = 'schema_version';
 `
 
@@ -104,11 +105,11 @@ describe('migration v6', () => {
   })
 
   it('runs to the current version', () => {
-    expect(SCHEMA_VERSION).toBe(10)
+    expect(SCHEMA_VERSION).toBe(11)
     const version = db.raw
       .prepare("SELECT value FROM app_meta WHERE key = 'schema_version'")
       .get() as { value: string }
-    expect(version.value).toBe('10')
+    expect(version.value).toBe('11')
   })
 
   it('has rooms where classrooms used to be, with their keys intact', () => {
