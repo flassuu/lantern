@@ -27,9 +27,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # No AppImage, for the reason in release.yml: linuxdeploy's patchelf
-          # pass corrupts the Bun sidecar, and a bundle that only fails once it
-          # is launched is not worth building on every push.
+          # No AppImage here: this workflow builds on every push, and the format
+          # is assembled by its own best-effort job in release.yml, which starts
+          # the server out of the artifact before publishing it. Building it on
+          # every push would spend seven minutes proving what a tag already
+          # proves.
           - platform: ubuntu-22.04
             os: linux
             bundle: deb
@@ -79,11 +81,12 @@ jobs:
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build the server binary for the sidecar
+      - name: Build the server binary the bundle carries
         run: |
           # The desktop app hosts the server, so the bundle has to contain it.
-          # Tauri looks for binaries/lantern-server-<rust triple>, which is what
-          # scripts/desktop-sidecar.sh produces; without it `tauri build` fails.
+          # scripts/desktop-sidecar.sh stages it as a bundle resource
+          # (apps/desktop/src-tauri/resources/); without it `tauri build` fails
+          # on a missing resource.
           pnpm desktop:sidecar
         shell: bash
 

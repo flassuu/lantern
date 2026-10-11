@@ -63,8 +63,8 @@ jobs:
         with:
           version: 12
 
-      # bun compiles the server into a single binary, and the desktop bundle now
-      # has to contain it as a sidecar.
+      # bun compiles the server into a single binary, and the desktop bundle has
+      # to carry it as a resource.
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
