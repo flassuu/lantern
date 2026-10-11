@@ -1,8 +1,20 @@
-# LANtern
+<!--
+  The banner carries the wordmark, so the page does not repeat it as a heading.
+  GitHub honours `prefers-color-scheme` here, which is why there are two files
+  rather than one: the purple of the mark changes with the page behind it.
+-->
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/banner-dark.png">
+    <img src=".github/assets/banner-light.png" alt="LANtern" width="760">
+  </picture>
+</p>
 
-[![Release](https://img.shields.io/github/release/flassuu/lantern.svg?display_name=tag)](https://github.com/flassuu/lantern/releases/latest)
-[![Build desktop app](https://github.com/flassuu/lantern/actions/workflows/build-desktop.yml/badge.svg)](https://github.com/flassuu/lantern/actions/workflows/build-desktop.yml)
-[![Release build](https://github.com/flassuu/lantern/actions/workflows/release.yml/badge.svg)](https://github.com/flassuu/lantern/actions/workflows/release.yml)
+<p align="center">
+  <a href="https://github.com/flassuu/lantern/releases/latest"><img src="https://img.shields.io/github/release/flassuu/lantern.svg?display_name=tag" alt="Release"></a>
+  <a href="https://github.com/flassuu/lantern/actions/workflows/build-desktop.yml"><img src="https://github.com/flassuu/lantern/actions/workflows/build-desktop.yml/badge.svg" alt="Build desktop app"></a>
+  <a href="https://github.com/flassuu/lantern/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/flassuu/lantern/release.yml?label=release" alt="Release build"></a>
+</p>
 
 Classroom testing over a local network, with **no internet access** — a
 client-server system for running tests in a computer lab. One role-based
@@ -99,6 +111,8 @@ The server binds `0.0.0.0:3300` by default, so once the web client is built
 ```bash
 ip -4 route get 1.1.1.1 | rg -o 'src [0-9.]+'   # this machine's LAN address
 ```
+
+<img src=".github/assets/logo-icon.png" width="72" alt="The LANtern app icon">
 
 Then browse to `http://<that-address>:3300` on the phone. No configuration
 change is needed; if the device cannot connect, the port is blocked by the

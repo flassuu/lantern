@@ -74,6 +74,13 @@ scripts/          Sidecar, smoke and browser-check scripts
   one entry. English is the fallback. Never hard-code UI strings.
 - Mobile-first: narrow screens first, desktop is progressive enhancement.
 
+### Branding
+
+- The logo artwork lives in `DESIGN/` and is the only source: the crest and the
+  wordmark are inlined as `currentColor` in `BrandMark.vue` / `BrandWordmark.vue`
+  (byte-identical twins in both apps), and every PNG, `.ico` and `.icns` is
+  generated from `logo-icon.svg`. `DESIGN/README.md` has the commands.
+
 ### Design rules (binding)
 
 Rationale in ROADMAP.md ("Design rules"). **No emoji in the UI** — icons from

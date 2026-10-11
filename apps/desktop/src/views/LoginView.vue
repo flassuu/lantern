@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { BookOpen, Eye, EyeOff, GraduationCap } from '@lucide/vue'
 import AppHeader from '../components/AppHeader.vue'
+import BrandWordmark from '../components/BrandWordmark.vue'
 import { useAuth } from '../stores/auth'
 import { ApiError } from '../api/client'
 import type { UserRole } from '../api/types'
@@ -229,6 +230,13 @@ async function submit(): Promise<void> {
   <div class="flex min-h-dvh flex-col bg-surface">
     <AppHeader hosted @server="emit('server')" />
     <main class="mx-auto flex w-full max-w-md flex-1 flex-col justify-center px-6 pb-10">
+      <!-- The brand over the box, so the screen says what it is before it asks
+           anything. Decorative: the heading inside the card is the question. -->
+      <BrandWordmark
+        :height="30"
+        class="mx-auto mb-6 shrink-0 text-primary"
+        aria-hidden="true"
+      />
       <AppCard as="section" padding="lg" class="shadow-sm">
         <h2 class="text-lg font-semibold text-balance text-on-surface">
           {{ t('auth.chooseRole') }}

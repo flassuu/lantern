@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import ServerStatus from './ServerStatus.vue'
 import AccountMenu from './AccountMenu.vue'
 import BrandMark from './BrandMark.vue'
+import BrandWordmark from './BrandWordmark.vue'
 import OfflineBanner from './common/OfflineBanner.vue'
 import { useAuth } from '../stores/auth'
 
@@ -22,8 +23,14 @@ const roleLabel = computed(() => t(`role.${user.value?.role ?? 'student'}`))
   <header class="sticky top-0 z-30 bg-surface-container shadow-[0_1px_0_0_var(--outline-variant)]">
     <div class="flex h-14 items-center gap-2 px-3 sm:gap-3 sm:px-4">
       <BrandMark :size="24" class="shrink-0" />
-      <h1 class="min-w-0 truncate text-base font-bold tracking-tight text-on-surface">
-        {{ t('app.name') }}
+      <!--
+        The wordmark is the name, so the heading carries the artwork and keeps the
+        name as text for screen readers and for anything reading the page - the
+        letters cut out of the purple box are decoration, not information.
+      -->
+      <h1 class="flex min-w-0 items-center text-primary">
+        <BrandWordmark :height="20" class="shrink-0" aria-hidden="true" />
+        <span class="sr-only">{{ t('app.name') }}</span>
       </h1>
       <!-- Only for staff: a student does not need to be told what they are. -->
       <span
