@@ -15,7 +15,7 @@ verified, not when it is planned.
 | Phase 3 — Session runtime | **0.3.0** (done) | Live testing: join, answer, score, WS board |
 | Phase 4 — Reporting | 0.4.0 (done) | Statistics, journals, printable + CSV export |
 | Phase 5 — Deployment | **0.5.0** (done) | The three ways it has to run: desktop host, school server, classroom without an admin |
-| Phase 6 — Classroom experience | **0.6.1 … 0.6.9** (done) | Rooms & tags, a session lobby, per-student detail, media in questions, course lessons & announcements, journals |
+| Phase 6 — Classroom experience | **0.6.0** (done) | Rooms & tags, a session lobby, per-student detail, media in questions, course lessons & announcements, journals |
 | Phase 7 — MVP polish | 1.0.0 | Packaging polish, e2e, screenshots, offline PWA |
 
 The UI/UX polish pass (originally planned as its own 0.1.1) shipped together
@@ -334,13 +334,17 @@ real server.
       `scripts/console-smoke.sh`, `pnpm smoke:console`, wired into the release
       workflow's server job
 
-## Phase 6 — Classroom experience (v0.6.1 … v0.6.9) — **done**
+## Phase 6 — Classroom experience (v0.6.0) — **done**
 
 The system can author a test and run a class; this phase makes the *classroom*
 work. Three ideas run through it: a **room is who, a course is what**; a session
 is something the teacher **opens, starts and watches**; and a question can
 **carry a picture**. Every decision below was taken with the room in mind — one
 teacher, a class of phones, no administrator anywhere.
+
+The **6.1 … 6.9** codes below are the plan's own numbering, in the order the work
+was done; they were not nine releases. The whole phase shipped together as
+**v0.6.0**.
 
 **Decisions taken before the phase (binding, they shape the schema):**
 
@@ -383,7 +387,7 @@ teacher, a class of phones, no administrator anywhere.
 Every change lands in **both** apps (`apps/desktop` and `apps/web-client`), whose
 files are byte-identical twins, and in both locale files.
 
-### 6.1 Rooms, tags, session name — v0.6.1 — **done**
+### 6.1 Rooms, tags, session name — **done**
 
 Goal: separate *who* from *what*, give tests and sessions tags, and give a
 session a name and a room.
@@ -422,7 +426,7 @@ Two decisions the plan left open, taken while building it:
   time the paper was written for one group and that is who is in the room, so
   the common case should not ask a question.
 
-### 6.2 Live — session tabs and a library — v0.6.2 — **done**
+### 6.2 Live — session tabs and a library — **done**
 
 Goal: a strip of the most recent sessions that reads like browser tabs, a button
 beside it that opens a comfortable library to search and filter, and a board that
@@ -453,7 +457,7 @@ Two decisions taken while building it:
   when tabs overflow. A control that materialises under a finger is worse than
   one that stays put, and the library is worth reaching even when three tabs fit.
 
-### 6.3 The lobby, the start, presence — v0.6.3 — **done**
+### 6.3 The lobby, the start, presence — **done**
 
 Goal: a session is created in a **lobby**; the clock starts when the teacher
 starts it; the teacher sees who is in and what they are doing; leaving the window
@@ -496,7 +500,7 @@ Decisions taken while building it:
   once. Worth knowing: rebuild the web client before the checks, and a failed
   first navigation is worth a second run.
 
-### 6.4 Session settings — v0.6.4 — **done**
+### 6.4 Session settings — **done**
 
 Goal: shuffle, answer reveal, result release, and one question at a time.
 
@@ -538,7 +542,7 @@ Decisions taken while building it:
   is covered by tests and the lobby controls by the harness; the student flow is
   the last thing to wire into the browser checks.
 
-### 6.5 Per-student detail — v0.6.5
+### 6.5 Per-student detail — **done**
 
 Goal: for each student, what was right and wrong, how long each question took,
 and how the attempt went.
@@ -567,7 +571,7 @@ is the server's count of the events it recorded itself, not a number the student
 sends, so a teacher deciding whether an answer was careful is reading a figure
 the student cannot edit.
 
-### 6.6 The test editor, media, statistics — v0.6.6
+### 6.6 The test editor, media, statistics — **done**
 
 Goal: images and GIFs in questions and answers, a more useful editor, and a
 prettier result for both teacher and student.
@@ -594,7 +598,7 @@ prettier result for both teacher and student.
 - [ ] Browser harness: inserts an image and sees it as a student — run on
       demand, with a fresh `--data` directory
 
-### 6.7 Courses — lessons, announcements, media — v0.6.7
+### 6.7 Courses — lessons, announcements, media — **done**
 
 Goal: lesson topics, teacher announcements, and images viewed rather than only
 downloaded.
@@ -618,7 +622,7 @@ downloaded.
 - [x] Tests: topics, announcements and ordering, with permissions; the browser
       harness adds a lesson, posts an announcement and finds it as a student
 
-### 6.8 Journals by room and by course — v0.6.8
+### 6.8 Journals by room and by course — **done**
 
 Goal: a table of students against tests, with grades and dates, scoped to a room
 or to a course.
@@ -639,7 +643,7 @@ or to a course.
       browser harness covers the table, the empty cells, a cell opening an
       attempt, and the way in from a course
 
-### 6.9 Documentation, i18n, tests, e2e — v0.6.9
+### 6.9 Documentation, i18n, tests, e2e — **done**
 
 - [x] `docs/schema.md` brought up to date through v6–v12, `architecture.md` with
       the room/course model, the lobby and presence flows, media and journals,
@@ -653,8 +657,8 @@ or to a course.
 
 **Order and dependencies.** 6.1 → 6.2 → 6.3 → 6.4 → 6.5 → 6.6 → 6.7 → 6.8 →
 6.9. Timing (6.5) needs the lobby and the events table from 6.3; the journals
-(6.8) use the detail from 6.5 and the room/course model from 6.1. Each sub-phase
-is its own release: **0.6.1 … 0.6.9**.
+(6.8) use the detail from 6.5 and the room/course model from 6.1. The whole
+phase is one release, **0.6.0**.
 
 **Assumptions to keep in view.** Rooms↔courses are many-to-many and a later link
 still enrols the members; a room lives on the test and on the session (the

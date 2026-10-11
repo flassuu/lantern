@@ -4,7 +4,17 @@ All notable changes to this project are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.6.0] — 2026-10-11
+
+Phase 6 «Classroom experience»: the workbench could author a test and run one
+class; this release makes the *classroom* work. Three ideas run through it - a
+**room is who, a course is what**; a session is something the teacher **opens,
+starts and watches**; and a question can **carry a picture**. Every decision was
+taken with the real setting in mind: one teacher, a class of phones, no
+administrator anywhere.
+
+The nine sub-phases below shipped together as one version. They are in the order
+they were built - 6.1 first.
 
 ### The journal
 
@@ -285,6 +295,32 @@ lesson runs.
   the Live board - icon and label above the figure, colour only where the figure
   means something (average in the primary, pass rate in the success colour, and
   a dash in the plain colour when a test has no pass mark to compute one).
+
+### Verification at this release
+
+283 server tests, 73 client tests, 9 Rust tests, typecheck across all three
+packages, `pnpm build:server`, `pnpm build:web`, `pnpm smoke:console` and
+`pnpm check:browser` — all green. The browser sweep is a real Firefox driven over
+WebDriver BiDi, and it walks the screens this release added: a room and the
+address students open, the session library, a lobby and its start, one question
+per page, a picture in a question and on the paper, lessons and announcements in
+a course, and the journal — its table, a dash where nobody has done the test, a
+cell opening that student's attempt, and the way in from a course.
+
+One check in that sweep still reports a failure on a machine where a public
+address has already been set: the case it proves — that the tab warns when none
+is — can only happen once, on a server that has never had an address. It is a
+precondition, not a defect, and it is left visible rather than special-cased.
+
+**Migrations:** schema v6 through **v12**, all applied automatically and
+idempotently at startup; no manual step. v6 renames `classrooms` to `rooms` and
+its members, and moves the single course link into `course_rooms` before dropping
+the old column; it ships with a post-migration integrity check and a test against
+a populated file. v7 rebuilds `live_sessions` to let a run open in a `lobby`, v8
+adds the run's `settings` snapshot, v9 the pause stamp, v10 the per-question
+attempt detail, v11 `assets` for pictures, and v12 lessons, announcements and the
+nullable `topic_id` on tests and materials. An existing database upgrades in
+place; nothing is lost.
 
 ## [0.5.1] — 2026-10-10
 
@@ -1210,6 +1246,7 @@ teacher UIs in the web client and the desktop app. 35 integration tests green.
   preloads the system `libwayland-client.so` (bundled one is ABI-incompatible
   with Mesa 26).
 
+[0.6.0]: https://github.com/flassuu/lantern/releases/tag/v0.6.0
 [0.5.1]: https://github.com/flassuu/lantern/releases/tag/v0.5.1
 [0.5.0]: https://github.com/flassuu/lantern/releases/tag/v0.5.0
 [0.4.2]: https://github.com/flassuu/knowledge-testing-system/releases/tag/v0.4.2

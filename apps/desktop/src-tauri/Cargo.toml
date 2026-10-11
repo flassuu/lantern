@@ -1,6 +1,6 @@
 [package]
 name = "lantern-teacher"
-version = "0.5.1"
+version = "0.6.0"
 description = "LANtern — the teacher's desktop application and server host"
 authors = ["flassuu"]
 edition = "2021"
