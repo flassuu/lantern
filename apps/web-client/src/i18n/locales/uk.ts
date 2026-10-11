@@ -400,6 +400,17 @@ const uk: typeof en = {
       remove: 'Прибрати мітку {name}',
     },
     editor: {
+      media: {
+        choose: 'Додати зображення',
+        uploading: 'Завантаження…',
+        remove: 'Прибрати зображення',
+        failed: 'Не вдалося завантажити зображення',
+        questionImage: 'Зображення питання',
+        optionImage: 'Зображення варіанта',
+        leftImage: 'Зображення лівої колонки',
+        rightImage: 'Зображення правої колонки',
+      },
+      correctRate: '{percent}% правильних',
       bodyPlaceholder: 'Текст питання…',
       points: 'Бали',
       removeQuestion: 'Видалити питання',
@@ -468,6 +479,7 @@ const uk: typeof en = {
       runDetails: 'Деталі запуску',
       questionCount: '{count} питань',
       totalPoints: '{count} балів',
+      estimatedTime: '~{minutes} хв',
       preview: 'Переглянути',
       previewTitle: 'Попередній перегляд тесту',
       previewUntitled: 'Тест без назви',
@@ -678,6 +690,11 @@ const uk: typeof en = {
     titleBar: 'Смуга заголовка вікна',
   },
   common: {
+    image: {
+      enlarge: 'Збільшити',
+      loading: 'Зображення завантажується…',
+      missing: 'Зображення недоступне',
+    },
     language: 'Мова',
     qr: { for: 'QR-код для {target}' },
     fileType: {

@@ -120,6 +120,55 @@ const editorPoints = computed(() =>
   questionForms.value.reduce((sum, form) => sum + form.points, 0),
 )
 
+/** Seconds an average student is expected on a question of each type. */
+const SECONDS_PER_TYPE: Record<string, number> = {
+  single_choice: 20,
+  multiple_choice: 30,
+  true_false: 10,
+  short_answer: 30,
+  matching: 40,
+}
+
+/**
+ * Minutes the paper should take, from the questions alone.
+ *
+ * It is an estimate rather than a countdown: the running session already has a
+ * time limit for that, and a number here answers "did I write twenty minutes or
+ * an hour" while the paper is still being written.
+ */
+const estimatedMinutes = computed(() => {
+  const seconds = questionForms.value.reduce(
+    (sum, form) => sum + (SECONDS_PER_TYPE[form.type] ?? 20),
+    0,
+  )
+  return Math.max(1, Math.round(seconds / 60))
+})
+
+/** Share of past attempts that got a question right, by server question id. */
+const correctByQuestion = ref(new Map<string, number>())
+
+/** Loads the difficulty chips for an existing test; a new test has none. */
+async function loadDifficulty(testId: string): Promise<void> {
+  correctByQuestion.value = new Map()
+  try {
+    const found = await getTestResults(testId)
+    correctByQuestion.value = new Map(
+      found.questions.map((stat) => [
+        stat.questionId,
+        stat.answers > 0 ? Math.round((stat.correct / stat.answers) * 100) : 0,
+      ]),
+    )
+  } catch {
+    // The editor is still usable without the numbers: a brand-new test has no
+    // history, and the chip simply does not appear.
+  }
+}
+
+/** The chip for one form row, keyed by the question it was loaded from. */
+function correctPercentOf(form: QuestionForm): number | null {
+  return form.questionId !== null ? (correctByQuestion.value.get(form.questionId) ?? null) : null
+}
+
 function formError(): string {
   return formErrorKey.value ? t(`teacher.form.err.${formErrorKey.value}`) : ''
 }
@@ -169,6 +218,7 @@ async function startEdit(test: TestSummary) {
     testRoomId.value = details.roomId ?? null
     editingId.value = test.id
     isEditing.value = true
+    void loadDifficulty(test.id)
   } catch (error) {
     errorKey.value = apiErrorKey(error)
   }
@@ -530,6 +580,9 @@ onMounted(async () => {
           <span class="rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant">
             {{ t('teacher.tests.totalPoints', { count: editorPoints }) }}
           </span>
+          <span class="rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant">
+            {{ t('teacher.tests.estimatedTime', { minutes: estimatedMinutes }) }}
+          </span>
         </div>
       </div>
       <QuestionEditor
@@ -538,6 +591,7 @@ onMounted(async () => {
         :question="question"
         :index="index"
         :total="questionForms.length"
+        :correct-percent="correctPercentOf(question)"
         @remove="removeQuestion"
         @duplicate="duplicateQuestion"
         @move="moveQuestion"

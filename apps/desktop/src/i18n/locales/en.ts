@@ -452,6 +452,17 @@ export default {
       remove: 'Remove label {name}',
     },
     editor: {
+      media: {
+        choose: 'Add image',
+        uploading: 'Uploading…',
+        remove: 'Remove image',
+        failed: 'The image could not be uploaded',
+        questionImage: 'Question image',
+        optionImage: 'Option image',
+        leftImage: 'Left-side image',
+        rightImage: 'Right-side image',
+      },
+      correctRate: '{percent}% correct',
       bodyPlaceholder: 'Question text…',
       points: 'Pts',
       removeQuestion: 'Remove question',
@@ -520,7 +531,7 @@ export default {
       runDetails: 'Run details',
       questionCount: '{count} questions',
       totalPoints: '{count} pts',
-      preview: 'Preview',
+      estimatedTime: '~{minutes} min',
       previewTitle: 'Test preview',
       previewUntitled: 'Untitled test',
       timeLimit: 'Time limit (min)',
@@ -730,6 +741,11 @@ export default {
     titleBar: 'Window title bar',
   },
   common: {
+    image: {
+      enlarge: 'Enlarge',
+      loading: 'Loading image…',
+      missing: 'Image unavailable',
+    },
     language: 'Language',
     qr: { for: 'QR code for {target}' },
     fileType: {

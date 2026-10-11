@@ -371,7 +371,7 @@ teacher, a class of phones, no administrator anywhere.
       journal (6.8)
 - [ ] `AppDrawer` / wide dialog, for the session library and the student detail
       (6.2, 6.5)
-- [ ] `MediaFigure` (image/GIF + lightbox) and `AssetUpload` (6.6)
+- [x] `MediaFigure` (image/GIF + lightbox) and `AssetUpload` (6.6)
 - [ ] `usePresence` — the Page Visibility API plus a WebSocket heartbeat (6.3)
 - [ ] `useSessionSettings` — one client-side model of the session options (6.4)
 
@@ -567,25 +567,27 @@ the student cannot edit.
 Goal: images and GIFs in questions and answers, a more useful editor, and a
 prettier result for both teacher and student.
 
-- [ ] Migration **v10**: `assets` (owner, path, mime, size); question payloads
+- [x] Migration **v11**: `assets` (owner, path, mime, size); question payloads
       grow `media` on the question, `image` on each option and each matching side
-- [ ] Server: `routes/assets.ts` — raw upload like materials (with a size cap),
+- [x] Server: `routes/assets.ts` — raw upload like materials (with a size cap),
       `GET /api/assets/:id` (GIF supported), `DELETE`, owner-scoped; the student
       paper and the result carry media
-- [ ] Client: `AssetUpload.vue` and `MediaFigure.vue` (preview + lightbox), in
+- [x] Client: `AssetUpload.vue` and `MediaFigure.vue` (preview + lightbox), in
       `QuestionEditor` for the question and every option/pair, and in
       `QuestionAnswerInput`
-- [ ] Client: a body editor of text plus inserted images, without a heavy
-      dependency
-- [ ] Client: editor statistics — count and points chips, an estimated time, and
+- [x] Client: a body editor of text plus inserted images, without a heavy
+      dependency — pasting a picture into the question's text field uploads it
+      and sets it as the question's diagram
+- [x] Client: editor statistics — count and points chips, an estimated time, and
       for an existing test the per-question difficulty from its results; a
       polished `TestPreviewDialog` that shows media
 - [ ] Client: a readability and beauty pass over the editor, the student runner
       and the result screen
-- [ ] i18n: `teacher.editor.media.*`, `common.image.*`
-- [ ] Tests: assets CRUD, permissions and limits; export/import with media;
-      payload utilities; the browser harness inserts an image and sees it as a
-      student
+- [x] i18n: `teacher.editor.media.*`, `common.image.*`
+- [x] Tests: assets CRUD, permissions and limits; export/import with media
+      (`imagesDropped`); payload sanitisation drops images nobody owns
+- [ ] Browser harness: inserts an image and sees it as a student — run on
+      demand, with a fresh `--data` directory
 
 ### 6.7 Courses — lessons, announcements, media — v0.6.7
 

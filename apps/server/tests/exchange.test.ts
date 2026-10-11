@@ -191,6 +191,85 @@ describe('test exchange format', () => {
     expect(created.questions[1]?.payload).toEqual(document.questions[1]?.payload)
   })
 
+  it('carries a question image in the file, and says when a copy loses it', async () => {
+    // A picture travels as an id, which means nothing after the file crosses to
+    // another machine - so the import must keep what it can prove and admit the
+    // rest, rather than save a paper full of holes.
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    )
+    const uploaded = await app.server.inject({
+      method: 'POST',
+      url: '/api/assets?name=diagram.png',
+      headers: { ...bearer(teacherToken), 'content-type': 'application/octet-stream' },
+      payload: png,
+    })
+    expect(uploaded.statusCode).toBe(201)
+    const assetId = (uploaded.json() as { asset: { id: string } }).asset.id
+
+    const created = await app.server.inject({
+      method: 'POST',
+      url: '/api/tests',
+      headers: bearer(teacherToken),
+      payload: {
+        title: 'With a picture',
+        description: '',
+        timeLimitSec: null,
+        passingPercent: null,
+        questions: [
+          {
+            type: 'true_false',
+            body: 'Read the diagram',
+            points: 1,
+            position: 0,
+            payload: { correct: true, media: { assetId } },
+          },
+        ],
+      },
+    })
+    expect(created.statusCode).toBe(201)
+
+    const exported = await app.server.inject({
+      method: 'GET',
+      url: `/api/tests/${(created.json() as { test: TestPayload }).test.id}/export`,
+      headers: bearer(teacherToken),
+    })
+    const document = JSON.parse(exported.payload) as Exchange
+
+    // The same teacher keeps the picture: the id is theirs, and the bytes are
+    // still on this server.
+    const kept = await app.server.inject({
+      method: 'POST',
+      url: '/api/tests/import',
+      headers: bearer(teacherToken),
+      payload: document,
+    })
+    expect(kept.statusCode).toBe(201)
+    const keptBody = kept.json() as {
+      test: TestPayload & { questions: QuestionPayload[] }
+      imagesDropped?: number
+    }
+    expect(keptBody.imagesDropped).toBeUndefined()
+    expect(keptBody.test.questions[0]?.payload).toEqual(document.questions[0]?.payload)
+
+    // Another teacher gets the same file and no such image - the diagram goes,
+    // and the response says how many.
+    const elsewhere = await app.server.inject({
+      method: 'POST',
+      url: '/api/tests/import',
+      headers: bearer(otherTeacherToken),
+      payload: document,
+    })
+    expect(elsewhere.statusCode).toBe(201)
+    const elsewhereBody = elsewhere.json() as {
+      test: TestPayload & { questions: QuestionPayload[] }
+      imagesDropped?: number
+    }
+    expect(elsewhereBody.imagesDropped).toBe(1)
+    expect(elsewhereBody.test.questions[0]?.payload).toEqual({ correct: true })
+  })
+
   it('renumbers positions, so a file with odd numbering still imports', async () => {
     const res = await app.server.inject({
       method: 'POST',

@@ -14,6 +14,53 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+/** The id out of a `{ assetId }` media reference, or null where there is none. */
+export function paperMediaId(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null) return null
+  const id = (value as { assetId?: unknown }).assetId
+  return typeof id === 'string' && id !== '' ? id : null
+}
+
+/** An option as the paper draws it: its text and, if it has one, its picture. */
+export interface PaperOption {
+  key: string
+  text: string
+  image: string | null
+}
+
+/** The options of a question, with the pictures the paper carried alongside them. */
+export function paperOptions(question: StudentQuestion): PaperOption[] {
+  const options = Array.isArray(question.payload.options) ? question.payload.options : []
+  return options.flatMap((option) =>
+    typeof option === 'object' && option !== null && 'key' in option && 'text' in option
+      ? [
+          {
+            key: String(option.key),
+            text: String(option.text),
+            image: paperMediaId((option as { image?: unknown }).image),
+          },
+        ]
+      : [],
+  )
+}
+
+/** The diagram in the question itself, if the paper carried one. */
+export function paperMedia(question: StudentQuestion): string | null {
+  return paperMediaId(question.payload.media)
+}
+
+/** The pictures on each side of one matching row. */
+export function pairMedia(
+  question: StudentQuestion,
+  index: number,
+): { left: string | null; right: string | null } {
+  const pairs = Array.isArray(question.payload.pairs) ? question.payload.pairs : []
+  const pair = pairs[index]
+  if (typeof pair !== 'object' || pair === null) return { left: null, right: null }
+  const row = pair as Record<string, unknown>
+  return { left: paperMediaId(row.leftImage), right: paperMediaId(row.rightImage) }
+}
+
 function pairsOf(payload: Record<string, unknown>): Array<{ left: string; right: string }> {
   const pairs = Array.isArray(payload.pairs) ? payload.pairs : []
   return pairs.flatMap((pair) =>

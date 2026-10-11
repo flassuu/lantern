@@ -4,6 +4,8 @@ import { ArrowDown, ArrowLeftRight, ArrowUp, ChevronDown, Copy, Plus, X } from '
 import { QUESTION_TYPES } from '../../api/types'
 import type { QuestionType } from '../../api/types'
 import type { QuestionForm } from './questionForm'
+import { uploadAsset } from '../../api/assets'
+import AssetUpload from './AssetUpload.vue'
 import AppButton from '../../components/common/AppButton.vue'
 import AppInput from '../../components/common/AppInput.vue'
 
@@ -11,6 +13,8 @@ const props = defineProps<{
   question: QuestionForm
   index: number
   total: number
+  /** Share of past attempts that got it right; null until there are results. */
+  correctPercent?: number | null
 }>()
 
 const emit = defineEmits<{
@@ -25,13 +29,27 @@ function typeLabel(type: QuestionType): string {
   return t(`teacher.types.${type}`)
 }
 
+/** A picture on the clipboard becomes the question's diagram; text is left alone. */
+async function onPaste(event: ClipboardEvent): Promise<void> {
+  const item = Array.from(event.clipboardData?.items ?? []).find((entry) =>
+    entry.type.startsWith('image/'),
+  )
+  const file = item?.getAsFile()
+  if (!file) return
+  event.preventDefault()
+  const asset = await uploadAsset(file)
+  props.question.media = asset.id
+}
+
 function addOption(): void {
   props.question.options.push('')
+  props.question.optionImages.push(null)
 }
 
 function removeOption(index: number): void {
   if (props.question.options.length <= 2) return
   props.question.options.splice(index, 1)
+  props.question.optionImages.splice(index, 1)
   if (props.question.correctIndex === index) {
     props.question.correctIndex = 0
   } else if (props.question.correctIndex > index) {
@@ -49,7 +67,7 @@ function toggleCorrect(index: number): void {
 }
 
 function addPair(): void {
-  props.question.pairs.push({ left: '', right: '' })
+  props.question.pairs.push({ left: '', right: '', leftImage: null, rightImage: null })
 }
 
 function removePair(index: number): void {
@@ -73,6 +91,21 @@ function removePair(index: number): void {
         </span>
         <span class="truncate text-xs font-semibold text-on-surface-variant">
           {{ typeLabel(question.type) }}
+        </span>
+        <!-- A question the class mostly misses is worth a second look before the
+             next run, and the number says which one it is. -->
+        <span
+          v-if="correctPercent !== null && correctPercent !== undefined"
+          class="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+          :class="
+            correctPercent >= 70
+              ? 'bg-success-container text-on-success-container'
+              : correctPercent >= 40
+                ? 'bg-warning-container text-on-warning-container'
+                : 'bg-error-container text-on-error-container'
+          "
+        >
+          {{ t('teacher.editor.correctRate', { percent: correctPercent }) }}
         </span>
       </div>
       <div class="flex shrink-0 items-center gap-1">
@@ -116,6 +149,7 @@ function removePair(index: number): void {
         :aria-label="t('teacher.editor.bodyPlaceholder')"
         :placeholder="t('teacher.editor.bodyPlaceholder')"
         class="flex-1"
+        @paste="onPaste"
       />
       <!--
         min-w-0 is what keeps this row on the screen: a select's natural width is
@@ -156,6 +190,17 @@ function removePair(index: number): void {
       </div>
     </div>
 
+    <!-- The diagram belongs to the question, so it sits directly under the
+         question's own text and above whatever the answers turn out to be. -->
+    <div class="mt-3">
+      <AssetUpload
+        :asset-id="question.media"
+        :label="question.body || t('teacher.editor.media.questionImage')"
+        size="sm"
+        @change="question.media = $event"
+      />
+    </div>
+
     <!-- single / multiple choice -->
     <div
       v-if="question.type === 'single_choice' || question.type === 'multiple_choice'"
@@ -165,37 +210,47 @@ function removePair(index: number): void {
       <div
         v-for="(_, index) in question.options"
         :key="index"
-        class="flex items-center gap-2"
+        class="space-y-2 rounded-xl border border-outline-variant bg-surface-container-high p-2"
       >
-        <input
-          v-if="question.type === 'single_choice'"
-          type="radio"
-          :name="`correct-${question.key}`"
-          :checked="question.correctIndex === index"
-          @change="question.correctIndex = index"
-          class="shrink-0"
+        <div class="flex items-center gap-2">
+          <input
+            v-if="question.type === 'single_choice'"
+            type="radio"
+            :name="`correct-${question.key}`"
+            :checked="question.correctIndex === index"
+            @change="question.correctIndex = index"
+            class="shrink-0"
+          />
+          <input
+            v-else
+            type="checkbox"
+            :checked="question.correctIndexes.includes(index)"
+            @change="toggleCorrect(index)"
+            class="shrink-0"
+          />
+          <AppInput
+            v-model="question.options[index]"
+            type="text"
+            :aria-label="t('teacher.editor.optionLabel')"
+          />
+          <AppButton
+            type="button"
+            :disabled="question.options.length <= 2"
+            @click="removeOption(index)"
+            :aria-label="t('teacher.editor.removeOption')"
+            variant="ghostDanger" icon class="shrink-0"
+          >
+            <X class="size-4" aria-hidden="true" />
+          </AppButton>
+        </div>
+        <!-- An option can be a drawing as much as a sentence, so the picture
+             goes under its own option rather than inside the text field. -->
+        <AssetUpload
+          :asset-id="question.optionImages[index] ?? null"
+          :label="question.options[index] || t('teacher.editor.media.optionImage')"
+          size="sm"
+          @change="question.optionImages[index] = $event"
         />
-        <input
-          v-else
-          type="checkbox"
-          :checked="question.correctIndexes.includes(index)"
-          @change="toggleCorrect(index)"
-          class="shrink-0"
-        />
-        <AppInput
-          v-model="question.options[index]"
-          type="text"
-          :aria-label="t('teacher.editor.optionLabel')"
-        />
-        <AppButton
-          type="button"
-          :disabled="question.options.length <= 2"
-          @click="removeOption(index)"
-          :aria-label="t('teacher.editor.removeOption')"
-          variant="ghostDanger" icon class="shrink-0"
-        >
-          <X class="size-4" aria-hidden="true" />
-        </AppButton>
       </div>
       <AppButton
         type="button"
@@ -236,30 +291,46 @@ function removePair(index: number): void {
       <div
         v-for="(_, index) in question.pairs"
         :key="index"
-        class="flex items-center gap-2"
+        class="space-y-2 rounded-xl border border-outline-variant bg-surface-container-high p-2"
       >
-        <AppInput
-          v-model="question.pairs[index].left"
-          type="text"
-          :aria-label="t('teacher.editor.left')"
-          :placeholder="t('teacher.editor.left')"
-        />
-        <ArrowLeftRight class="size-4 text-on-surface-variant" aria-hidden="true" />
-        <AppInput
-          v-model="question.pairs[index].right"
-          type="text"
-          :aria-label="t('teacher.editor.right')"
-          :placeholder="t('teacher.editor.right')"
-        />
-        <AppButton
-          type="button"
-          :disabled="question.pairs.length <= 2"
-          @click="removePair(index)"
-          :aria-label="t('teacher.editor.removePair')"
-          variant="ghostDanger" icon class="shrink-0"
-        >
-          <X class="size-4" aria-hidden="true" />
-        </AppButton>
+        <div class="flex items-center gap-2">
+          <AppInput
+            v-model="question.pairs[index].left"
+            type="text"
+            :aria-label="t('teacher.editor.left')"
+            :placeholder="t('teacher.editor.left')"
+          />
+          <ArrowLeftRight class="size-4 shrink-0 text-on-surface-variant" aria-hidden="true" />
+          <AppInput
+            v-model="question.pairs[index].right"
+            type="text"
+            :aria-label="t('teacher.editor.right')"
+            :placeholder="t('teacher.editor.right')"
+          />
+          <AppButton
+            type="button"
+            :disabled="question.pairs.length <= 2"
+            @click="removePair(index)"
+            :aria-label="t('teacher.editor.removePair')"
+            variant="ghostDanger" icon class="shrink-0"
+          >
+            <X class="size-4" aria-hidden="true" />
+          </AppButton>
+        </div>
+        <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <AssetUpload
+            :asset-id="question.pairs[index].leftImage"
+            :label="question.pairs[index].left || t('teacher.editor.media.leftImage')"
+            size="sm"
+            @change="question.pairs[index].leftImage = $event"
+          />
+          <AssetUpload
+            :asset-id="question.pairs[index].rightImage"
+            :label="question.pairs[index].right || t('teacher.editor.media.rightImage')"
+            size="sm"
+            @change="question.pairs[index].rightImage = $event"
+          />
+        </div>
       </div>
       <AppButton
         type="button"

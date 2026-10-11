@@ -10,7 +10,9 @@ import {
   emptyResponses,
   formatClock,
   matchingChoices,
+  paperOptions,
   remainingMs,
+  type PaperOption,
   type QuestionResponse,
   type Responses,
 } from '../../student/sessionLogic'
@@ -77,13 +79,8 @@ const expired = computed(() => deadline.value !== null && deadline.value <= 0)
 const paused = computed(() => props.state.session.status === 'paused')
 const hasLimit = computed(() => props.state.session.timeLimitSec !== null)
 
-function optionsOf(question: StudentQuestion): Array<{ key: string; text: string }> {
-  const options = Array.isArray(question.payload.options) ? question.payload.options : []
-  return options.flatMap((option) =>
-    typeof option === 'object' && option !== null && 'key' in option && 'text' in option
-      ? [{ key: String(option.key), text: String(option.text) }]
-      : [],
-  )
+function optionsOf(question: StudentQuestion): PaperOption[] {
+  return paperOptions(question)
 }
 
 function responseFor(question: StudentQuestion): QuestionResponse {

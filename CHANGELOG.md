@@ -6,6 +6,29 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Pictures in questions
+
+- **A question can carry a picture**, and so can an option and each side of a
+  matching pair. The teacher picks or drops a file where the question is being
+  written; the picture is uploaded once and the question points at it by id, so
+  the same diagram is sent to every phone in the room and costs one copy, not
+  one per student.
+- **Pasting works too.** A screenshot on the clipboard, pasted into the
+  question's text field, becomes the question's diagram - the usual way a
+  diagram gets into a question in the first place.
+- **Pictures appear where the answer is given**, in the student's paper, with a
+  tap to enlarge; and in the teacher's preview, so what the room will see can
+  be checked before the run is opened.
+- **The editor says what the paper is worth.** The chips above the questions
+  now include an estimated time, and an existing test shows, per question, the
+  share of past attempts that got it right - the questions the class misses are
+  the ones to look at before running it again.
+- **A picture that is not there says so quietly.** An image the server no
+  longer holds leaves a gap, not an error in the middle of a paper; and a test
+  imported from another machine reports how many pictures it lost rather than
+  arriving quietly lighter.
+- Images only, up to 8 MiB, and a GIF stays animated.
+
 ### One student's run, in full
 
 - **Every row on the board opens.** Click a participant and the run appears in

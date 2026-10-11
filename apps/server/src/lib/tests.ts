@@ -135,20 +135,23 @@ export function countMedia(source: QuestionInput[] | Question[]): number {
 
 /**
  * Every picture the payload claims, checked against the images this server
- * actually holds. Ids nobody uploaded are dropped rather than stored: a paper
- * with a diagram that cannot load is worse than a paper without one, and the
- * teacher sees the hole on their next edit.
+ * actually holds *for this teacher*. Ids nobody uploaded are dropped rather
+ * than stored: a paper with a diagram that cannot load is worse than a paper
+ * without one, and the teacher sees the hole on their next edit. An id that is
+ * somebody else's is dropped for the same reason - a picture the owner can
+ * delete at any moment is a hole waiting to happen.
  *
  * `media` on the question, `image` on each option, `leftImage` and `rightImage`
  * on each matching side.
  */
 export function sanitizePayload(
   db: DatabaseSync,
+  ownerId: string,
   type: QuestionType,
   payload: Record<string, unknown>,
 ): Record<string, unknown> {
   const clean: Record<string, unknown> = { ...payload }
-  const media = resolveMedia(db, payload.media)
+  const media = resolveMedia(db, ownerId, payload.media)
   if (media === null) delete clean.media
   else clean.media = { assetId: media }
 
@@ -156,7 +159,7 @@ export function sanitizePayload(
     if (Array.isArray(payload.options)) {
       clean.options = payload.options.map((option) => {
         if (!isRecord(option)) return option
-        const image = resolveMedia(db, option.image)
+        const image = resolveMedia(db, ownerId, option.image)
         if (image === null) {
           const { image: _dropped, ...rest } = option
           return rest
@@ -170,10 +173,10 @@ export function sanitizePayload(
     clean.pairs = payload.pairs.map((pair) => {
       if (!isRecord(pair)) return pair
       const next: Record<string, unknown> = { ...pair }
-      const left = resolveMedia(db, pair.leftImage)
+      const left = resolveMedia(db, ownerId, pair.leftImage)
       if (left === null) delete next.leftImage
       else next.leftImage = { assetId: left }
-      const right = resolveMedia(db, pair.rightImage)
+      const right = resolveMedia(db, ownerId, pair.rightImage)
       if (right === null) delete next.rightImage
       else next.rightImage = { assetId: right }
       return next
@@ -183,10 +186,11 @@ export function sanitizePayload(
   return clean
 }
 
-/** One picture reference: an id the server has actually stored, or nothing. */
-function resolveMedia(db: DatabaseSync, value: unknown): string | null {
+/** One picture reference: an id this teacher uploaded, or nothing. */
+function resolveMedia(db: DatabaseSync, ownerId: string, value: unknown): string | null {
   if (!isMediaRef(value)) return null
-  return findAssetRow(db, value.assetId) === null ? null : value.assetId
+  const row = findAssetRow(db, value.assetId)
+  return row === null || row.owner_id !== ownerId ? null : value.assetId
 }
 
 /** Validates the type-specific payload; returns an error message or null. */
@@ -357,9 +361,13 @@ export function listQuestions(db: DatabaseSync, testId: string): Question[] {
 /**
  * Replaces a test's questions in one transaction: deletes the old set and
  * inserts the new one at its declared positions.
+ *
+ * The owner is who the pictures are checked against: a question may only point
+ * at an image this teacher uploaded.
  */
 export function replaceQuestions(
   db: DatabaseSync,
+  ownerId: string,
   testId: string,
   questions: QuestionInput[],
 ): void {
@@ -373,7 +381,7 @@ export function replaceQuestions(
       testId,
       question.type,
       question.body.trim(),
-      JSON.stringify(sanitizePayload(db, question.type, question.payload)),
+      JSON.stringify(sanitizePayload(db, ownerId, question.type, question.payload)),
       question.points,
       question.position,
     )
@@ -408,7 +416,7 @@ export function createTest(
     now,
     now,
   )
-  replaceQuestions(db, id, questions)
+  replaceQuestions(db, ownerId, id, questions)
   return findTestRow(db, id) as TestRow
 }
 
@@ -437,7 +445,7 @@ export function updateTest(
     nowIso(),
     test.id,
   )
-  replaceQuestions(db, test.id, questions)
+  replaceQuestions(db, test.owner_id, test.id, questions)
   return findTestRow(db, test.id) as TestRow
 }
 

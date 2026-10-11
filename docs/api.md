@@ -203,6 +203,11 @@ Questions carry a per-type `payload`:
 | `short_answer` | `{ "accepted": ["Paris", ...] }` |
 | `matching` | `{ "pairs": [{ "left", "right" }, ...] }` |
 
+Any payload may also carry a picture: `media` on the question itself, `image`
+on each option, `leftImage` and `rightImage` on each matching side - each one
+`{ "assetId": "…" }`, uploaded through `/api/assets` first. References to
+images the server does not hold for this teacher are dropped on write.
+
 ### `GET /api/tests`
 
 List own tests (admin: all). → `{ "tests": [{ id, ownerId, title, description, timeLimitSec, passingPercent, questionCount, createdAt, updatedAt }] }`
@@ -280,7 +285,8 @@ body is the export document; `format` and `version` must match, positions are
 renumbered from the array order, and every question goes through the editor's
 own validation.
 
-- `201` → the created test with its questions
+- `201` → the created test with its questions, plus `imagesDropped` (a
+  count) when the file pointed at pictures this server does not hold
 - `400 VALIDATION` — not a test file, an unsupported version, no title, no
   questions, or a question that fails validation (the message says which and
   why: `question 2: …`)
@@ -349,6 +355,30 @@ Removes the course and its enrollments/links/materials. → `204`.
   MIME detected from the extension (pdf, images, office, zip, …).
 - `GET /api/courses/:id/materials/:materialId/file` — streams the file back
   with its MIME type and `Content-Disposition: attachment`.
+
+## Question images (`/api/assets`)
+
+Pictures a question points at: the diagram in the body, an option's drawing,
+each side of a matching pair. A payload carries `{ "assetId": "…" }` and
+nothing else - an id can only mean an image this server holds, where a pasted
+URL could point a classroom at anything.
+
+- `POST /api/assets?name=diagram.png` — raw body
+  (`Content-Type: application/octet-stream`, no multipart), images only,
+  8 MiB cap. MIME is taken from the extension, and from the bytes when the name
+  is no help. → `201 { asset }`. Admin & teacher.
+- `GET /api/assets` — the caller's own images, newest first. Admin & teacher.
+- `GET /api/assets/:id` — the picture itself, inline with its MIME type and a
+  day of private caching. **Any signed-in user**, students included: the ids
+  travel inside the paper they were handed.
+- `DELETE /api/assets/:id` — removes the row and then the file, so a failed
+  unlink leaves nothing anyone can ask for. Owner only; a question that still
+  points at it keeps a gap where the picture was.
+
+Questions that point at an image nobody uploaded (or at another teacher's) have
+the reference dropped on write rather than stored. The import endpoint reports
+how many went missing as `imagesDropped`.
+
 
 ## Admin insights (`/api/admin`, admin only)
 
@@ -777,7 +807,9 @@ normalised, so a code read out in class or pasted from a slide works.
 
 `serverNow` lets the client correct its clock for the round trip. The payload
 carries **no answer key**: `correct` is stripped from choices, `accepted` from
-short answers. Re-joining returns the same participation and the same order.
+short answers. Pictures are **not** stripped - they are the question, and every
+id here can be fetched with this student's own token. Re-joining returns the
+same participation and the same order.
 
 - `404 NOT_FOUND` — no session with that code
 - `409 CONFLICT` — the session is finished or paused

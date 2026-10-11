@@ -97,6 +97,23 @@ Files attached to a course (PDF, images, …), served as static files.
 | size_bytes | INTEGER | |
 | created_at | TEXT | |
 
+### assets
+
+Pictures a question points at. The bytes live on disk beside the database, the
+way a course material's do. An asset belongs to the **user** who uploaded it,
+not to a course or a test: a diagram outlives the course it was drawn for, and
+a test can sit in several courses at once.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | TEXT PK | UUID |
+| owner_id | TEXT FK users.id | |
+| title | TEXT | the original file name |
+| file_path | TEXT | relative to the uploads dir |
+| mime_type | TEXT | judged from the bytes, not the name |
+| size_bytes | INTEGER | |
+| created_at | TEXT | |
+
 ### tests
 
 A test is a set of questions; it can be shared directly or via courses.
@@ -251,6 +268,7 @@ users ─┬─ owns ──▶ courses ──┬─ has ──▶ materials
        │         │            ├─ enrolls ─▶ course_enrollments ─▶ users (student)
        │         │            └─ runs ───▶ course_tests ─────────▶ tests
        ├─ owns ──▶ tests ──▶ questions
+       ├─ owns ──▶ assets ◀─ pointed at by questions
        ├─ owns ──▶ rooms ──┬─ members ─▶ room_members ─▶ users (student)
        │                   └─ course_rooms ─▶ courses
        └─ owns ──▶ tags ───▶ entity_tags (test | session | course)
@@ -370,5 +388,12 @@ checked by the routes, not here.
   events it already records, so it cannot be edited by the student it describes.
   All of it is nullable or zero-valued where it is not known: an attempt from a
   client that never measured stores null, and `null` must not read as zero.
+- v11 adds `assets`: an id, an owner, a name, a mime and a size; the bytes live
+  on disk beside the database the way a course material's do. An asset belongs
+  to the uploader rather than to a course or a test, because a diagram outlives
+  the course it was drawn for and a test can run in several courses at once.
+  Question payloads grow `media` on the question, `image` on each option and
+  `leftImage`/`rightImage` on each matching side - ids, never URLs, so a paper
+  can only ever point at a picture this server holds.
 - Migrations run idempotently at startup, in order; each is wrapped in a
   transaction and versioned in `schema_migrations`.
