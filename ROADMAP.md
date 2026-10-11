@@ -15,7 +15,7 @@ verified, not when it is planned.
 | Phase 3 — Session runtime | **0.3.0** (done) | Live testing: join, answer, score, WS board |
 | Phase 4 — Reporting | 0.4.0 (done) | Statistics, journals, printable + CSV export |
 | Phase 5 — Deployment | **0.5.0** (done) | The three ways it has to run: desktop host, school server, classroom without an admin |
-| Phase 6 — Classroom experience | **0.6.1 … 0.6.9** (next) | Rooms & tags, a session lobby, per-student detail, media in questions, course lessons & announcements, journals |
+| Phase 6 — Classroom experience | **0.6.1 … 0.6.9** (done) | Rooms & tags, a session lobby, per-student detail, media in questions, course lessons & announcements, journals |
 | Phase 7 — MVP polish | 1.0.0 | Packaging polish, e2e, screenshots, offline PWA |
 
 The UI/UX polish pass (originally planned as its own 0.1.1) shipped together
@@ -334,7 +334,7 @@ real server.
       `scripts/console-smoke.sh`, `pnpm smoke:console`, wired into the release
       workflow's server job
 
-## Phase 6 — Classroom experience (v0.6.1 … v0.6.9, next)
+## Phase 6 — Classroom experience (v0.6.1 … v0.6.9) — **done**
 
 The system can author a test and run a class; this phase makes the *classroom*
 work. Three ideas run through it: a **room is who, a course is what**; a session
@@ -365,15 +365,20 @@ teacher, a class of phones, no administrator anywhere.
 
 **Cross-cutting groundwork, built early and reused by later sub-phases:**
 
-- [ ] `AppTabs` — the "browser tab" behaviour for sessions (6.2)
-- [ ] `TagInput` + `TagChips`, one chip style, used wherever a tag is edited (6.1)
-- [ ] `AppTable` — a sortable table, extracted from the admin screens, for the
-      journal (6.8)
-- [ ] `AppDrawer` / wide dialog, for the session library and the student detail
-      (6.2, 6.5)
+- [x] `SessionTabs.vue` — the "browser tab" behaviour for sessions (6.2; the
+      roadmap said `AppTabs`, which is not what it was built as)
+- [x] `TagInput.vue`, one chip style inside it, used wherever a tag is edited
+      (6.1; no separate `TagChips` component was needed)
+- [x] No `AppTable` was extracted on purpose: the journal is a plain `<table>`
+      shaped for a sticky first column, and the admin screens share
+      `composables/tableSort.ts` instead of a component neither needs (6.8)
+- [x] `AppDialog.vue` serves the session library and the student detail
+      (6.2, 6.5); no `AppDrawer` was needed
 - [x] `MediaFigure` (image/GIF + lightbox) and `AssetUpload` (6.6)
-- [ ] `usePresence` — the Page Visibility API plus a WebSocket heartbeat (6.3)
-- [ ] `useSessionSettings` — one client-side model of the session options (6.4)
+- [x] `composables/presence.ts` — the Page Visibility API plus a WebSocket
+      heartbeat (6.3)
+- [x] `utils/settings.ts` — one client-side model of the session options (6.4;
+      the roadmap said `useSessionSettings`, which is not what it was built as)
 
 Every change lands in **both** apps (`apps/desktop` and `apps/web-client`), whose
 files are byte-identical twins, and in both locale files.
@@ -656,14 +661,18 @@ still enrols the members; a room lives on the test and on the session (the
 session inherits, the teacher may override); `questionsPerPage` defaults to "all
 at once"; media is png/jpg/webp/gif with a per-file cap and is served from
 `/api/assets/:id`; announcements are course-level with one optional attachment;
-the journal is a matrix with a room scope, a course scope and a by-date mode.
+the journal is a matrix with a room scope and a course scope - no by-date mode,
+and a sort by last attempt instead, which is the column a teacher opens the
+screen to find.
 
 **Risks.** The v6 migration touches a live database — it ships with a
 post-migration integrity check and a test against a populated file. The lobby
 changes the session lifecycle everywhere (student, socket, CSV, reports) and is
 covered by integration tests. Presence is best-effort by nature and is an
 indicator, never a sanction. Media complicates test export: the export either
-carries the files or carries the references, and 6.6 decides which.
+carries the files or carries the references, and 6.6 decided: it carries the
+references - ids - because a paper pointing at a picture by id can only ever
+show one this server holds.
 
 ## Phase 7 — MVP polish (v1.0.0)
 
