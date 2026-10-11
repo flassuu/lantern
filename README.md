@@ -76,7 +76,22 @@ pnpm dev:web           # web client on http://localhost:5173
 pnpm dev:desktop       # desktop client (admin / teacher)
 ```
 
-### Testing from a phone
+### See it with demo data
+
+A fresh database can be filled with a class to look at — a course with lessons,
+a room, four students, four tests (one with a picture) and one finished run, so
+the journal shows numbers instead of a wall of dashes:
+
+```bash
+./apps/server/dist/lantern-server \
+  --port 3300 --data ./demo --webroot apps/web-client/dist --seed-demo
+```
+
+It is never implicit and never lands on real work: the seed refuses a database
+that already holds a course, a test or a room, and a second call does nothing.
+The teacher's credentials are the ones already configured, and the students share
+one password — both are printed on the line that says the seed ran. The same seed
+is available from the server console as `demo`.
 
 The server binds `0.0.0.0:3300` by default, so once the web client is built
 (`pnpm build:web`) any device on the same network can open it:

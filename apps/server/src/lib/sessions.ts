@@ -858,7 +858,12 @@ export function saveSubmission(
   summary: { score: number; maxScore: number; percent: number; passed: boolean | null },
   timings?: Record<string, AnswerTiming>,
 ): ParticipationRow | null {
-  db.exec('BEGIN')
+  // A savepoint rather than a transaction: this is the one write in the library
+  // that other writes may want to wrap (the demo seed builds a whole run inside
+  // a transaction of its own), and `BEGIN` inside `BEGIN` is an error while a
+  // savepoint nests. Outside a transaction it behaves exactly as before - it
+  // opens one and `RELEASE` commits it.
+  db.exec('SAVEPOINT save_submission')
   try {
     db.prepare('DELETE FROM participation_answers WHERE participation_id = ?').run(participationId)
     const insert = db.prepare(
@@ -906,9 +911,10 @@ export function saveSubmission(
       countFocusLost(db, participationId),
       participationId,
     )
-    db.exec('COMMIT')
+    db.exec('RELEASE save_submission')
   } catch (error) {
-    db.exec('ROLLBACK')
+    db.exec('ROLLBACK TO save_submission')
+    db.exec('RELEASE save_submission')
     throw error
   }
   return (

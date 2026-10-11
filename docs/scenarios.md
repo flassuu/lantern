@@ -330,6 +330,12 @@ How it works:
 | 6.7 Lessons | a course with a plan | add a lesson, file a test under it, post a note |
 | 6.8 Journals | the table before the lesson | open a room's and a course's journal, export the CSV |
 
+**A populated machine in one command.** Building the data by hand is fine for
+learning the flow, but a demonstration wants the class already there:
+`--seed-demo` fills a fresh database with a course, a room, four students and one
+finished run. It refuses a database that already holds work, so it can never
+land on top of a real class.
+
 **Automated checks**:
 
 ```bash

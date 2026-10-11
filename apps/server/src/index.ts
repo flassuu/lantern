@@ -1,5 +1,7 @@
 // `index.ts` is always the entrypoint; this module is never imported by tests.
+import { join } from 'node:path'
 import { attachConsole } from './lib/console'
+import { seedDemo } from './lib/demo'
 import { loadConfig } from './config'
 import { shutdown, startServer } from './app'
 
@@ -13,6 +15,27 @@ const app = await startServer({
 })
 
 const { logs } = app
+
+// The demo is asked for out loud, and it refuses a database that already holds
+// work. Both outcomes are logged: a flag that silently did nothing is worse than
+// no flag at all.
+if (config.seedDemo) {
+  const result = seedDemo(app.database.raw, { uploadsDir: join(config.dataDir, 'uploads') })
+  if (result.seeded) {
+    logs.logger.info(
+      {
+        teacher: result.teacher?.username,
+        students: result.students?.map((student) => student.username),
+        roomKey: result.roomKey,
+      },
+      `demo data seeded - sign in as ${result.teacher?.username}${
+        result.teacher?.password ? ` / ${result.teacher.password}` : ' (your own password)'
+      }, students share ${result.students?.[0]?.password}`,
+    )
+  } else {
+    logs.logger.warn({ reason: result.reason }, `demo data was not seeded: ${result.reason}`)
+  }
+}
 
 logs.logger.info(
   { url: `http://${config.host}:${config.port}`, db: config.dbPath, webRoot: config.webRoot },
@@ -33,6 +56,7 @@ const console = await attachConsole(
   {
     db: app.database.raw,
     logs,
+    uploadsDir: join(config.dataDir, 'uploads'),
     stop: () => stop('console'),
   },
   // `--no-console` for a machine with no one at the keyboard; a pipe turns it off

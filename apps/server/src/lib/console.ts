@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite'
 import { setPasswordByUsername, setUserStatusByUsername } from './accountActions'
+import { seedDemo } from './demo'
 import { isLogLevel, LOG_LEVELS, type LogHub } from './log'
 import { listSessions } from './sessions'
 import { createUser, findUserByUsername, listUsers } from './users'
@@ -28,6 +29,7 @@ export type ConsoleCommandName =
   | 'block'
   | 'password'
   | 'admin'
+  | 'demo'
   | 'level'
   | 'clear'
   | 'stop'
@@ -56,6 +58,11 @@ export const CONSOLE_COMMANDS: Record<ConsoleCommandName, CommandSpec> = {
     usage: 'admin <username> <password>',
     summary: 'create an admin account for institution-wide management',
     args: 2,
+  },
+  demo: {
+    usage: 'demo',
+    summary: 'fill an empty database with demo data',
+    args: 0,
   },
   level: { usage: 'level [name]', summary: `log level: ${LOG_LEVELS.join(', ')}`, args: [0, 1] },
   clear: { usage: 'clear', summary: 'clear the screen', args: 0 },
@@ -100,6 +107,8 @@ export function parseCommand(line: string): ParseResult {
 export interface ConsoleContext {
   db: DatabaseSync
   logs: LogHub
+  /** Where uploads live, so `demo` can write the picture its question points at. */
+  uploadsDir: string
   /** Graceful shutdown, called by `stop`. */
   stop: () => Promise<void>
   /** Escape sequence that clears the screen; injectable so tests stay plain. */
@@ -251,6 +260,17 @@ export async function executeCommand(
       // is a change nobody believes.
       logs.logger.info({ level: first, source: 'console' }, 'log level changed')
       return [`log level is now ${first}`]
+    }
+
+    case 'demo': {
+      const result = seedDemo(db, { uploadsDir: ctx.uploadsDir })
+      if (!result.seeded) return [`not seeded: ${result.reason}`]
+      return [
+        `demo data seeded: ${result.counts?.tests ?? 0} tests, ${result.counts?.lessons ?? 0} lessons`,
+        `teacher: ${result.teacher?.username}${result.teacher?.password ? ` / ${result.teacher.password}` : ' (your own password)'}`,
+        `students: ${(result.students ?? []).map((student) => student.username).join(', ')} / ${result.students?.[0]?.password ?? ''}`,
+        `room key: ${result.roomKey ?? ''}`,
+      ]
     }
 
     case 'clear':

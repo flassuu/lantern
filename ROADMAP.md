@@ -707,18 +707,18 @@ the server test suite, the client test suite, and a GitHub-ready README.
 
 Goal: a fresh install shows the system without a single keystroke.
 
-- [ ] Server: `lib/demo.ts` - deterministic seed over a `DatabaseSync`: one
+- [x] Server: `lib/demo.ts` - deterministic seed over a `DatabaseSync`: one
       **teacher** (no admin: the project seeds one on purpose), a course with two
       lessons, four tests (one per question type, one carrying a picture), a
       picture material, a room linked to the course, four approved students, one
       **finished run with submissions** so the journal shows numbers rather than
       dashes, and an announcement
-- [ ] Server: `--seed-demo` in `config.ts`/`index.ts` and a `demo` console command;
+- [x] Server: `--seed-demo` in `config.ts`/`index.ts` and a `demo` console command;
       a marker in `app_meta` makes it idempotent, and it refuses a database that
       already holds a test, course or user beyond the seed
-- [ ] Tests: seeds twice (second is a no-op), refuses a populated database, and
+- [x] Tests: seeds twice (second is a no-op), refuses a populated database, and
       checks the journal actually has participants
-- [ ] Docs: README "see it now", `docs/scenarios.md`
+- [x] Docs: README "see it now", `docs/scenarios.md`
 
 ### 7.2 The student's whole run, in a browser — v0.7.2
 

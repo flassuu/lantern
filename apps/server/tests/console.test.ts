@@ -26,6 +26,7 @@ function makeContext(overrides: Partial<ConsoleContext> = {}): ConsoleContext {
   return {
     db: app.database.raw,
     logs: app.logs,
+    uploadsDir: join(tmpDir, 'uploads'),
     stop: async () => {},
     clearScreen: '<CLEAR>',
     ...overrides,

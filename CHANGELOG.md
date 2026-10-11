@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [SemVer](https://semver.org/).
 
+### Demo data
+
+- **A fresh install can be shown without typing anything.** `--seed-demo` (or
+  `demo` in the server console) fills an empty database with a class: a course
+  with two lessons, a room, four approved students, four tests — one carrying a
+  picture — a material, an announcement, and **one finished run with answers in
+  it**, so the journal shows real numbers beside the dashes of the tests that were
+  planned and never run.
+- **It never lands on real work.** The seed refuses a database that already holds
+  a course, a test or a room, marks itself so a second call is a no-op, and does
+  everything in one transaction: a half-arrived demo would be worse than none.
+
 ## [0.6.0] — 2026-10-11
 
 Phase 6 «Classroom experience»: the workbench could author a test and run one

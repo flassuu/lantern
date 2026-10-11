@@ -10,6 +10,8 @@ export interface ServerConfig {
   /** Interactive commands on stdin. Off for `--no-console`, and off by itself
    *  when stdin is not a terminal. */
   console: boolean
+  /** Fill a fresh database with demo data. Never implicit: see `lib/demo.ts`. */
+  seedDemo: boolean
 }
 
 function arg(argv: string[], flag: string): string | undefined {
@@ -76,5 +78,7 @@ export function loadConfig(argv: string[]): ServerConfig {
     // A flag with no value: its presence is the whole meaning, which is why it
     // is checked as a member of argv rather than as `arg(argv, '--no-console')`.
     console: !argv.includes('--no-console'),
+    // A flag with no value, like `--no-console`: its presence is the meaning.
+    seedDemo: argv.includes('--seed-demo'),
   }
 }
