@@ -60,4 +60,23 @@ describe('normalising what the server sends', () => {
     const course = normalizeCourse({ id: 'c', title: 'Algebra 9' })
     assert.deepEqual(course.tags, [])
   })
+
+  it('gives a course the lessons and announcements the 6.7 release added', () => {
+    // What the course screen does on mount: `course.topics.length`. Against a
+    // server that has not been restarted since 6.7 that read threw, and the
+    // throw took the whole course screen down - not one card, the render.
+    const course = normalizeCourse({ id: 'c', title: 'Algebra 9' })
+    assert.deepEqual(course.topics, [])
+    assert.deepEqual(course.announcements, [])
+
+    const topic = { id: 't1', title: 'Lesson 1', position: 0 }
+    const kept = normalizeCourse({
+      id: 'c',
+      title: 'Algebra 9',
+      topics: [topic],
+      announcements: [{ id: 'a1', body: 'Read the diagram.' }],
+    })
+    assert.deepEqual(kept.topics, [topic])
+    assert.equal(kept.announcements[0]?.body, 'Read the diagram.')
+  })
 })

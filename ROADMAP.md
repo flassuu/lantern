@@ -636,14 +636,15 @@ or to a course.
 
 ### 6.9 Documentation, i18n, tests, e2e — v0.6.9
 
-- [ ] `docs/schema.md` brought up to date through v6–v11, `architecture.md` with
+- [x] `docs/schema.md` brought up to date through v6–v12, `architecture.md` with
       the room/course model, the lobby and presence flows, media and journals,
       `api.md` with every new endpoint, `scenarios.md` with the new steps
-- [ ] i18n: en and uk in step, no hard-coded string anywhere
-- [ ] Server integration tests for every new path; client tests for the new pure
-      logic; `scripts/browser-checks.mjs` extended for rooms, the session library,
-      the lobby, the paged runner, media, the journals and image viewing
-- [ ] A CHANGELOG entry per sub-phase, and a final consistency pass on the style
+- [x] i18n: en and uk in step, no hard-coded string anywhere
+- [x] Server integration tests for every new path (`/api/sessions/:id/extend`
+      was the last one untested); client tests for the new pure logic; the
+      browser harness covers rooms, the session library, the lobby, the paged
+      runner, media, the journals and image viewing
+- [x] A CHANGELOG entry per sub-phase, and a final consistency pass on the style
 
 **Order and dependencies.** 6.1 → 6.2 → 6.3 → 6.4 → 6.5 → 6.6 → 6.7 → 6.8 →
 6.9. Timing (6.5) needs the lobby and the events table from 6.3; the journals

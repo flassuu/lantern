@@ -2165,6 +2165,122 @@ async function mediaPath(session, fixtures) {
   await contextClose(session, context)
 }
 
+/**
+ * One question at a time, which is what a teacher picks for a class that should
+ * not see the whole paper at once (6.4 `questionsPerPage`).
+ *
+ * Two runs cannot both be the student's current one, so the fixture's run is
+ * closed first - the same thing the teacher does at the end of a lesson.
+ */
+async function pagedPath(session, fixtures) {
+  await api(`/api/sessions/${fixtures.sessionId}`, {
+    token: fixtures.teacher,
+    method: 'PATCH',
+    body: { status: 'finished' },
+  })
+
+  const paper = await api('/api/tests', {
+    token: fixtures.teacher,
+    method: 'POST',
+    body: {
+      title: `Paged ${SUFFIX}`,
+      settings: { questionsPerPage: 'one' },
+      questions: [1, 2].map((number) => ({
+        type: 'true_false',
+        body: `Paged question ${number}?`,
+        points: 1,
+        position: number - 1,
+        payload: { correct: true },
+      })),
+    },
+  })
+  created.tests.push(paper.test.id)
+  const run = await api('/api/sessions', {
+    token: fixtures.teacher,
+    method: 'POST',
+    body: { testId: paper.test.id, name: `Paged run ${SUFFIX}` },
+  })
+  created.sessions.push(run.session.id)
+  await api(`/api/sessions/${run.session.id}/start`, {
+    token: fixtures.teacher,
+    method: 'POST',
+  })
+
+  const context = await session.page(390, 844)
+  await openApp(session, context, { token: fixtures.student, locale: 'uk', width: 390, height: 844 })
+  await settle(session, context, 'content')
+
+  const code = run.session.joinCode
+  const seen = await session.run(
+    context,
+    `
+    let input = null;
+    for (let i = 0; i < 40 && !input; i += 1) {
+      input = document.querySelector('input[inputmode=text]');
+      if (!input) await new Promise((r) => setTimeout(r, 250));
+    }
+    if (!input) {
+      return { ok: false, why: 'no join field', page: document.body.textContent.slice(0, 120) };
+    }
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    set.call(input, ${JSON.stringify(code)});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 300));
+    const go = [...document.querySelectorAll('button')].find((b) =>
+      /^Join|Приєднатися$/.test(b.textContent.trim()),
+    );
+    if (!go) return { ok: false, why: 'no join button' };
+    go.click();
+
+    // Waited for, not slept for: the paper only exists once the run has been
+    // joined and the payload has landed.
+    let pager = null;
+    for (let i = 0; i < 40 && !pager; i += 1) {
+      pager = document.querySelector('[role=status]');
+      if (!pager) await new Promise((r) => setTimeout(r, 250));
+    }
+    const read = () => ({
+      pager: pager ? pager.textContent.replace(/\\s+/g, ' ').trim() : null,
+      first: document.body.textContent.includes('Paged question 1?'),
+      second: document.body.textContent.includes('Paged question 2?'),
+      next: [...document.querySelectorAll('button')].some((b) => /^Далі$/.test(b.textContent.trim())),
+      submit: [...document.querySelectorAll('button')].some((b) =>
+        /Надіслати|Submit/.test(b.textContent.trim()),
+      ),
+    });
+    if (!pager) return { ok: false, why: 'no pager', page: document.body.textContent.slice(0, 160) };
+    const before = read();
+
+    const go2 = [...document.querySelectorAll('button')].find((b) => /^Далі$/.test(b.textContent.trim()));
+    if (!go2) return { ok: false, why: 'no way forward', ...before };
+    go2.click();
+    for (let i = 0; i < 20; i += 1) {
+      if (document.body.textContent.includes('Paged question 2?')) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    pager = document.querySelector('[role=status]');
+    return { ok: true, before, after: read() };
+  `,
+  )
+  check(
+    'student: one question at a time, with a way forward',
+    seen.ok === true && seen.before.first === true && seen.before.second !== true,
+    seen.why ??
+      `pager=${seen.before?.pager} first=${seen.before?.first} second=${seen.before?.second} next=${seen.before?.next}`,
+  )
+  check(
+    'student: the next page carries the paper forward',
+    seen.ok === true &&
+      seen.after.second === true &&
+      seen.after.first !== true &&
+      seen.after.next !== true &&
+      seen.after.pager !== seen.before.pager,
+    seen.why ?? `pager=${seen.after?.pager} first=${seen.after?.first} second=${seen.after?.second}`,
+  )
+  await session.screenshot(context, join(SHOTS, 'student-paged-runner.png'))
+  await contextClose(session, context)
+}
+
 /** Closes a tab the harness opened, so a failure screenshot is of one page. */
 async function contextClose(session, context) {
   await session.send('browsingContext.close', { context }).catch(() => {})
@@ -2376,6 +2492,9 @@ async function main() {
     // Last: it closes the run the picture path left open by submitting to it.
     console.log('\nthe journal')
     await journalPath(session, fixtures)
+
+    console.log('\none question per page')
+    await pagedPath(session, fixtures)
 
     await session.close()
   } catch (error) {

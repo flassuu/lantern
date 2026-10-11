@@ -5,7 +5,7 @@ ids are server-side UUIDs; timestamps are stored as ISO-8601 UTC strings. The
 schema is enforced by idempotent, versioned migrations run at server startup;
 `GET /api/admin/stats` reports the applied version as `schemaVersion`.
 
-> Status: **current**, at version 8. Phases 1–3 added the tables: roles and
+> Status: **current**, at version 12. Phases 1–3 added the tables: roles and
 > auth, the test/course core, and the live-session runtime.
 > **Reporting (Phase 4) added no tables on purpose** — the grade journal and
 > per-question difficulty are derived from `participations` and
@@ -26,6 +26,13 @@ schema is enforced by idempotent, versioned migrations run at server startup;
 > defaults, `live_sessions.settings` the snapshot a run takes of them,
 > `live_sessions.results_released` whether held results have been let out, and
 > `participations.option_order` a student's own shuffled option order.
+> **Phase 6.5 (v10)** gives an attempt its own shape: per-question time, the
+> number of times an answer was rewritten, and the server's own count of the
+> times the window went away (details in the migration notes below).
+> **Phase 6.6 (v11)** adds `assets` and the media ids a question payload points
+> at.
+> **Phase 6.7 (v12)** adds `course_topics`, the nullable `topic_id` on
+> `materials` and `course_tests`, and `announcements` (details below).
 
 ## Conventions
 

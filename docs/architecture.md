@@ -120,26 +120,85 @@ Almost everything requires the running server. When the server is unreachable:
   are pure functions over a small storage interface, so they are unit-tested
   without a browser.
 
-## Courses & materials
+## Rooms, courses and lessons
 
-- Teacher creates a **course** and attaches **files** (PDF, images, …) and
-  **tests** to it; students assigned to the course see the materials.
-- A test can be shared directly or through a course.
+- A **room** is *who*: students behind a six-character key, plus the approval
+  list for anyone who registered without one. A **course** is *what*: materials,
+  tests and lessons. The two are many-to-many — one room follows several
+  courses, one course reaches several rooms — and linking them later still
+  enrols the members already in the room, because a class that starts mid-term
+  should not have to be re-keyed.
+- A room lives on the test and on the session: a run inherits the test's room
+  and the teacher may override it. A run with no room is what older data left
+  behind, and the journal counts it against the room of its course rather than
+  dropping it.
+- **Labels** (`tags`) sit on tests, sessions and courses through `entity_tags`,
+  so a library narrows by topic without a folder tree nobody agrees on.
+- A **lesson** (`course_topics`) is an ordered heading inside a course. Any test
+  and any file may be filed under one, or left loose and shown at the end;
+  deleting a heading leaves what was under it — taking a plan down is not a way
+  to delete the reading filed under it.
+- An **announcement** is a sentence to the class with an optional attachment,
+  written by one teacher, and only they may take it down.
+
+## Media
+
+- Pictures live in `assets`: an id, an owner, a mime, a size, bytes on disk
+  beside the database. An asset belongs to the **uploader** rather than to a
+  course or a test, because a diagram outlives the course it was drawn for and
+  the same test can run in several courses.
+- A paper points at a picture by **id, never a URL** (`media` on the question,
+  `image` on an option, `leftImage`/`rightImage` on a matching side), so a
+  question can only ever show a picture this server holds. A payload naming
+  somebody else's id has it dropped rather than borrowed.
+- Images and plain text are served **inline**, everything else as an
+  `attachment`. A figure next to a reading is meant to be looked at; a file that
+  opens is a file that runs something on the teacher's machine.
+- The browser holds an image as an object URL fetched with the bearer token —
+  `<img src>` cannot carry the header, and a plain link would arrive
+  unauthenticated.
+
+## The journal
+
+Students down the side, tests across the top, one cell per pair, for a **room**
+or for a **course**: two routes, because the two rosters are different sets and
+a body that named either would be a request the caller can get wrong.
+
+- A cell is the student's **last** attempt, not their best. A best is the
+  flattering number, and it is the one that hides a student who guessed once and
+  never came back; the attempt count sits beside it, so "80%, once" and "80%, six
+  times" read as the different things they are.
+- A student on the roster who has never attempted a test keeps their row and an
+  **empty cell** — `percent` null, a dash on screen, an empty field in the CSV.
+  "No attempt" and "attempted and scored nothing" are different facts.
+- A **room** shows the tests it has been run; a **course** shows its whole plan,
+  because a planned test nobody has done is exactly the empty cell worth seeing
+  before the next lesson.
+- A cell carries the run it came from, so a teacher who wants to know *why* the
+  number is what it is opens the attempt behind it — the same per-student detail
+  the run's own board opens.
 
 ## Data model (see [schema](./schema.md))
 
-`users` (roles, approval status) · `sessions` (auth tokens) · `courses` ·
-`materials` · `tests` · `questions` (5 types: single choice, multiple choice,
-true/false, short answer, matching) · `live_sessions` · `participations` ·
-`participation_answers`.
+`users` (roles, approval status) · `sessions` (auth tokens) · `rooms` and
+`room_members` · `courses`, `course_rooms`, `course_enrollments`,
+`course_topics`, `announcements` · `materials` · `assets` · `tests` ·
+`questions` (5 types: single choice, multiple choice, true/false, short answer,
+matching) · `tags` and `entity_tags` · `live_sessions` · `participations` ·
+`participation_answers` · `participation_events`.
 
 ## Testing flow (live sessions)
 
 1. Teacher picks a test and starts a **session** on the Live tab. The server
    issues a 6-character join code (no ambiguous `0/O` or `1/I` glyphs, so it
-   can be read out loud) and snapshots the time limit and pass mark.
+   can be read out loud) and snapshots the time limit and pass mark. The run is
+   born in the **lobby**: the code is already out and students may arrive, but
+   nothing is timed and nothing can be submitted until the teacher opens the
+   door — which is what a class looks like for the first two minutes.
 2. Students sign in, type the code — or open the teacher's `?join=CODE` link,
-   which fills it in — and a `participations` row is created.
+   which fills it in — and a `participations` row is created. The teacher can
+   lock the door to **new** students and keep the ones already in; a reload
+   during a locked run never throws anybody out.
 3. The paper is served in a **per-student shuffle** fixed at join, so a reload
    never reorders it, and with **every answer key stripped**. A test can still
    be edited meanwhile: the session works from its snapshots.
@@ -153,13 +212,25 @@ true/false, short answer, matching) · `live_sessions` · `participations` ·
 6. The teacher's **live board** streams over **WebSocket**: status changes for
    everyone in the session, the participant list for the teacher. The client
    falls back to polling where a socket cannot be opened.
+   **Pause and resume** move one clock: a resume pushes `started_at` forward by
+   the length of the hold, so the board and every phone read the same deadline
+   without either keeping its own tally. **Presence** is the phone reporting its
+   window visible or not — best-effort by nature, stored on the attempt as an
+   indicator, never a sanction: the server grades answers, not attention.
+   Each question's time, the times an answer was rewritten and the times the
+   window went away are recorded with the answer itself, because a rewritten
+   answer is not the confident one it looks like.
 7. **Reporting.** A test is judged across *every* session it was run in, not
-   one: the journal gives each student their attempts, best, last and average
-   percent, and the class its average and pass rate — both judged on the last
-   attempt, so a student who improved is not counted as a fail. Per-question
-   difficulty comes from the same query, because the questions the class missed
-   are what says what to reteach.
-8. **Getting it out.** The report prints through the browser's own dialog (no
+   one: its own journal gives each student their attempts, best, last and
+   average percent, and the class its average and pass rate — both judged on the
+   last attempt, so a student who improved is not counted as a fail.
+   Per-question difficulty comes from the same query, because the questions the
+   class missed are what says what to reteach. The **room/course journal**
+   (above) is the other direction: one student against every test of a class.
+8. **One student in full.** From the board, or from a cell of the journal, a
+   teacher opens one attempt: score, question by question, time on each, how
+   often the answer was rewritten and what happened to the window.
+9. **Getting it out.** The report prints through the browser's own dialog (no
    PDF library; the print stylesheet collapses the theme to ink on white), and
    one session exports as CSV through a fetch with the bearer token — a plain
    link cannot authenticate here.
@@ -169,7 +240,8 @@ true/false, short answer, matching) · `live_sessions` · `participations` ·
 | Flow | Channel |
 |------|---------|
 | Everyone ↔ Server (CRUD, join, submit, results) | REST `/api/*`, bearer token (the student's own account token) |
-| Teacher → Server (report export) | REST `/api/sessions/:id/results.csv`, fetched with the token and saved as a blob — a plain link would arrive unauthenticated |
+| Teacher → Server (report export) | REST `/api/sessions/:id/results.csv` and `GET /api/journals/*?format=csv`, fetched with the token and saved as a blob — a plain link would arrive unauthenticated |
+| Teacher → Server (a picture in a question) | REST `/api/assets`, bytes to disk; the paper points at the id |
 | Server → Teacher (live board: joins, submissions, status) | WebSocket `/ws/sessions/:id` |
 | Server → Student (pause, finish, time) | same WebSocket, status only |
 | Admin → Server (live log tail, same lines the terminal prints) | WebSocket `/ws/server`, backlog via `GET /api/logs?since=` |

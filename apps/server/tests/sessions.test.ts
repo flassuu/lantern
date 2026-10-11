@@ -1093,3 +1093,105 @@ describe('live sessions: teacher board', () => {
     expect(res.statusCode).toBe(404)
   })
 })
+
+describe('a run can be given more time', () => {
+  it('adds the seconds to the clock, and leaves a run with no clock alone', async () => {
+    const owner = await login('teacher1', 'teacher-pass-1')
+    const limited = await seedTest(owner)
+    const created = await app.server.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: bearer(owner),
+      payload: { testId: limited },
+    })
+    const session = (created.json() as SessionBody).session
+    expect(session.timeLimitSec).toBe(600)
+
+    const extended = await app.server.inject({
+      method: 'POST',
+      url: `/api/sessions/${session.id}/extend`,
+      headers: bearer(owner),
+      payload: { seconds: 90 },
+    })
+    expect(extended.statusCode).toBe(200)
+    expect((extended.json() as SessionBody).session.timeLimitSec).toBe(690)
+
+    // A run with no limit has no clock to add to. It is not an error: the
+    // teacher clicked a button while watching a class, and the class is still
+    // sitting there - a 400 would make the screen lie about what it just did.
+    const untimed = await app.server.inject({
+      method: 'POST',
+      url: '/api/tests',
+      headers: bearer(owner),
+      payload: {
+        title: 'No clock',
+        timeLimitSec: null,
+        questions: [
+          { type: 'true_false', body: 'No time limit?', points: 1, position: 0, payload: { correct: true } },
+        ],
+      },
+    })
+    const untimedId = (untimed.json() as { test: { id: string } }).test.id
+    const open = await app.server.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: bearer(owner),
+      payload: { testId: untimedId },
+    })
+    const openId = (open.json() as SessionBody).session.id
+    const stillUntimed = await app.server.inject({
+      method: 'POST',
+      url: `/api/sessions/${openId}/extend`,
+      headers: bearer(owner),
+      payload: { seconds: 90 },
+    })
+    expect(stillUntimed.statusCode).toBe(200)
+    expect((stillUntimed.json() as SessionBody).session.timeLimitSec).toBeNull()
+  })
+
+  it('is the owner\'s to give, and nobody else\'s', async () => {
+    const owner = await login('teacher1', 'teacher-pass-1')
+    const testId = await seedTest(owner)
+    const created = await app.server.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: bearer(owner),
+      payload: { testId },
+    })
+    const session = (created.json() as SessionBody).session
+
+    const byStranger = await app.server.inject({
+      method: 'POST',
+      url: `/api/sessions/${session.id}/extend`,
+      headers: bearer(await login('teacher2', 'teacher-pass-1')),
+      payload: { seconds: 90 },
+    })
+    expect(byStranger.statusCode).toBe(403)
+
+    const student = await approvedStudentForList('extstudent')
+    const byStudent = await app.server.inject({
+      method: 'POST',
+      url: `/api/sessions/${session.id}/extend`,
+      headers: bearer(student),
+      payload: { seconds: 90 },
+    })
+    expect(byStudent.statusCode).toBe(403)
+
+    const missing = await app.server.inject({
+      method: 'POST',
+      url: '/api/sessions/00000000-0000-4000-8000-000000000000/extend',
+      headers: bearer(owner),
+      payload: { seconds: 90 },
+    })
+    expect(missing.statusCode).toBe(404)
+
+    // An hour is the most a class period needs; beyond that it is a typo.
+    const tooMuch = await app.server.inject({
+      method: 'POST',
+      url: `/api/sessions/${session.id}/extend`,
+      headers: bearer(owner),
+      payload: { seconds: 7200 },
+    })
+    expect(tooMuch.statusCode).toBe(400)
+  })
+})

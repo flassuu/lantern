@@ -699,7 +699,8 @@ with a six-character code, answer, and the server grades and stores the paper.
 
 A session snapshots the test's time limit and pass mark at start, so editing
 the test mid-run changes nothing for the students already answering. It is
-created already `active`; `PATCH` moves it to `paused` or `finished`.
+created in the `lobby`, `POST /:id/start` opens it, and `PATCH` moves it to
+`paused` or `finished`.
 
 Every entry point that grades or closes a session also sweeps expired
 participations: once the time limit has passed, anyone still working is
@@ -798,6 +799,21 @@ Admin & teacher (owner). Leaves the lobby: stamps `startedAt`, flips the status
 to `active`, and broadcasts the change to every phone watching. Idempotent — a
 second call on a run that has started changes nothing — and `409` once the run is
 finished.
+
+### `POST /api/sessions/:id/extend`
+
+Admin & teacher (owner). Body `{ "seconds": 90 }`, an integer from 1 to 3600.
+
+Gives a running clock more of it: a teacher watching a class run out of a minute
+can add one without restarting anything, and the phones watching the same run
+learn about it over their socket. A run with no time limit is left exactly as it
+is and still answers `200` — the button was pressed by a person watching a class,
+and the class is still there; refusing it would make the screen lie about what it
+just did.
+
+- `403 FORBIDDEN` — the run belongs to another teacher
+- `404 NOT_FOUND` — no such run
+- `400 VALIDATION` — `seconds` is missing, not a whole number, or over an hour
 
 ### `GET /api/sessions/:id/participants/:userId`
 

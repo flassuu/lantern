@@ -88,21 +88,24 @@ copied link on one. If it opens the app, the address is right.
 Students register themselves, on their own phones. There is no account to
 create in advance.
 
-### 5. Get the student in — with a class key, or an approval
+### 5. Get the student in — with a room key, or an approval
 
 The fastest way, and the one that works when the teacher is alone in the room:
-the teacher creates a class and hands out its key.
+the teacher creates a room and hands out its key. A room is *who* is in the
+class; the *what* — materials, tests, lessons — is a course, and one room may
+follow any number of them.
 
-1. Sign in as the teacher → **Classes** → **Create class** (e.g. `Class 9A`,
-   optionally linked to a course) → the key appears, e.g. `42FAK2`.
+1. Sign in as the teacher → **Rooms** → **Create room** (e.g. `9A`, optionally
+   linked to courses) → the key appears, e.g. `42FAK2`.
 2. Show the QR code on the projector, or read the key out loud.
-3. Each student opens the app (on the LAN address from step 3), the class code is
+3. Each student opens the app (on the LAN address from step 3), the room code is
    filled in from the QR, and the account is created **approved** — the student
-   can sign in immediately, and nobody needs to press "Approve".
+   can sign in immediately, and nobody needs to press "Approve". Everyone who
+   arrives through the key is enrolled in the room's courses as well.
 
-Without a class key the other path still works, and needs no admin:
+Without a room key the other path still works, and needs no admin:
 
-1. Sign in as the teacher → **Classes** → at the bottom, **Waiting for approval**
+1. Sign in as the teacher → **Rooms** → at the bottom, **Waiting for approval**
    lists the student.
 2. **Approve**.
 3. The student can now sign in. Until this happens the API answers
@@ -123,18 +126,30 @@ Check the link before going further: the address is printed under the QR code, a
 the tab says so in plain words if a phone cannot open it. If it says `localhost`
 and no address was set in step 3, the join link is not usable on a phone yet.
 
+Starting a run opens a **lobby**, not a test: the code is out and the students
+arrive and are counted, but nobody is timed and nothing can be submitted until
+**Start** is pressed. That is deliberate — the class needs somewhere to stand for
+the first two minutes, and a clock that started at "New session" would be half
+gone before anybody had a phone out. **Pause** holds the clock for everybody,
+and the run's rules (one question per page, shuffling, when results are shown)
+are on the same screen.
+
 ### 7. A student takes the test
 
 1. The phone joins the same network (same Wi-Fi, not mobile data).
 2. Scan the QR, or open the copied link, or open the address and type the code.
    A student who is not signed in lands on the sign-in screen first; the code
    stays in the address and **prefills itself** once they are in.
-3. The paper arrives with the question types the test uses, a confirmation
+3. Until the teacher presses **Start** the phone says the run has not opened
+   yet — that is the lobby, not a stuck screen.
+4. The paper arrives with the question types the test uses, a confirmation
    before submitting, and — only if the test sets a time limit — a countdown
-   corrected against the server's clock.
-4. The result shows the score, the pass mark and the correct answers.
-5. The teacher's board updates without a refresh; the journal (**Tests →
-   Results**) fills in as students finish.
+   corrected against the server's clock. With **one question per page** the
+   paper shows one question and a **Next**, and the teacher's board waits the
+   same way.
+5. The result shows the score, the pass mark and the correct answers.
+6. The teacher's board updates without a refresh; a student's score is held
+   back when the run says so, until the teacher releases it.
 
 ### 8. How to know it worked
 
@@ -142,10 +157,33 @@ and no address was set in step 3, the join link is not usable on a phone yet.
   from the admin machine, and the same from the phone's browser.
 - The student's result screen shows a percentage, and the teacher's board shows
   the same student as `submitted`.
-- The journal shows the student with their last percent, and a second test run
-  adds a row rather than replacing it.
+- The **Journal** tab shows the student with their last percent, for a room or
+  for a course, and a second run adds a row rather than replacing it. A student
+  who has not done a test yet keeps their row with a dash — "no attempt" is not
+  "scored nothing".
 - **Tests → Results → Print** produces the report for the folder; **Export CSV**
-  on the board produces a spreadsheet.
+  on the board produces a spreadsheet, and the Journal has its own CSV and
+  Print. Clicking a number in the journal opens that one student's attempt in
+  full — every question, the time on it, and what happened to the window.
+
+### 9. The course as the students see it
+
+The room is how they got in; this is what they came for.
+
+1. **Courses → New course** → open it. **Lessons** are ordered headings; add
+   `Lesson 1: rays` and file the test and a file under it, or leave them loose,
+   which is shown at the end rather than hidden.
+2. **Materials → upload** a picture, then a file. The picture gets a thumbnail,
+   and tapping it opens it full screen; a GIF plays. Images and plain text open
+   in the browser instead of downloading.
+3. **Announcements → post** a sentence — the file is optional, because requiring
+   one would turn every note into a download.
+4. On the phone: **Courses → the course**. The announcement is at the top,
+   because on a phone that is the one part of a course that changed today, then
+   the lessons with what is filed under each, each picture with a thumbnail.
+
+Deleting a lesson leaves what was under it behind: taking a heading down is not
+a way to delete the reading filed under it.
 
 ---
 
@@ -283,6 +321,14 @@ How it works:
 | 5.3 Console | logs you can read, and commands that act | `--no-console` off, type `help`, then `status` |
 | 5.4 Desktop host | the server inside the app | build the bundle, start it, open it from a phone |
 | 5.5 Verifiability | the runbooks above | re-run this document top to bottom |
+| 6.1 Rooms, tags | a key that enrols into courses | register with the key, check the course has the student |
+| 6.2 Library | a run you can find again | name a run, filter the library by status and date |
+| 6.3 Lobby | students waiting, then answering | start a run, join before and after **Start** |
+| 6.4 Settings | rules on one screen | one question per page, then pause and resume |
+| 6.5 Detail | one student in full | open an attempt from the board |
+| 6.6 Media | a picture in a question | upload in the editor, view it on a phone |
+| 6.7 Lessons | a course with a plan | add a lesson, file a test under it, post a note |
+| 6.8 Journals | the table before the lesson | open a room's and a course's journal, export the CSV |
 
 **Automated checks**:
 
@@ -299,10 +345,12 @@ pnpm check:browser             # a real Firefox, layout and happy paths
 dependencies of its own — a WebSocket and some JSON. Per screen and width it
 reports horizontal scroll, elements past the right edge, touch targets under
 30px, unnamed controls and untranslated keys, across three roles × two languages
-× three widths; then it walks one happy path per role (the QR address and its
-warning, the class key, the admin console, a student who signed in with a class
-key). It creates the accounts, test, session and class it needs and deletes them
-afterwards. Screenshots of a failure come out of the same run, so a visual pass
+× three widths; then it walks the screens this phase added: rooms and the
+address, the session library, the lobby and its start, the paged runner, a
+picture in a question and on the paper, lessons and announcements, and the
+journal — its table, its empty cells, a cell opening an attempt, and the way in
+from a course. It creates the accounts, tests, session, room and course it needs
+and deletes them afterwards. Screenshots of a failure come out of the same run, so a visual pass
 is a minute rather than a manual click-through.
 
 `pnpm smoke:console` exists because the console only appears on a terminal: the
@@ -320,7 +368,7 @@ end to end on a real phone, not on the same machine.
 |---|---|---|
 | QR scans but the page will not open | no public address is set, so the link says `localhost` or `tauri://` | admin → System & DB → Public address, pick the LAN address, save; the tab warns about this on its own |
 | Phone cannot reach the server at all | firewall, or a different network | allow TCP 3300; both devices on the same Wi-Fi |
-| `403 PENDING_APPROVAL` | the student registered without a class key and is not approved yet | register with the teacher's class key, or admin → Users → Approve |
+| `403 PENDING_APPROVAL` | the student registered without a room key and is not approved yet | register with the teacher's room key, or admin → Users → Approve |
 | `403 FORBIDDEN` on an action | the signed-in role is not the one the action needs | teachers cannot manage users; only admins can |
 | The board does not update | the WebSocket could not be opened | it falls back to polling every 4s; check for a proxy in between |
 | The countdown looks wrong on a phone | device clock drift | the deadline is corrected against the server on join |
