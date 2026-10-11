@@ -601,15 +601,17 @@ downloaded.
       topic; announcements CRUD (author only); the student's course payload
       carries topics, announcements and materials; an image material is served
       inline
-- [ ] Client (teacher): `CourseDetails` shows ordered topics, each with its tests
-      and materials; create and edit a topic; an announcement form (text plus an
-      optional file); materials show a preview with a lightbox and a GIF plays
-- [ ] Client (student): `StudentCourses` shows topics, materials with previews,
+- [x] Client (teacher): `CourseDetails` shows ordered topics, each with its tests
+      and materials; create, rename, reorder and delete a topic; every test and
+      material gets filed under a lesson or left loose; an announcement form
+      (text plus an optional file); materials show a preview with a lightbox and a
+      GIF plays
+- [x] Client (student): `StudentCourses` shows topics, materials with previews,
       and the announcement feed
-- [ ] i18n: `teacher.courses.topics.*`, `teacher.courses.announcements.*`,
+- [x] i18n: `teacher.courses.topics.*`, `teacher.courses.announcements.*`,
       `student.courses.*`
-- [ ] Tests: topics, announcements and ordering, with permissions; the browser
-      harness views an image inside a course
+- [x] Tests: topics, announcements and ordering, with permissions; the browser
+      harness adds a lesson, posts an announcement and finds it as a student
 
 ### 6.8 Journals by room and by course — v0.6.8
 

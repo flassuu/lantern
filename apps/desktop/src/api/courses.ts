@@ -86,3 +86,92 @@ export async function downloadMaterial(courseId: string, materialId: string, tit
   anchor.click()
   URL.revokeObjectURL(url)
 }
+// ------------------------------------------------------------------- topics
+
+/** A lesson: an ordered heading a test or a material can be filed under. */
+export interface CourseTopic {
+  id: string
+  title: string
+  position: number
+}
+
+export async function createTopic(courseId: string, title: string): Promise<CourseTopic> {
+  const result = await apiFetch<{ topic: CourseTopic }>(`/api/courses/${courseId}/topics`, {
+    method: 'POST',
+    body: JSON.stringify({ title }),
+  })
+  return result.topic
+}
+
+export async function renameTopic(
+  courseId: string,
+  topicId: string,
+  title: string,
+): Promise<CourseTopic> {
+  const result = await apiFetch<{ topic: CourseTopic }>(
+    `/api/courses/${courseId}/topics/${topicId}`,
+    { method: 'PATCH', body: JSON.stringify({ title }) },
+  )
+  return result.topic
+}
+
+/** What was filed under it is left behind with no lesson - the server says so. */
+export async function deleteTopic(courseId: string, topicId: string): Promise<void> {
+  await apiFetch<void>(`/api/courses/${courseId}/topics/${topicId}`, { method: 'DELETE' })
+}
+
+export async function reorderTopics(
+  courseId: string,
+  ids: string[],
+): Promise<CourseTopic[]> {
+  const result = await apiFetch<{ topics: CourseTopic[] }>(
+    `/api/courses/${courseId}/topics/order`,
+    { method: 'PUT', body: JSON.stringify({ ids }) },
+  )
+  return result.topics
+}
+
+/** Files a test under a lesson, or `null` takes it out of every lesson. */
+export async function setTestTopic(
+  courseId: string,
+  testId: string,
+  topicId: string | null,
+): Promise<void> {
+  await apiFetch<unknown>(`/api/courses/${courseId}/tests/${testId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ topicId }),
+  })
+}
+
+export async function setMaterialTopic(
+  courseId: string,
+  materialId: string,
+  topicId: string | null,
+): Promise<void> {
+  await apiFetch<unknown>(`/api/courses/${courseId}/materials/${materialId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ topicId }),
+  })
+}
+
+// ----------------------------------------------------------- announcements
+
+export async function createAnnouncement(
+  courseId: string,
+  body: string,
+  materialId: string | null,
+): Promise<void> {
+  await apiFetch<unknown>(`/api/courses/${courseId}/announcements`, {
+    method: 'POST',
+    body: JSON.stringify({ body, materialId }),
+  })
+}
+
+export async function deleteAnnouncement(
+  courseId: string,
+  announcementId: string,
+): Promise<void> {
+  await apiFetch<void>(`/api/courses/${courseId}/announcements/${announcementId}`, {
+    method: 'DELETE',
+  })
+}

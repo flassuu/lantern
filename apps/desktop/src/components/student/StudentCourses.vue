@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BookOpen, ChevronDown, Download, Library } from '@lucide/vue'
+import { BookOpen, ChevronDown, Download, Library, Megaphone } from '@lucide/vue'
 import { ApiError } from '../../api/client'
 import { downloadMaterial, getCourse, listCourses } from '../../api/courses'
-import type { CourseDetails, CourseSummary } from '../../api/types'
+import type { CourseDetails, CourseSummary, Material } from '../../api/types'
 import EmptyState from '../common/EmptyState.vue'
 import SkeletonList from '../common/SkeletonList.vue'
 import MaterialBadge from '../common/MaterialBadge.vue'
+import MaterialPreview from '../common/MaterialPreview.vue'
 import { useToast } from '../../composables/toast'
 import AppButton from '../../components/common/AppButton.vue'
 
@@ -63,6 +64,30 @@ async function toggle(course: CourseSummary): Promise<void> {
   } finally {
     detailLoading.value = false
   }
+}
+
+/**
+ * The course's materials under their lessons, in the order the teacher put the
+ * lessons in, with whatever has no lesson last under its own heading. Nothing is
+ * dropped: a material with no lesson is still a material the class can open.
+ */
+function lessonGroups(course: CourseDetails): Array<{
+  id: string | null
+  title: string
+  materials: Material[]
+}> {
+  const groups = course.topics.map((topic) => ({
+    id: topic.id as string | null,
+    title: topic.title,
+    materials: [] as Material[],
+  }))
+  const loose = { id: null, title: t('student.courses.topics.noLesson'), materials: [] as Material[] }
+  for (const material of course.materials) {
+    const index = groups.findIndex((group) => group.id === material.topicId)
+    if (index >= 0) groups[index]!.materials.push(material)
+    else loose.materials.push(material)
+  }
+  return [...groups, loose].filter((group) => group.materials.length > 0)
 }
 
 async function download(material: { id: string; title: string }): Promise<void> {
@@ -143,7 +168,33 @@ onMounted(load)
               {{ detail.description }}
             </p>
 
-            <div class="mt-3">
+            <!-- What the teacher said, first: on a phone this is the one part of
+                 a course that changed today. -->
+            <div v-if="detail.announcements.length" class="mt-3 space-y-2">
+              <p
+                v-for="note in detail.announcements"
+                :key="note.id"
+                class="rounded-xl bg-secondary-container p-3 text-on-secondary-container"
+              >
+                <span class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide">
+                  <Megaphone class="size-3.5 shrink-0" aria-hidden="true" />
+                  {{ t('student.courses.announcements.title') }}
+                </span>
+                <span class="mt-1 block text-sm">{{ note.body }}</span>
+                <span
+                  v-if="note.material"
+                  class="mt-1.5 flex items-center gap-1.5 text-xs"
+                >
+                  <Paperclip class="size-3.5 shrink-0" aria-hidden="true" />
+                  <span class="min-w-0 truncate">{{ note.material.title }}</span>
+                </span>
+              </p>
+            </div>
+
+            <!-- A lesson is a group of what the course holds. Everything with no
+                 lesson is shown under it rather than hidden: a test added on
+                 Friday still has to be findable. -->
+            <div class="mt-4">
               <p class="text-xs font-semibold text-on-surface">
                 {{ t('student.courses.materials') }}
               </p>
@@ -153,32 +204,51 @@ onMounted(load)
               >
                 {{ t('student.courses.noMaterials') }}
               </p>
-              <ul v-else class="mt-1.5 space-y-1.5">
-                <li
-                  v-for="material in detail.materials"
-                  :key="material.id"
-                  class="flex flex-wrap items-center gap-2"
+
+              <div
+                v-for="topic in lessonGroups(detail)"
+                v-else
+                :key="topic.id ?? 'loose'"
+                class="mt-2"
+              >
+                <p
+                  v-if="topic.id !== null"
+                  class="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant"
                 >
-                  <MaterialBadge
-                    :title="material.title"
-                    :mime-type="material.mimeType"
-                  />
-                  <span class="min-w-0 flex-1 truncate text-sm text-on-surface">
-                    {{ material.title }}
-                  </span>
-                  <span class="shrink-0 text-xs text-on-surface-variant">
-                    {{ formatBytes(material.sizeBytes) }}
-                  </span>
-                  <AppButton
+                  <BookOpen class="size-3.5 shrink-0" aria-hidden="true" />
+                  {{ topic.title }}
+                </p>
+                <ul class="mt-1.5 space-y-1.5">
+                  <li
+                    v-for="material in topic.materials"
+                    :key="material.id"
+                    class="flex flex-wrap items-center gap-2"
+                  >
+                    <MaterialBadge :title="material.title" :mime-type="material.mimeType" />
+                    <!-- A diagram is looked at, not only saved. A GIF plays. -->
+                    <MaterialPreview
+                      :course-id="detail.id"
+                      :material-id="material.id"
+                      :title="material.title"
+                      :mime-type="material.mimeType"
+                    />
+                    <span class="min-w-0 flex-1 truncate text-sm text-on-surface">
+                      {{ material.title }}
+                    </span>
+                    <span class="shrink-0 text-xs text-on-surface-variant">
+                      {{ formatBytes(material.sizeBytes) }}
+                    </span>
+                    <AppButton
   variant="secondaryMuted"
   class="shrink-0"
   :aria-label="t('student.courses.download', { title: material.title })"
   @click="download(material)"
 >
-                    <Download class="size-4" aria-hidden="true" />
-                  </AppButton>
-                </li>
-              </ul>
+                      <Download class="size-4" aria-hidden="true" />
+                    </AppButton>
+                  </li>
+                </ul>
+              </div>
             </div>
 
             <div class="mt-4">

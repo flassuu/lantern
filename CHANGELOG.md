@@ -6,6 +6,26 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Lessons and announcements inside a course
+
+- **A course can be a plan, not a pile.** A **lesson** is an ordered heading; any
+  test and any file can be filed under one, and the teacher moves lessons up and
+  down. Nothing has to have a lesson: a test added on Friday and a lesson planned
+  for Monday are both real, so anything with no lesson is shown at the end rather
+  than hidden. Deleting a lesson leaves what was under it behind - taking a
+  heading down is not a way to delete the reading filed under it.
+- **The teacher can say something to the class.** An **announcement** is a
+  sentence first - a file is optional, because requiring one would turn every note
+  into a download. Each one names its author, and only its author can take it
+  down. Students see the feed at the top of the course.
+- **Pictures in a course are looked at, not only downloaded.** Every image
+  material now has a thumbnail in the teacher's course page and in the student's,
+  and a tap opens it full-screen. A GIF plays.
+- Images and plain-text materials are now served **inline** rather than as an
+  attachment, so the browser draws them instead of saving them. Everything else
+  still arrives as a file, because a file that opens is a file that runs something
+  on the teacher's machine.
+
 ### Pictures in questions
 
 - **A question can carry a picture**, and so can an option and each side of a

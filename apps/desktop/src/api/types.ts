@@ -109,9 +109,29 @@ export interface CourseSummary {
   updatedAt: string
 }
 
+export interface CourseTopic {
+  id: string
+  title: string
+  position: number
+}
+
+export interface Announcement {
+  id: string
+  authorId: string
+  authorName: string
+  body: string
+  /** The reading or sheet that went out with it, when one did. */
+  material: Material | null
+  createdAt: string
+}
+
 export interface CourseDetails extends CourseSummary {
   materials: Material[]
-  tests: Array<{ id: string; title: string }>
+  /** The lessons, in the order the teacher put them in. */
+  topics: CourseTopic[]
+  /** What the teacher said to the class, newest first. */
+  announcements: Announcement[]
+  tests: Array<{ id: string; title: string; topicId: string | null }>
   students: Array<{ id: string; username: string; fullName: string }>
 }
 
@@ -127,6 +147,8 @@ export interface Material {
   title: string
   mimeType: string
   sizeBytes: number
+  /** The lesson it is filed under, or null when it is not part of one. */
+  topicId: string | null
   createdAt: string
 }
 

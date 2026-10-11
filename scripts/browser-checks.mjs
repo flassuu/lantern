@@ -404,6 +404,8 @@ async function seed() {
     },
   })
   created.users.push(NAMES.student)
+  // No enrolment call: the room's key carries the room's courses with it, which
+  // is why registering with a key puts a student on the course screen too.
 
   // A student who registered with no room key, so the teacher's Rooms tab has
   // somebody in the waiting list to approve.
@@ -1126,6 +1128,19 @@ function readAddressState(session, context) {
 async function studentPath(session, fixtures, context) {
   await openApp(session, context, { token: fixtures.student, locale: 'uk', width: 390 })
   await settle(session, context, 'content')
+  // The dashboard renders a skeleton whose "Loading…" is text like any other, so
+  // waiting for content waits for the skeleton. The greeting is what "finished"
+  // looks like on this screen, and it is the name this screen is about.
+  await session.run(
+    context,
+    `
+    for (let i = 0; i < 40; i += 1) {
+      if (document.body.textContent.includes('Check Student')) return 'ready';
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return 'still loading: ' + document.body.textContent.replace(/\\s+/g, ' ').slice(0, 80);
+  `,
+  )
 
   const home = await session.run(
     context,
@@ -1860,8 +1875,15 @@ async function mediaPath(session, fixtures) {
   const inPaper = await session.run(
     studentContext,
     `
-    const input = document.querySelector('input[inputmode=text]');
-    if (!input) return { joined: false, why: 'no join field' };
+    // Waited for, not looked for once: the dashboard shows a skeleton until it
+    // has asked the server whether there is a run in progress, and the join card
+    // only exists after that.
+    let input = null;
+    for (let i = 0; i < 40 && !input; i += 1) {
+      input = document.querySelector('input[inputmode=text]');
+      if (!input) await new Promise((r) => setTimeout(r, 250));
+    }
+    if (!input) return { joined: false, why: 'no join field', page: document.body.textContent.slice(0, 120) };
     const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
     set.call(input, ${JSON.stringify(fixtures.code)});
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1930,6 +1952,161 @@ async function contextClose(session, context) {
   await session.send('browsingContext.close', { context }).catch(() => {})
 }
 
+
+// 6.7: lessons and announcements, seen from both sides.
+//
+// The seed already has a course and a room, so this is about the two things a
+// course could not do before: filing things under a lesson, and saying something
+// to the class. Both are checked from the teacher and from the student, because
+// the student screen is the one that has to be readable on a phone.
+async function coursesPath(session, fixtures) {
+  const context = await session.page(1100, 1000)
+  await openApp(session, context, { token: fixtures.teacher, locale: 'en', width: 1100, height: 1000 })
+  await settle(session, context, 'tabs')
+  await clickTab(session, context, '^Courses$', 1800)
+
+  const opened = await session.run(
+    context,
+    `
+    // The row *is* the button: the card wraps it, so picking the element whose
+    // own text is the title is the row and not one of the row's actions.
+    const row = [...document.querySelectorAll('li button')].find((b) =>
+      /Browser course/.test(b.textContent),
+    );
+    if (!row) {
+      return {
+        opened: false,
+        why: 'no course row',
+        tabs: [...document.querySelectorAll('[role=tab]')].map((t) => t.textContent.trim()).join(' / '),
+        has: /Browser course/.test(document.body.textContent),
+        text: document.body.textContent.replace(/\s+/g, ' ').slice(0, 160),
+      };
+    }
+    row.click();
+    // Waited for, not slept for: the course arrives over the network, and a
+    // fixed wait is a race that passes on a fast machine and fails on a slow one.
+    for (let i = 0; i < 40; i += 1) {
+      if (/Lessons/.test(document.body.textContent)) return { opened: true };
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return {
+      opened: false,
+      why: 'the course opened but showed no lessons',
+      page: document.body.textContent.replace(/\\s+/g, ' ').slice(0, 160),
+    };
+  `,
+  )
+  check('teacher: a course opens into its lessons', opened.opened, opened.why ? `${opened.why}; tabs=${opened.tabs}; has=${opened.has}; page: ${opened.text}` : '')
+
+  // A lesson, named and typed by the teacher, is what the rows are filed under.
+  const madeTopic = await session.run(
+    context,
+    `
+    const input = document.querySelector('input[aria-label="Lesson name"]');
+    if (!input) return { ok: false, why: 'no lesson field' };
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    set.call(input, 'Lesson 1: rays');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 200));
+    const form = input.closest('form');
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    for (let i = 0; i < 40; i += 1) {
+      const body = document.body.textContent;
+      if (/Lesson 1: rays/.test(body)) return { ok: true };
+      const alert = document.querySelector('[role=alert]');
+      if (alert && alert.textContent.trim()) {
+        return { ok: false, why: 'the server refused it: ' + alert.textContent.trim().slice(0, 80) };
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return { ok: false, why: 'the lesson never appeared' };
+  `,
+  )
+  check('teacher: a lesson can be added', madeTopic.ok, madeTopic.why ?? '')
+
+  // An announcement is a sentence first. The file is optional, which is the
+  // whole reason it does not go through the material upload's upload button.
+  const posted = await session.run(
+    context,
+    `
+    const box = document.querySelector('textarea');
+    if (!box) return { ok: false, why: 'no announcement field' };
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    set.call(box, 'Read the diagram before Friday.');
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 200));
+    const button = [...document.querySelectorAll('button')].find((b) => /^Post$/.test(b.textContent.trim()));
+    if (!button) return { ok: false, why: 'no post button' };
+    button.click();
+    for (let i = 0; i < 20; i += 1) {
+      if (/Read the diagram before Friday/.test(document.body.textContent)) return { ok: true };
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return { ok: false, why: 'the announcement never appeared' };
+  `,
+  )
+  check('teacher: an announcement can be posted', posted.ok, posted.why ?? '')
+  await session.screenshot(context, join(SHOTS, 'teacher-course-lessons.png'))
+  await contextClose(session, context)
+
+  // The student, on a phone: the announcement is the part that changed today,
+  // so it has to be readable there.
+  const studentContext = await session.page(390, 844)
+  await openApp(session, studentContext, { token: fixtures.student, locale: 'uk', width: 390, height: 844 })
+  await settle(session, studentContext, 'content')
+  // The dashboard renders a skeleton that says "Loading…", and that is text, so
+  // waiting for text waits for the skeleton. The course row is what "finished"
+  // looks like on this screen.
+  const seen = await session.run(
+    studentContext,
+    `
+    // The dashboard shows the paper itself while a run is under way, and the
+    // course list is not on that screen - so a student who is answering a
+    // question has to leave it first. That is a real control, not a harness
+    // trick: it is how a student gets back to their courses.
+    const leave = [...document.querySelectorAll('button, a')].find((b) =>
+      /Вийти з тесту|Leave/.test(b.textContent || ''),
+    );
+    if (leave) {
+      leave.click();
+      await new Promise((r) => setTimeout(r, 800));
+    }
+    // The course list is fetched, so the row may not be there on the first
+    // frame. Waited for, with what was on screen reported if it never comes.
+    let row = null;
+    for (let i = 0; i < 40 && !row; i += 1) {
+      row = [...document.querySelectorAll('button')].find((b) =>
+        /Browser course/.test(b.textContent),
+      );
+      if (!row) await new Promise((r) => setTimeout(r, 250));
+    }
+    if (!row) {
+      return {
+        opened: false,
+        why: 'no course row for the student',
+        page: document.body.textContent.replace(/\\s+/g, ' ').slice(0, 200),
+      };
+    }
+    row.click();
+    for (let i = 0; i < 40; i += 1) {
+      if (/Read the diagram before Friday/.test(document.body.textContent)) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    const text = document.body.textContent;
+    return {
+      opened: true,
+      announcement: text.includes('Read the diagram before Friday.'),
+      author: /Вчитель|Teacher/.test(text),
+      withinScreen: document.querySelector('#app').scrollWidth <= window.innerWidth + 1,
+    };
+  `,
+  )
+  check('student: the announcement is on the course', seen.opened && seen.announcement, seen.why ?? '')
+  check('student: the course page fits a phone', seen.withinScreen === true)
+  await session.screenshot(studentContext, join(SHOTS, 'student-course-announcement.png'))
+  await contextClose(session, studentContext)
+}
+
 // ------------------------------------------------------------------- running
 
 async function main() {
@@ -1970,6 +2147,11 @@ async function main() {
     await happyPaths(session, fixtures)
     await studentPath(session, fixtures, context)
 
+    console.log('\nlessons and announcements')
+    await coursesPath(session, fixtures)
+
+    // After courses, not before: that path leaves the student out of the paper
+    // and out of the run, and this one joins a run.
     console.log('\npictures in questions')
     await mediaPath(session, fixtures)
 

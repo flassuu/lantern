@@ -59,10 +59,24 @@ export function normalizeTest<
 }
 
 /** A course as the client expects it; see `normalizeSession` for why. */
-export function normalizeCourse<T extends { tags?: Tag[] | null }>(
-  course: T,
-): T & { tags: Tag[] } {
-  return { ...course, tags: course.tags ?? [] }
+export function normalizeCourse<
+  T extends {
+    tags?: Tag[] | null
+    topics?: unknown[] | null
+    announcements?: unknown[] | null
+  },
+>(course: T): T & { tags: Tag[]; topics: unknown[]; announcements: unknown[] } {
+  return {
+    ...course,
+    tags: course.tags ?? [],
+    // Lessons and announcements arrived in 6.7. A server that has not been
+    // restarted since answers a course without them, and `course.topics.length`
+    // on an undefined takes the whole course screen down with it - not one card,
+    // the render. An empty list here means "this server has no lessons", which
+    // is what it means.
+    topics: course.topics ?? [],
+    announcements: course.announcements ?? [],
+  }
 }
 
 /**
