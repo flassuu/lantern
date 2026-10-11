@@ -749,20 +749,28 @@ Goal: a phone installs the client, and without Wi-Fi it still shows what it had.
 The icons are already in `public/`; there is no manifest and no service worker,
 so today a phone cannot install it and a reload offline shows nothing.
 
-- [ ] Client: `public/manifest.webmanifest` (name, short_name, start_url,
+- [x] Client: `public/manifest.webmanifest` (name, short_name, start_url,
       standalone, theme/background, the 192/512 icons and the maskable one) and
       the `<link rel="manifest">` in `index.html`
-- [ ] Client: the service worker as its own Vite entry (`src/pwa/sw.ts` →
-      `sw.js`), so the policy lives in tested pure functions
-      (`src/pwa/policy.ts`) and the worker itself stays thin
-- [ ] Policy (binding): mutations are **never** cached, WebSocket never
+- [x] Client: the service worker as a classic script (`public/sw.js`), with its
+      policy as plain functions on the global object and a test that imports the
+      file to read them - module workers are not everywhere a classroom phone is,
+      and a worker that will not register is a phone that shows nothing offline
+- [x] Policy (binding): mutations are **never** cached, WebSocket never
       intercepted, API reads are network-first with a cached fallback, hashed
       assets are cache-first, and the shell is precached under a cache name
       versioned from the build. A new worker activates and the app offers one
       reload
-- [ ] Client: registration in `main.ts`, production only, never inside Tauri, and
+- [x] Client: registration in `main.ts`, production only, never inside Tauri, and
       with a kill switch (`?nosw`) for a worker that lives too long on a phone
-- [ ] Tests: the cache policy as pure functions; the changelog and i18n entries
+- [x] Tests: the cache policy as pure functions; the changelog and i18n entries
+
+**Known limit, and it is the platform's.** A service worker needs a secure
+context: over HTTPS, or on `localhost`. A phone reaching the server at
+`http://192.168.x.x:3300` gets the whole client and none of the offline shell,
+and cannot install it - no code changes that. Making the classroom installable
+means giving the server an HTTPS address, which is its own piece of work (a
+certificate, and the trust question on a phone that has never seen the issuer).
 
 ### 7.5 An AppImage that runs — v0.7.5
 

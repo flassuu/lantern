@@ -2571,6 +2571,77 @@ async function studentResultPath(session, fixtures) {
   await contextClose(session, boardContext)
 }
 
+
+/**
+ * The offline shell: a manifest the page points at, and a worker that registers.
+ *
+ * It runs on the loopback address, which is a secure context, and that is the
+ * whole caveat: a browser only gives a page a service worker - and only lets a
+ * phone install it - over HTTPS or on localhost. Served to a phone as
+ * `http://192.168.1.65:3300` it is a plain HTTP origin, and none of this is
+ * available there. The check proves the code; where it can run is in the docs.
+ */
+async function pwaPath(session) {
+  const context = await session.page(390, 844)
+  await session.goto(context, `${BASE}/?check=pwa`)
+  const seen = await session.run(
+    context,
+    `
+    const link = document.querySelector('link[rel=manifest]');
+    const href = link ? new URL(link.getAttribute('href'), location.href).href : null;
+    let manifest = null;
+    if (href) {
+      try {
+        manifest = await (await fetch(href)).json();
+      } catch (error) {
+        manifest = null;
+      }
+    }
+    // Registration happens after the app mounts, so it is waited for rather
+    // than read once.
+    let scope = null;
+    for (let i = 0; i < 40 && scope === null; i += 1) {
+      try {
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (registration) scope = registration.scope;
+      } catch (error) {
+        scope = null;
+      }
+      if (scope === null) await new Promise((r) => setTimeout(r, 250));
+    }
+    return {
+      href,
+      name: manifest ? manifest.name : null,
+      display: manifest ? manifest.display : null,
+      icons: manifest && Array.isArray(manifest.icons) ? manifest.icons.length : 0,
+      maskable:
+        manifest && Array.isArray(manifest.icons)
+          ? manifest.icons.some((icon) => String(icon.purpose || '').includes('maskable'))
+          : false,
+      scope,
+      controlled: !!navigator.serviceWorker.controller,
+    };
+  `,
+  )
+  check(
+    'pwa: the page points at a manifest that names the app',
+    seen.href !== null && seen.name === 'LANtern' && seen.display === 'standalone',
+    `href=${seen.href} name=${seen.name} display=${seen.display}`,
+  )
+  check(
+    'pwa: the manifest carries the icons an install needs',
+    seen.icons >= 3 && seen.maskable === true,
+    `icons=${seen.icons} maskable=${seen.maskable}`,
+  )
+  check(
+    'pwa: the offline worker registers and takes the page',
+    typeof seen.scope === 'string' && seen.controlled === true,
+    `scope=${seen.scope} controlled=${seen.controlled}`,
+  )
+  await session.screenshot(context, join(SHOTS, 'student-offline-shell.png'))
+  await contextClose(session, context)
+}
+
 /** Closes a tab the harness opened, so a failure screenshot is of one page. */
 async function contextClose(session, context) {
   await session.send('browsingContext.close', { context }).catch(() => {})
@@ -2766,6 +2837,9 @@ async function main() {
 
     console.log('\nlayout: three roles, two languages, three widths')
     context = await layoutSweep(session, fixtures)
+
+    console.log('\nthe offline shell')
+    await pwaPath(session)
 
     console.log('\nhappy paths')
     await happyPaths(session, fixtures)

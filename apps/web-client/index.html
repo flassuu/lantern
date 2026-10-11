@@ -9,6 +9,9 @@
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="alternate icon" href="/favicon.ico" sizes="32x32" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180" />
+    <!-- Relative, like every other asset: the build is served from wherever the
+         server is pointed, not only from a domain root. -->
+    <link rel="manifest" href="./manifest.webmanifest" />
     <title>LANtern</title>
     <script>
       // Apply the persisted theme before first paint to avoid a light flash.

@@ -752,6 +752,7 @@ export default {
       file: 'File',
     },
     loading: 'Loading…',
+    newVersion: 'A new version is ready. Reload to use it.',
     cancel: 'Cancel',
     confirm: 'Confirm',
     close: 'Close',

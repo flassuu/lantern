@@ -106,6 +106,14 @@ host firewall (allow TCP 3300) or the two devices are on different networks.
 Vite's dev server (`pnpm dev:web`, port 5173) is separate — for phone testing
 use the built client served by the API server, not the Vite port.
 
+**The offline shell needs a secure address.** A browser only gives a page a
+service worker — and only offers to install it — over HTTPS or on `localhost`.
+Served to a phone as `http://192.168.x.x:3300` the client works completely, but
+it cannot be installed and its cache does not run, because a plain HTTP origin
+is not a secure context. The manifest and the worker are there and are used
+whenever the address is `https://` or `localhost`; a classroom that wants the
+installable, offline-capable client needs an HTTPS address for the server.
+
 ### Production build
 
 ```bash

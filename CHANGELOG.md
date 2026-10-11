@@ -16,6 +16,29 @@ versioning follows [SemVer](https://semver.org/).
   a course, a test or a room, marks itself so a second call is a no-op, and does
   everything in one transaction: a half-arrived demo would be worse than none.
 
+### The client can be installed, and works with the network gone
+
+- **A manifest and an offline shell.** The student client now carries a web app
+  manifest - name, icons including a maskable one, standalone display - and a
+  service worker that keeps the app shell so a phone that has lost the Wi-Fi still
+  opens what it had.
+- **What is cached, and what never is.** Navigations and `GET` requests go to the
+  network first and fall back to the last answer, so a screen is fresh whenever
+  the server is up; hashed assets come from the cache first; a write is never
+  cached and another origin is never answered for. The cache is named after a
+  fingerprint of the served page, so a new build retires the old cache without
+  anyone bumping a version.
+- **A new build is announced, not applied.** Reloading under a student half way
+  through a paper would throw their answers away, so a new worker offers a reload
+  instead of taking one.
+- **`?nosw` in the address removes it.** A worker that has gone wrong on a phone
+  nobody can reach has to have a way out.
+- **One caveat worth knowing before a classroom tries it:** browsers only give a
+  page a service worker over HTTPS or on `localhost`. At `http://192.168.x.x:3300`
+  the client works completely but cannot be installed and does not cache - a plain
+  HTTP origin is not a secure context. An installable classroom needs an HTTPS
+  address.
+
 ## [0.6.0] — 2026-10-11
 
 Phase 6 «Classroom experience»: the workbench could author a test and run one
