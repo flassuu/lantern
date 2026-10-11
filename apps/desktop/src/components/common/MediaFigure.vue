@@ -30,10 +30,19 @@ const id = computed(() => props.assetId)
 const { url, loading } = useAssetImage(id)
 const zoomed = ref(false)
 
+/**
+ * The picture at the size it wants, up to a ceiling.
+ *
+ * `w-full` is deliberately absent: it resolves against the button, and a
+ * button is an inline-block that sizes to its content - so a `width: 100%` image
+ * makes the question's width depend on the question's width. What is left is the
+ * natural size, which is what a teacher drew, capped so a tall diagram cannot
+ * push the answer off a phone.
+ */
 const frame = computed(() =>
   props.size === 'sm'
-    ? 'size-14 rounded-lg'
-    : 'max-h-72 w-full rounded-xl object-contain',
+    ? 'size-14 rounded-lg object-cover'
+    : 'max-h-72 max-w-full rounded-xl object-contain',
 )
 </script>
 

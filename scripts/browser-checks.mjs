@@ -24,6 +24,7 @@ import { spawn } from 'node:child_process'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
+import { deflateSync } from 'node:zlib'
 import { join } from 'node:path'
 
 const BASE = process.env.BASE ?? 'http://127.0.0.1:3300'
@@ -229,6 +230,75 @@ async function api(path, { token, method = 'GET', body } = {}) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/**
+ * A real PNG of a given size, written by hand.
+ *
+ * The fixture used to be a 1x1 pixel, which is enough to prove the bytes made
+ * the round trip and nothing more: a picture one pixel wide is drawn at one
+ * pixel wide, so the layout could be entirely broken and the check would still
+ * pass. A diagram-sized image is the only thing that can be measured.
+ */
+function makePng(width, height) {
+  const crcTable = []
+  for (let n = 0; n < 256; n += 1) {
+    let c = n
+    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
+    crcTable[n] = c >>> 0
+  }
+  const crc = (buf) => {
+    let c = 0xffffffff
+    for (const byte of buf) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8)
+    return (c ^ 0xffffffff) >>> 0
+  }
+  const chunk = (type, body) => {
+    const head = Buffer.alloc(8)
+    head.writeUInt32BE(body.length, 0)
+    head.write(type, 4, 'ascii')
+    const sum = Buffer.alloc(4)
+    sum.writeUInt32BE(crc(Buffer.concat([head.subarray(4), body])), 0)
+    return Buffer.concat([head, body, sum])
+  }
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(width, 0)
+  ihdr.writeUInt32BE(height, 4)
+  ihdr[8] = 8 // bit depth
+  ihdr[9] = 2 // truecolour
+  // Every scanline starts with filter byte 0 and carries two coloured squares,
+  // so a picture that came through with its bytes mangled is obvious by eye.
+  const raw = Buffer.alloc(height * (1 + width * 3))
+  for (let y = 0; y < height; y += 1) {
+    const row = y * (1 + width * 3)
+    for (let x = 0; x < width; x += 1) {
+      const at = row + 1 + x * 3
+      const left = x < width / 2
+      raw[at] = left ? 0x2f : 0xe9
+      raw[at + 1] = left ? 0x6d : 0x5c
+      raw[at + 2] = left ? 0x5e : 0x92
+    }
+  }
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ])
+}
+
+/**
+ * The raw-body upload the picture control makes: the bytes are the body and the
+ * name rides in the query, because a file picker has no other way to hand over
+ * a picture without a multipart parser.
+ */
+async function uploadAsset(token, bytes, name) {
+  const response = await fetch(`${BASE}/api/assets?name=${encodeURIComponent(name)}`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/octet-stream' },
+    body: bytes,
+  })
+  if (!response.ok) throw new Error(`POST /api/assets -> ${response.status}`)
+  return (await response.json()).asset
+}
+
 async function tokenOf(username, password) {
   const result = await api('/api/auth/login', {
     method: 'POST',
@@ -246,7 +316,7 @@ const NAMES = {
   teacher: `browsercheck_t${SUFFIX}`,
   student: `browsercheck_s${SUFFIX}`,
 }
-const created = { tests: [], sessions: [], rooms: [], courses: [], users: [] }
+const created = { tests: [], sessions: [], rooms: [], courses: [], users: [], assets: [] }
 
 /** Everything the checks need, built through the API and torn down after. */
 async function seed() {
@@ -277,6 +347,11 @@ async function seed() {
   created.rooms.push(room.room.id)
   created.courses.push(course.id)
 
+  // 6.6: a picture a question can point at, uploaded the way the editor uploads.
+  const asset = await uploadAsset(teacher, makePng(240, 160), 'diagram.png')
+  created.assets.push(asset.id)
+  const assetId = asset.id
+
   const test = await api('/api/tests', {
     token: teacher,
     method: 'POST',
@@ -293,6 +368,9 @@ async function seed() {
           body: 'Two plus two?',
           points: 1,
           payload: {
+            // 6.6: the question points at a picture by id, and the picture is
+            // diagram-sized so the layout around it can be measured too.
+            media: { assetId },
             options: [
               { key: 'a', text: '4' },
               { key: 'b', text: '5' },
@@ -343,6 +421,9 @@ async function seed() {
     student: await tokenOf(NAMES.student, 'browsercheck-pass-1'),
     key: room.room.key,
     testId: test.test.id,
+    testTitle: `Browser check ${SUFFIX}`,
+    assetId,
+    code: session.session.joinCode,
   }
 }
 
@@ -355,6 +436,7 @@ async function cleanup() {
   for (const id of created.tests) await api(`/api/tests/${id}`, { token: teacher, method: 'DELETE' }).catch(() => {})
   for (const id of created.rooms) await api(`/api/rooms/${id}`, { token: teacher, method: 'DELETE' }).catch(() => {})
   for (const id of created.courses) await api(`/api/courses/${id}`, { token: teacher, method: 'DELETE' }).catch(() => {})
+  for (const id of created.assets) await api(`/api/assets/${id}`, { token: teacher, method: 'DELETE' }).catch(() => {})
   // The student is left behind on purpose: deleting accounts is admin-only, and
   // the teacher cannot — nor should be able to — reach that endpoint.
 }
@@ -1646,6 +1728,208 @@ async function roleCardText(session, context, index) {
 }
 
 
+
+// 6.6: a picture in a question, seen by the teacher and then by the student.
+//
+// The editor is checked in the browser rather than over the API, because the
+// part that can break is the half the API cannot see: the picture is fetched
+// with the token in a header, held as an object URL, and drawn by an <img>. A
+// check that only asserted the id would pass against a component that renders
+// nothing at all.
+async function mediaPath(session, fixtures) {
+  const context = await session.page(1100, 1000)
+
+  // The teacher's own test, opened for editing: the picture is in the question.
+  await openApp(session, context, { token: fixtures.teacher, locale: 'en', width: 1100, height: 1000 })
+  await settle(session, context, 'tabs')
+  await clickTab(session, context, '^Tests$', 1800)
+
+  const opened = await session.run(
+    context,
+    `
+    const row = [...document.querySelectorAll('li')].find((li) =>
+      li.textContent.includes(${JSON.stringify(fixtures.testTitle)}),
+    );
+    if (!row) return { opened: false, why: 'no test row' };
+    const edit = [...row.querySelectorAll('button')].find((b) => /^Edit$|Редагувати/.test(b.textContent.trim()));
+    if (!edit) return { opened: false, why: 'no edit button on the row' };
+    edit.click();
+    await new Promise((r) => setTimeout(r, 1200));
+    return { opened: !!document.querySelector('fieldset') };
+  `,
+  )
+  check('teacher: the test opens in the editor', opened.opened, opened.why ?? '')
+
+  const inEditor = await session.run(
+    context,
+    `
+    // The <img> that matters is the one the question drew, not the icons.
+    const img = [...document.querySelectorAll('fieldset img')].at(-1);
+    if (!img) return { drawn: false, why: 'no image in the question card' };
+    await new Promise((resolve) => {
+      if (img.complete && img.naturalWidth > 0) return resolve();
+      img.addEventListener('load', resolve, { once: true });
+      img.addEventListener('error', resolve, { once: true });
+      setTimeout(resolve, 4000);
+    });
+    return {
+      drawn: true,
+      // A blob URL, not a path to the API: that is what proves the bytes were
+      // fetched with the token rather than by the <img> on its own.
+      blob: img.src.startsWith('blob:'),
+      loaded: img.naturalWidth > 0,
+      w: img.naturalWidth,
+    };
+  `,
+  )
+  check(
+    'teacher: the editor draws the question picture',
+    inEditor.drawn && inEditor.blob && inEditor.loaded,
+    inEditor.why ?? `blob=${inEditor.blob} loaded=${inEditor.loaded} (${inEditor.w}px wide)`,
+  )
+  await session.screenshot(context, join(SHOTS, 'teacher-editor-image.png'))
+
+  // The preview is what the class will see, so the picture has to be in it too.
+  const preview = await session.run(
+    context,
+    `
+    const button = [...document.querySelectorAll('button')].find((b) =>
+      /^(Preview|Перегляд)$/.test(b.textContent.trim()),
+    );
+    if (!button) return { opened: false, why: 'no preview button' };
+    button.click();
+    await new Promise((r) => setTimeout(r, 900));
+    const img = [...document.querySelectorAll('[role=dialog] img')].at(-1);
+    if (!img) return { opened: true, drawn: false, why: 'the preview opened with no image' };
+    await new Promise((resolve) => {
+      if (img.complete && img.naturalWidth > 0) return resolve();
+      img.addEventListener('load', resolve, { once: true });
+      img.addEventListener('error', resolve, { once: true });
+      setTimeout(resolve, 4000);
+    });
+    return { opened: true, drawn: true, loaded: img.naturalWidth > 0, blob: img.src.startsWith('blob:') };
+  `,
+  )
+  check(
+    'teacher: the preview shows the question picture',
+    preview.opened && preview.drawn && preview.loaded,
+    preview.why ?? `loaded=${preview.loaded}`,
+  )
+  await session.screenshot(context, join(SHOTS, 'teacher-preview-image.png'))
+
+  // And the lightbox, which is what a diagram is actually looked at through.
+  const lightbox = await session.run(
+    context,
+    `
+    const dialog = document.querySelector('[role=dialog]');
+    // The button that *is* the picture, not the first button in the dialog: the
+    // preview's own close control comes first and clicking it would close the
+    // dialog instead, which is a different check entirely.
+    const button = [...(dialog?.querySelectorAll('button') ?? [])].find((b) =>
+      b.querySelector('img'),
+    );
+    if (!button) return { opened: false, why: 'no image button in the preview' };
+    // Both the preview and the lightbox are dialogs on <body> through a Teleport,
+    // so the enlarged one is recognised by being a second dialog, not by a query
+    // that could just as easily pick the preview again.
+    const before = document.querySelectorAll('body > div[role=dialog]').length;
+    button.click();
+    await new Promise((r) => setTimeout(r, 700));
+    const dialogs = document.querySelectorAll('body > div[role=dialog]');
+    const zoomed = dialogs.length > before ? dialogs[dialogs.length - 1] : null;
+    const big = zoomed?.querySelector('img');
+    return {
+      opened: !!big,
+      modal: zoomed?.getAttribute('aria-modal') ?? null,
+      fillsScreen: zoomed ? zoomed.getBoundingClientRect().width >= window.innerWidth - 2 : false,
+    };
+  `,
+  )
+  check(
+    'teacher: tapping a picture opens it larger',
+    lightbox.opened === true && lightbox.modal === 'true',
+    lightbox.why ?? `modal=${lightbox.modal} fills=${lightbox.fillsScreen}`,
+  )
+  await session.screenshot(context, join(SHOTS, 'teacher-image-lightbox.png'))
+
+  // The student, on a phone, in the paper. The whole point of the feature.
+  const studentContext = await session.page(390, 844)
+  await openApp(session, studentContext, { token: fixtures.student, locale: 'uk', width: 390, height: 844 })
+  await settle(session, studentContext, 'content')
+
+  const inPaper = await session.run(
+    studentContext,
+    `
+    const input = document.querySelector('input[inputmode=text]');
+    if (!input) return { joined: false, why: 'no join field' };
+    const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    set.call(input, ${JSON.stringify(fixtures.code)});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 300));
+    const go = [...document.querySelectorAll('button')].find((b) => /^Join|Приєднатися$/.test(b.textContent.trim()));
+    if (!go) return { joined: false, why: 'no join button' };
+    go.click();
+    // The run is already started, so this is the paper rather than a lobby - and
+    // the picture arrives as a blob the moment the payload lands.
+    for (let i = 0; i < 40; i += 1) {
+      const img = [...document.querySelectorAll('main img')].at(-1);
+      if (img && img.complete && img.naturalWidth > 0) {
+        // Drawn is not the same as drawn at a size a person can read: the box
+        // is what the layout gave the picture, and a diagram collapsed to a dot
+        // passes every check that only looks at the bytes.
+        const box = img.getBoundingClientRect();
+        const style = getComputedStyle(img);
+        const parent = img.parentElement.getBoundingClientRect();
+        return {
+          joined: true,
+          drawn: true,
+          blob: img.src.startsWith('blob:'),
+          loaded: true,
+          alt: img.alt,
+          readable: box.width >= 120 && box.height >= 80,
+          box: Math.round(box.width) + 'x' + Math.round(box.height),
+          parent: Math.round(parent.width) + 'x' + Math.round(parent.height),
+          css: style.width + ' / ' + style.height + ' / ' + style.objectFit,
+          natural: img.naturalWidth + 'x' + img.naturalHeight,
+          withinScreen: box.right <= window.innerWidth + 1,
+          text: document.body.textContent.includes('Two plus two?'),
+        };
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return { joined: true, drawn: false, why: 'no picture in the paper', page: document.body.textContent.slice(0, 120) };
+  `,
+  )
+  check(
+    'student: the question picture is on the paper',
+    inPaper.joined && inPaper.drawn && inPaper.loaded && inPaper.blob,
+    inPaper.why ?? `blob=${inPaper.blob} alt=${inPaper.alt}`,
+  )
+  check(
+    'student: the picture fits the phone and the question is still there',
+    inPaper.withinScreen && inPaper.text,
+    inPaper.why ?? '',
+  )
+  check(
+    'student: the picture is drawn at a size that can be read',
+    inPaper.readable === true,
+    `drawn ${inPaper.box} in a ${inPaper.parent} button, css ${inPaper.css}, natural ${inPaper.natural}`,
+  )
+  check(
+    'student: the picture says what it is of',
+    (inPaper.alt ?? '').includes('Two plus two'),
+    `alt was ${JSON.stringify(inPaper.alt)}`,
+  )
+  await session.screenshot(studentContext, join(SHOTS, 'student-paper-image.png'))
+  await contextClose(session, studentContext)
+  await contextClose(session, context)
+}
+
+/** Closes a tab the harness opened, so a failure screenshot is of one page. */
+async function contextClose(session, context) {
+  await session.send('browsingContext.close', { context }).catch(() => {})
+}
+
 // ------------------------------------------------------------------- running
 
 async function main() {
@@ -1685,6 +1969,9 @@ async function main() {
     console.log('\nhappy paths')
     await happyPaths(session, fixtures)
     await studentPath(session, fixtures, context)
+
+    console.log('\npictures in questions')
+    await mediaPath(session, fixtures)
 
     await session.close()
   } catch (error) {

@@ -608,12 +608,16 @@ onMounted(() => {
                  is running out of time. A lobby has no clock to show; the tiles
                  below are all zero anyway. -->
             <div v-if="boardStatus !== 'lobby'" class="flex items-stretch gap-2">
-              <!-- Square, and exactly the height of the clock beside it: adding
-                   time is a nudge, and a full-width button for it would read as
-                   the screen's main action. -->
+              <!-- The height of the clock beside it: adding time is a nudge, and a
+                   full-width button for it would read as the screen's main action.
+                   The width is a floor of its own rather than `aspect-square`,
+                   because the clock's height comes from `self-stretch` - and a
+                   stretched height is decided after the width, so the ratio never
+                   gets a chance to apply. The result was a 27px-wide button with
+                   text in it: under the floor a thumb can hit. -->
               <button
                 type="button"
-                class="state-layer grid aspect-square shrink-0 place-items-center self-stretch rounded-[var(--radius-control)] bg-primary text-xs font-semibold text-on-primary transition-colors duration-200 disabled:pointer-events-none disabled:opacity-60"
+                class="state-layer grid min-w-11 shrink-0 place-items-center self-stretch rounded-[var(--radius-control)] bg-primary text-xs font-semibold text-on-primary transition-colors duration-200 disabled:pointer-events-none disabled:opacity-60"
                 :disabled="!canExtend"
                 :title="t('teacher.live.addTimeTitle')"
                 @click="extend(15)"
