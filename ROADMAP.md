@@ -538,22 +538,29 @@ Decisions taken while building it:
 Goal: for each student, what was right and wrong, how long each question took,
 and how the attempt went.
 
-- [ ] Migration **v9**: `participation_answers.time_ms`, `answered_at`,
-      `changed`; `participations.total_time_ms`, `focus_lost` (the events table
-      landed in v7)
-- [ ] Server: `submit` accepts and stores timings, changes, events, `focus_lost`
+- [x] Migration **v10** (v9 was taken by `paused_at`):
+      `participation_answers.time_ms`, `answered_at`, `changed`;
+      `participations.total_time_ms`, `focus_lost` (the events table landed in v7)
+- [x] Server: `submit` accepts and stores timings, changes, events, `focus_lost`
       and `total_time_ms`; `GET /api/sessions/:id/participants/:userId` returns
       the questions, the student's answer, correctness, points, time, the events
       and the start/finish times; the test report gains time aggregates
-- [ ] Client: `useQuestionTiming` in the runner — time on the visible question,
+- [x] Client: `useQuestionTiming` in the runner — time on the visible question,
       number of changes, sent on submission
-- [ ] Client: `ParticipantDetailDialog.vue`, opened from a participant row — a
+- [x] Client: `ParticipantDetailDialog.vue`, opened from a participant row — a
       header, a per-question table (right/wrong, points, time, "changed N
       times"), the activity timeline, and metrics (average time, where focus was
       lost)
-- [ ] i18n: `teacher.participantDetail.*`
-- [ ] Tests: accepting and storing timings and events, the detail endpoint and
+- [x] i18n: `teacher.participantDetail.*`
+- [x] Tests: accepting and storing timings and events, the detail endpoint and
       its permissions; the timing computation as pure functions
+
+Two things the plan did not say, found while building it: timings exist only
+where a question was on its own screen, so a paper shown all at once reports no
+time at all and the view shows a dash - a zero would be a lie. And `focus_lost`
+is the server's count of the events it recorded itself, not a number the student
+sends, so a teacher deciding whether an answer was careful is reading a figure
+the student cannot edit.
 
 ### 6.6 The test editor, media, statistics — v0.6.6
 

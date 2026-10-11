@@ -6,6 +6,25 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### One student's run, in full
+
+- **Every row on the board opens.** Click a participant and the run appears in
+  full: the questions in the order they saw them, what they answered next to the
+  right answer, the points, **how long each question took**, **how many times
+  they changed it**, and the score with total and average time. This is the
+  teacher's own run, so the answer key is on screen — which is the point of
+  looking at it after the fact.
+- **Focus loss is recorded where it happens.** The server already logged every
+  time a student's window went hidden; it now keeps the count on the attempt
+  itself, so the detail view can say so and the test report can average time per
+  question — a question that is both hard *and* slow is the one worth teaching
+  again.
+- **Timings are measured on the question that was on screen.** A paper shown one
+  question at a time times each one; a paper shown all at once has no single
+  question to time and reports none, and the detail view shows a dash rather than
+  a zero.
+
+
 ### Export asks where and in what format
 
 - **Export** (was *Export CSV*) opens the **system save dialog**, so the file

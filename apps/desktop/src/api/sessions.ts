@@ -319,11 +319,74 @@ export async function getCurrentSession(): Promise<SessionState> {
 export async function submitSession(
   sessionId: string,
   answers: Record<string, AnswerInput>,
+  timings?: Record<string, AnswerTiming>,
 ): Promise<SubmitResult> {
   return apiFetch<SubmitResult>(`/api/sessions/${sessionId}/submit`, {
     method: 'POST',
-    body: JSON.stringify({ answers }),
+    // `timings` is optional in both directions: a client that never measured
+    // still submits, it just says nothing about time.
+    body: JSON.stringify(timings === undefined ? { answers } : { answers, timings }),
   })
+}
+
+/** One student's run in one session: the questions, the answers, the time. */
+export async function getAttemptDetail(
+  sessionId: string,
+  userId: string,
+): Promise<AttemptDetail> {
+  const result = await apiFetch<{ detail: AttemptDetail }>(
+    `/api/sessions/${encodeURIComponent(sessionId)}/participants/${encodeURIComponent(userId)}`,
+  )
+  return result.detail
+}
+
+/** What one answer cost the student, as the client measured it. */
+export interface AnswerTiming {
+  timeMs?: number
+  changed?: number
+}
+
+/** One question as this student answered it, with what it cost them. */
+export interface AttemptQuestion {
+  questionId: string
+  body: string
+  type: StudentQuestion['type']
+  points: number
+  position: number
+  /** What they answered, or null when they never touched it. */
+  answer: AnswerInput | null
+  /** The right answer, from the paper the teacher wrote. */
+  correct: Record<string, unknown>
+  isCorrect: boolean
+  pointsAwarded: number
+  timeMs: number | null
+  changed: number
+}
+
+export interface AttemptEvent {
+  kind: 'visible' | 'hidden'
+  at: string
+}
+
+/** One student's run in one session, in full. */
+export interface AttemptDetail {
+  userId: string
+  username: string
+  fullName: string
+  status: ParticipationStatus
+  score: number | null
+  maxScore: number | null
+  percent: number | null
+  passed: boolean | null
+  joinedAt: string
+  submittedAt: string | null
+  totalTimeMs: number | null
+  focusLost: number
+  /** The mean over the questions that were timed; null when none were. */
+  averageMs: number | null
+  slowest: { questionId: string; body: string; timeMs: number } | null
+  questions: AttemptQuestion[]
+  events: AttemptEvent[]
 }
 
 /** One finished attempt in the student's own history. */

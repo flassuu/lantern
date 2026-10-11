@@ -7,6 +7,7 @@ import {
   ClipboardList,
   Percent,
   Printer,
+  Timer,
   TrendingDown,
   TrendingUp,
   Trophy,
@@ -66,6 +67,23 @@ const cards = computed(() => [
 
 function formatType(type: string): string {
   return t(`teacher.types.${type}`)
+}
+
+/**
+ * How long the class sat on a question, or nothing at all: a paper shown all at
+ * once has no single question on screen, so there is no time to average and the
+ * row says so rather than showing a zero.
+ */
+function formatAverage(ms: number | null): string {
+  if (ms === null) return ''
+  if (ms < 1000) return t('teacher.participantDetail.underASecond')
+  if (ms < 60_000) {
+    return t('teacher.participantDetail.seconds', { seconds: Math.round(ms / 1000) })
+  }
+  return t('teacher.participantDetail.minutesSeconds', {
+    minutes: Math.floor(ms / 60_000),
+    seconds: Math.round((ms % 60_000) / 1000),
+  })
 }
 
 /** Hands the report to the browser's own print dialog: no PDF dependency needed. */
@@ -225,13 +243,27 @@ function printReport(): void {
               data-print-keep
             />
           </div>
-          <p v-if="question.answers > 0" class="mt-1 text-[11px] text-on-surface-variant">
-            {{ t('teacher.results.questionLine', {
-              correct: question.correct,
-              answers: question.answers,
-              points: question.points,
-            }) }}
-          </p>
+          <div
+            v-if="question.answers > 0"
+            class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-on-surface-variant"
+          >
+            <span>
+              {{ t('teacher.results.questionLine', {
+                correct: question.correct,
+                answers: question.answers,
+                points: question.points,
+              }) }}
+            </span>
+            <!-- A question that is both hard and slow is the one worth teaching
+                 again, and the two facts only meet here. -->
+            <span
+              v-if="formatAverage(question.averageMs) !== ''"
+              class="inline-flex items-center gap-1"
+            >
+              <Timer class="size-3" aria-hidden="true" />
+              {{ t('teacher.results.averageTime', { time: formatAverage(question.averageMs) }) }}
+            </span>
+          </div>
         </li>
       </ul>
     </AppCard>

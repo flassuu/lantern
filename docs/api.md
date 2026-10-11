@@ -692,6 +692,19 @@ to `active`, and broadcasts the change to every phone watching. Idempotent — a
 second call on a run that has started changes nothing — and `409` once the run is
 finished.
 
+### `GET /api/sessions/:id/participants/:userId`
+
+Teacher only, and only the teacher's own run (an admin may read any). One
+student's attempt in full: the questions in the order *they* saw them, their
+answer, whether it was right, the points, the time on each question, how many
+times they changed it, the activity log, when they joined and submitted, the
+mean time and the question the time went on.
+
+`timeMs` is `null` where no timing was measured — a paper shown all at once has
+no single question on screen — and `focusLost` is the server's own count of the
+visibility events it recorded. A user who was not in the run is `404`, not an
+empty page.
+
 ### `GET /api/sessions/:id/results?format=csv|txt|pdf`
 
 Admin & teacher (owner). One session's report, in any of the three shapes the
@@ -779,12 +792,17 @@ is running.
 
 ### `POST /api/sessions/:id/submit`
 
-Student only. Body `{ "answers": { "<questionId>": … } }`.
+Student only. Body `{ "answers": { "<questionId>": … }, "timings": { "<questionId>": { "timeMs": 4200, "changed": 2 } } }`.
 
 ```json
 { "participation": { "status": "submitted", "…": "…" },
   "result": { "score": 6, "maxScore": 8, "percent": 75, "passed": true } }
 ```
+
+`timings` is optional: a client that never measured still submits, and the
+attempt stores `total_time_ms = null` rather than zero. Each entry is bounded
+before it is believed — nobody sits on one question for an hour, so past that it
+is a clock fault, not a record.
 
 - `403 FORBIDDEN` — the student never joined
 - `409 CONFLICT` — already submitted, or the session is over

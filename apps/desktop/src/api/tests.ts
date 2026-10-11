@@ -97,6 +97,8 @@ export interface QuestionStat {
   answers: number
   correct: number
   percent: number
+  /** Mean time the class spent on it; null when no answer was timed. */
+  averageMs: number | null
 }
 
 export interface TestResults {

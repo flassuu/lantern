@@ -46,6 +46,7 @@ import TestPicker from './TestPicker.vue'
 import TagInput from './TagInput.vue'
 import RunTimer from './RunTimer.vue'
 import SessionTabs from './SessionTabs.vue'
+import ParticipantDetailDialog from './ParticipantDetailDialog.vue'
 import SessionLibraryDialog from './SessionLibraryDialog.vue'
 import SessionSettingsFields from './SessionSettingsFields.vue'
 import { useConfirm } from '../../composables/confirm'
@@ -200,6 +201,13 @@ function avatarClass(entry: ParticipantEntry): string {
   if (entry.passed === true) return 'bg-success-container text-on-success-container'
   if (entry.passed === false) return 'bg-error-container text-on-error-container'
   return 'bg-surface-container-highest text-on-surface-variant'
+}
+
+/** Which student's run is open, or null when none is. The dialog fetches it. */
+const detailUserId = ref<string | null>(null)
+
+function openDetail(userId: string): void {
+  detailUserId.value = userId
 }
 
 function errorMessage(error: unknown): string {
@@ -930,11 +938,13 @@ onMounted(() => {
           </p>
 
           <ul v-else class="mt-3 space-y-1.5">
-            <li
-              v-for="entry in sortedParticipants"
-              :key="entry.userId"
-              class="flex items-center gap-3 rounded-xl border border-outline-variant bg-surface-container-high px-3 py-2"
-            >
+            <li v-for="entry in sortedParticipants" :key="entry.userId">
+              <button
+                type="button"
+                class="flex w-full items-center gap-3 rounded-xl border border-outline-variant bg-surface-container-high px-3 py-2 text-left transition-colors duration-200 hover:bg-surface-container-highest"
+                :aria-label="t('teacher.participantDetail.open')"
+                @click="openDetail(entry.userId)"
+              >
               <span
                 class="grid size-9 shrink-0 place-items-center rounded-full text-xs font-semibold"
                 :class="avatarClass(entry)"
@@ -980,6 +990,7 @@ onMounted(() => {
                   {{ entry.passed ? t('teacher.live.passed') : t('teacher.live.failed') }}
                 </span>
               </span>
+              </button>
             </li>
           </ul>
         </AppCard>
@@ -987,6 +998,13 @@ onMounted(() => {
         </div>
       </div>
     </template>
+
+    <ParticipantDetailDialog
+      v-if="detailUserId !== null && selected !== null"
+      :session-id="selected.id"
+      :user-id="detailUserId"
+      @close="detailUserId = null"
+    />
 
     <AppDialog
       v-if="showStart"

@@ -15,6 +15,7 @@ import {
   type Responses,
 } from '../../student/sessionLogic'
 import { useConfirm } from '../../composables/confirm'
+import { useQuestionTiming } from '../../composables/useQuestionTiming'
 import { useToast } from '../../composables/toast'
 import QuestionAnswerInput from './QuestionAnswerInput.vue'
 import AppButton from '../../components/common/AppButton.vue'
@@ -94,6 +95,28 @@ function responseFor(question: StudentQuestion): QuestionResponse {
   return created
 }
 
+/**
+ * What each answer cost: how long the question was on screen, and how many times
+ * they went back on it. The teacher's detail view is the only reader.
+ */
+const timing = useQuestionTiming()
+
+// The question on screen is the one the clock runs on. A paper shown all at
+// once has no such question, so no time is measured at all - which the detail
+// view says with a dash rather than pretending it was instant.
+watch(
+  [paged, page],
+  () => {
+    timing.setCurrent(paged.value ? (current.value?.id ?? null) : null)
+  },
+  { immediate: true },
+)
+
+function onAnswer(questionId: string, response: QuestionResponse): void {
+  responses.value[questionId] = response
+  timing.noteChange(questionId)
+}
+
 async function send(): Promise<void> {
   if (submitting.value) return
   const ok = await confirm({
@@ -105,6 +128,7 @@ async function send(): Promise<void> {
     const outcome = await submitSession(
       props.state.session.id,
       buildAnswers(questions.value, responses.value),
+      timing.snapshot(),
     )
     // `released` is false when the teacher holds the results: the paper was
     // graded, but the student is not shown how they did yet.
@@ -222,7 +246,7 @@ onBeforeUnmount(() => {
           :options="optionsOf(current)"
           :choices="matchingChoices(current)"
           :model-value="responseFor(current)"
-          @update:model-value="responses[current.id] = $event"
+          @update:model-value="onAnswer(current.id, $event)"
         />
       </AppCard>
 
@@ -254,7 +278,7 @@ onBeforeUnmount(() => {
           :options="optionsOf(question)"
           :choices="matchingChoices(question)"
           :model-value="responseFor(question)"
-          @update:model-value="responses[question.id] = $event"
+          @update:model-value="onAnswer(question.id, $event)"
         />
       </AppCard>
     </ol>

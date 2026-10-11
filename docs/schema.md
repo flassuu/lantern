@@ -360,5 +360,15 @@ checked by the routes, not here.
   `live_sessions.results_released`) and `participations.option_order`. Settings
   are JSON rather than a column per option: they are a bag of choices that grow,
   share one lifetime, and are read whole, never queried.
+- v9 adds `live_sessions.paused_at`: a pause stamps it, a resume moves
+  `started_at` forward by the length of the hold, so one clock serves the board
+  and every phone without either keeping its own tally.
+- v10 gives the attempt a shape of its own — `participation_answers.time_ms`,
+  `answered_at`, `changed`, and `participations.total_time_ms`, `focus_lost`.
+  The change count is there because a rewritten answer is not the confident one
+  it looks like, and `focus_lost` is the server's own count of the `hidden`
+  events it already records, so it cannot be edited by the student it describes.
+  All of it is nullable or zero-valued where it is not known: an attempt from a
+  client that never measured stores null, and `null` must not read as zero.
 - Migrations run idempotently at startup, in order; each is wrapped in a
   transaction and versioned in `schema_migrations`.
