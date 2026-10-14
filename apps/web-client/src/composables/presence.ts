@@ -3,6 +3,23 @@ import { getToken } from '../api/client'
 import type { LiveSessionStatus } from '../api/sessions'
 
 /**
+ * The run's clock, as the server last reported it.
+ *
+ * A student's own copy of the session is frozen at the moment they joined it,
+ * and a pause, a resume and "+15s" all happen afterwards, while they are
+ * answering. The socket is how they hear about it: the status frame carries the
+ * start mark, the pause mark and the limit, so the student's clock is the
+ * server's clock rather than a tally of its own that drifts from it.
+ */
+export interface SessionClock {
+  /** Always present: a frame without it is not a clock and is ignored. */
+  serverNow: string
+  startedAt: string | null
+  pausedAt: string | null
+  timeLimitSec: number | null
+}
+
+/**
  * What a student tells the room about themselves.
  *
  * Two things travel over this socket and nothing else: whether the window is on
@@ -23,6 +40,15 @@ export function usePresence(sessionId: Ref<string | null>) {
   const visible = ref(true)
   /** Set once the student has looked away, so the paper can say so afterwards. */
   const leftOnce = ref(false)
+  /**
+   * What the server last said the clock reads, or null when it has not said yet.
+   *
+   * Replaced whole on every frame rather than merged field by field: a field set
+   * to null by a frame ("no limit on this run") has to be told apart from a
+   * field that has simply never arrived, and only a whole replacement tells the
+   * two apart without a second flag.
+   */
+  const clock = ref<SessionClock | null>(null)
 
   let socket: WebSocket | null = null
 
@@ -73,8 +99,22 @@ export function usePresence(sessionId: Ref<string | null>) {
     }
     socket.onmessage = (event: MessageEvent<string>) => {
       try {
-        const message = JSON.parse(event.data) as { type?: string; status?: LiveSessionStatus }
-        if (message.type === 'status' && message.status) status.value = message.status
+        const message = JSON.parse(event.data) as {
+          type?: string
+          status?: LiveSessionStatus
+        } & Partial<SessionClock>
+        if (message.type !== 'status' || !message.status) return
+        status.value = message.status
+        // The clock comes with the status. A frame that carries none of the four
+        // leaves the student's own numbers alone rather than blanking them, so a
+        // server too old to send a clock cannot empty a clock that is working.
+        if (message.serverNow === undefined) return
+        clock.value = {
+          serverNow: message.serverNow,
+          startedAt: message.startedAt ?? null,
+          pausedAt: message.pausedAt ?? null,
+          timeLimitSec: message.timeLimitSec ?? null,
+        }
       } catch {
         // A malformed frame is not worth a broken screen.
       }
@@ -85,6 +125,7 @@ export function usePresence(sessionId: Ref<string | null>) {
     sessionId,
     (id) => {
       status.value = null
+      clock.value = null
       if (id) open(id)
       else close()
     },
@@ -98,5 +139,5 @@ export function usePresence(sessionId: Ref<string | null>) {
     close()
   })
 
-  return { status, visible, leftOnce, reportProgress }
+  return { status, visible, leftOnce, clock, reportProgress }
 }

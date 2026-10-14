@@ -126,6 +126,9 @@ interface SessionBody {
     status: string
     timeLimitSec: number | null
     passingPercent: number | null
+    /** The clock: what a run started on, what it is paused at. */
+    startedAt: string | null
+    pausedAt: string | null
     test: { title: string; questionCount: number }
   }
 }
@@ -934,6 +937,203 @@ describe('live sessions: teacher board', () => {
       payload: { code: session.joinCode },
     })
     expect(lateJoin.statusCode).toBe(409)
+  })
+
+  it('a paused run is not out of time, however long the pause lasts', async () => {
+    const teacherToken = await login('teacher1', 'teacher-pass-1')
+    const adminToken = await login('admin', 'test-admin-password')
+    const registered = await app.server.inject({
+      method: 'POST',
+      url: '/api/auth/register',
+      payload: { username: 'studentPause', password: 'student-pass-1', fullName: 'Thirteen' },
+    })
+    const studentId = (registered.json() as { user: { id: string } }).user.id
+    await app.server.inject({
+      method: 'PATCH',
+      url: `/api/users/${studentId}/status`,
+      headers: bearer(adminToken),
+      payload: { status: 'approved' },
+    })
+    const studentToken = await login('studentPause', 'student-pass-1')
+
+    const created = await app.server.inject({
+      method: 'POST',
+      url: '/api/tests',
+      headers: bearer(teacherToken),
+      payload: {
+        title: 'Paused quiz',
+        timeLimitSec: 60,
+        questions: [
+          {
+            type: 'true_false',
+            body: 'Two plus two is four.',
+            points: 1,
+            position: 0,
+            payload: { correct: true },
+          },
+        ],
+      },
+    })
+    const testId = (created.json() as { test: { id: string } }).test.id
+    const started = await app.server.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: bearer(teacherToken),
+      payload: { testId },
+    })
+    const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
+    await app.server.inject({
+      method: 'POST',
+      url: '/api/sessions/join',
+      headers: bearer(studentToken),
+      payload: { code: session.joinCode },
+    })
+
+    // Paused with thirty seconds left on a minute-long clock.
+    const paused = await app.server.inject({
+      method: 'PATCH',
+      url: `/api/sessions/${session.id}`,
+      headers: bearer(teacherToken),
+      payload: { status: 'paused' },
+    })
+    expect((paused.json() as SessionBody).session.status).toBe('paused')
+    expect((paused.json() as SessionBody).session.pausedAt).not.toBeNull()
+
+    // Then a break: five minutes of it. On the wall clock this run's deadline is
+    // four and a half minutes past, which is exactly the case that used to hand
+    // the class back a graded paper while the teacher was still talking.
+    const nowMs = Date.now()
+    app.database.raw
+      .prepare('UPDATE live_sessions SET started_at = ?, paused_at = ? WHERE id = ?')
+      .run(
+        new Date(nowMs - 330_000).toISOString(),
+        new Date(nowMs - 300_000).toISOString(),
+        session.id,
+      )
+
+    const board = await app.server.inject({
+      method: 'GET',
+      url: `/api/sessions/${session.id}/participants`,
+      headers: bearer(teacherToken),
+    })
+    const body = board.json() as ParticipantsBody
+    expect(body.session.status).toBe('paused')
+    expect(body.participants[0]?.status).toBe('joined')
+
+    // Resuming owes the hold: the start mark moves forward by the length of the
+    // pause, so the deadline is the thirty seconds that were left when the
+    // teacher paused - not the minute the run was given, and not nothing.
+    const resumed = await app.server.inject({
+      method: 'PATCH',
+      url: `/api/sessions/${session.id}`,
+      headers: bearer(teacherToken),
+      payload: { status: 'active' },
+    })
+    const after = (resumed.json() as SessionBody).session
+    expect(after.status).toBe('active')
+    expect(after.pausedAt).toBeNull()
+    const elapsedMs = Date.now() - Date.parse(after.startedAt as string)
+    expect(elapsedMs).toBeGreaterThan(25_000)
+    expect(elapsedMs).toBeLessThan(35_000)
+
+    const stillOpen = await app.server.inject({
+      method: 'GET',
+      url: `/api/sessions/${session.id}/participants`,
+      headers: bearer(teacherToken),
+    })
+    expect((stillOpen.json() as ParticipantsBody).session.status).toBe('active')
+  })
+
+  it('the seconds given to a run are time the student really gets', async () => {
+    const teacherToken = await login('teacher1', 'teacher-pass-1')
+    const created = await app.server.inject({
+      method: 'POST',
+      url: '/api/tests',
+      headers: bearer(teacherToken),
+      payload: {
+        title: 'Extended quiz',
+        timeLimitSec: 60,
+        questions: [
+          {
+            type: 'true_false',
+            body: 'Two plus two is four.',
+            points: 1,
+            position: 0,
+            payload: { correct: true },
+          },
+        ],
+      },
+    })
+    const testId = (created.json() as { test: { id: string } }).test.id
+    const started = await app.server.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: bearer(teacherToken),
+      payload: { testId },
+    })
+    const { session } = started.json() as SessionBody
+    await startNow(teacherToken, session.id)
+
+    // Twenty seconds past a minute-long deadline...
+    app.database.raw
+      .prepare('UPDATE live_sessions SET started_at = ? WHERE id = ?')
+      .run(new Date(Date.now() - 80_000).toISOString(), session.id)
+    const closedEarly = await app.server.inject({
+      method: 'GET',
+      url: `/api/sessions/${session.id}/participants`,
+      headers: bearer(teacherToken),
+    })
+    expect((closedEarly.json() as ParticipantsBody).session.status).toBe('finished')
+
+    // ...and the same run given thirty more seconds is not closed at all. The
+    // added time has to reach the deadline, not only the number on screen.
+    const reopened = await app.server.inject({
+      method: 'POST',
+      url: '/api/tests',
+      headers: bearer(teacherToken),
+      payload: {
+        title: 'Extended quiz 2',
+        timeLimitSec: 60,
+        questions: [
+          {
+            type: 'true_false',
+            body: 'Two plus two is five.',
+            points: 1,
+            position: 0,
+            payload: { correct: false },
+          },
+        ],
+      },
+    })
+    const testId2 = (reopened.json() as { test: { id: string } }).test.id
+    const started2 = await app.server.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      headers: bearer(teacherToken),
+      payload: { testId: testId2 },
+    })
+    const { session: session2 } = started2.json() as SessionBody
+    await startNow(teacherToken, session2.id)
+    app.database.raw
+      .prepare('UPDATE live_sessions SET started_at = ? WHERE id = ?')
+      .run(new Date(Date.now() - 80_000).toISOString(), session2.id)
+
+    const extended = await app.server.inject({
+      method: 'POST',
+      url: `/api/sessions/${session2.id}/extend`,
+      headers: bearer(teacherToken),
+      payload: { seconds: 30 },
+    })
+    expect(extended.statusCode).toBe(200)
+    expect((extended.json() as SessionBody).session.timeLimitSec).toBe(90)
+
+    const board = await app.server.inject({
+      method: 'GET',
+      url: `/api/sessions/${session2.id}/participants`,
+      headers: bearer(teacherToken),
+    })
+    expect((board.json() as ParticipantsBody).session.status).toBe('active')
   })
 
   it('resumes a student mid-session through the current-session endpoint', async () => {

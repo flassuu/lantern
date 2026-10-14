@@ -199,6 +199,22 @@ interface ParticipationResponse {
   }>
 }
 
+/**
+ * The status frame every client on the socket receives.
+ *
+ * The clock is in it, not only the status word: a phone that heard "paused"
+ * without hearing when would keep counting its own old deadline down, and a
+ * phone that heard nothing about "+15s" would never show the extra time at all.
+ */
+interface StatusFrame {
+  type: 'status'
+  status: LiveSessionStatus
+  serverNow: string
+  startedAt: string | null
+  pausedAt: string | null
+  timeLimitSec: number | null
+}
+
 /** Questions of the session in the student's stored order, without answer keys. */
 function studentQuestions(
   questions: ReturnType<typeof listQuestions>,
@@ -285,10 +301,28 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
     })
   }
 
+  /** The frame every socket on this run receives, whenever the run changes. */
+  function statusFrame(session: LiveSession): StatusFrame {
+    return {
+      type: 'status',
+      status: session.status,
+      serverNow: new Date().toISOString(),
+      startedAt: session.startedAt,
+      pausedAt: session.pausedAt,
+      timeLimitSec: session.timeLimitSec,
+    }
+  }
+
   /** Pushes the new state to everyone watching, and the board to the teachers. */
   function announce(session: LiveSession): void {
     const status: LiveSessionStatus = session.status
-    broadcast(session.id, { type: 'status', status, serverNow: new Date().toISOString() })
+    // The clock rides along with the status, and that is the whole fix for a
+    // phone that never notices the clock: a status word alone says "paused"
+    // without saying what the clock reads, and "+15s" changes nothing a client
+    // would hear. Resuming moves `startedAt` forward by the length of the hold,
+    // so the same four numbers cover a pause, a resume and an extension, and
+    // every client runs the server's deadline rather than a tally of its own.
+    broadcast(session.id, statusFrame(session))
     broadcast(session.id, { type: 'participants', participants: boardEntries(session.id) }, true)
     // A finished run has no room left to watch; the in-memory presence goes with
     // it so a long-lived server does not accumulate sessions nobody can see.
@@ -977,7 +1011,10 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
     }
     joinRoom(id, client)
     addSocket(id, client.userId)
-    sendTo(client, { type: 'status', status: session.status, serverNow: new Date().toISOString() })
+    // The same frame `announce` sends: a socket that opens mid-run has to learn
+    // the clock as well as the status, or the client falls back to whatever its
+    // last fetch said.
+    sendTo(client, statusFrame(session))
     if (client.isTeacher) {
       sendTo(client, { type: 'participants', participants: boardEntries(id) })
     }

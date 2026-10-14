@@ -1093,6 +1093,12 @@ export function isSessionOver(
   now: number = Date.now(),
 ): boolean {
   if (session.status === 'finished') return true
+  // A run on hold is never out of time. Its clock was frozen when the teacher
+  // paused it, and the start mark only moves forward on resume - so reading the
+  // limit against the wall clock would hand a class that paused at the halfway
+  // mark back to auto-submit ten minutes later, whenever the pause was meant to
+  // end. The remaining time at the moment of the pause is what is still owed.
+  if (session.status === 'paused') return false
   // A lobby has not started, so it has no clock; nothing can run out.
   if (session.startedAt === null) return false
   if (session.timeLimitSec === null) return false

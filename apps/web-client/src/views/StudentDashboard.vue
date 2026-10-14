@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { History, Library, LogIn } from '@lucide/vue'
 import AppHeader from '../components/AppHeader.vue'
 import { useAuth } from '../stores/auth'
+import TabStrip from '../components/common/TabStrip.vue'
 import JoinSessionCard from '../components/student/JoinSessionCard.vue'
 import SessionResult from '../components/student/SessionResult.vue'
 import StudentCourses from '../components/student/StudentCourses.vue'
@@ -35,6 +37,14 @@ const loadError = ref('')
 const held = ref(false)
 
 /**
+ * Which of the three things a student does is on screen: join a run, read the
+ * course, look at results. The same strip the teacher's workbench uses, for the
+ * same reason - one row of equal segments that does not resize when the locale
+ * changes, and one screen per job instead of three stacked down the page.
+ */
+const activeTab = ref<'join' | 'courses' | 'results'>('join')
+
+/**
  * The run the student is in, as one socket: their own presence and progress go
  * out, and the server's status comes back. That status is what turns a lobby
  * into a paper the moment the teacher starts, without a poll or a reload.
@@ -43,6 +53,36 @@ const sessionId = computed(() => state.value?.session.id ?? null)
 const presence = usePresence(sessionId)
 /** What the server last said, falling back to what the join response said. */
 const liveStatus = computed(() => presence.status.value ?? state.value?.session.status ?? 'active')
+
+/**
+ * The clock, folded back into the session the runner reads.
+ *
+ * The session the student holds is the one they joined with, and by the time
+ * they are answering it can be out of date: the teacher paused the run, resumed
+ * it (which moves its start mark forward by the length of the hold) or gave it
+ * fifteen more seconds. The socket carries all three, and writing them into the
+ * one object the runner already reads is what makes the paper's clock the
+ * server's clock - without this the student watches a clock that has been
+ * running against numbers nobody uses any more, and one that says the time is
+ * up while the class is still writing.
+ */
+watch(
+  () => presence.clock.value,
+  (clock) => {
+    const current = state.value
+    if (!current || !clock) return
+    state.value = {
+      ...current,
+      session: {
+        ...current.session,
+        serverNow: clock.serverNow,
+        startedAt: clock.startedAt,
+        pausedAt: clock.pausedAt,
+        timeLimitSec: clock.timeLimitSec,
+      },
+    }
+  },
+)
 
 /**
  * A teacher can hand out a link (or a QR of it) that lands the student straight
@@ -132,7 +172,11 @@ function leaveRunner(): void {
 }
 
 onMounted(() => {
-  code.value = codeFromLink()
+  const fromLink = codeFromLink()
+  // A link from a teacher's QR arrives with the code already filled in, so the
+  // join tab is the one that has to be on screen for it.
+  if (fromLink) activeTab.value = 'join'
+  code.value = fromLink
   void resume()
 })
 </script>
@@ -141,7 +185,7 @@ onMounted(() => {
   <div class="min-h-dvh bg-surface">
     <AppHeader />
 
-    <main class="mx-auto w-full max-w-2xl px-4 py-6 sm:px-6">
+    <main class="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
       <!-- The name is here rather than in the header because this is a shared
            family phone: "Check Student" is what tells the next person at this
            screen whose results they are looking at. -->
@@ -209,22 +253,35 @@ onMounted(() => {
       </template>
 
       <template v-else>
-        <div class="mt-6">
-          <JoinSessionCard
-            v-model="code"
-            v-model:busy="joining"
-            v-model:error="joinError"
-            @joined="join"
-          />
-        </div>
+        <TabStrip
+          v-model="activeTab"
+          class="mt-5"
+          :aria-label="t('student.heading')"
+          :items="[
+            { value: 'join', label: t('student.tabs.join'), icon: LogIn },
+            { value: 'courses', label: t('student.tabs.courses'), icon: Library },
+            { value: 'results', label: t('student.tabs.results'), icon: History },
+          ]"
+        />
 
-        <div class="mt-6">
-          <StudentCourses />
-        </div>
-
-        <div class="mt-6">
-          <StudentResults @open="showResult" />
-        </div>
+        <!--
+          `:key` remounts the sheet on a tab change and the transition fades it
+          in and out: the same swap as the teacher's workbench, so the two sides
+          of the app move the same way.
+        -->
+        <Transition mode="out-in" name="view">
+          <div :key="activeTab" class="mt-5">
+            <JoinSessionCard
+              v-if="activeTab === 'join'"
+              v-model="code"
+              v-model:busy="joining"
+              v-model:error="joinError"
+              @joined="join"
+            />
+            <StudentCourses v-else-if="activeTab === 'courses'" />
+            <StudentResults v-else @open="showResult" />
+          </div>
+        </Transition>
       </template>
 
     </main>

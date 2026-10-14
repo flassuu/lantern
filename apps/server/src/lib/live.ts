@@ -22,7 +22,20 @@ export interface LiveClient {
 
 export type LiveMessage =
   | { type: 'participants'; participants: ParticipantEntry[] }
-  | { type: 'status'; status: LiveSessionStatus; serverNow: string }
+  // The clock is in the status frame, not only the status word. A pause, a
+  // resume and "+15s" all change what the clock reads, and a client told only
+  // that the run is "paused" has no way to work out what its own clock should
+  // say - so it keeps counting down against numbers the server has moved on
+  // from. These four are everything a client needs to follow the server's
+  // deadline instead of keeping a tally of pauses and extensions itself.
+  | {
+      type: 'status'
+      status: LiveSessionStatus
+      serverNow: string
+      startedAt: string | null
+      pausedAt: string | null
+      timeLimitSec: number | null
+    }
   | { type: 'error'; code: string; message: string }
 
 const rooms = new Map<string, Set<LiveClient>>()
