@@ -63,6 +63,23 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
+/**
+ * What the server says about itself, when it says anything.
+ *
+ * A heartbeat only needs a yes or a no; the server panel needs the version, so
+ * that a run started outside the app can be named rather than merely counted.
+ */
+export async function fetchHealth(): Promise<{ version: string } | null> {
+  try {
+    const res = await fetch(apiUrl('/api/health'), { cache: 'no-store' })
+    if (!res.ok) return null
+    const body = (await res.json()) as { version?: unknown }
+    return typeof body.version === 'string' ? { version: body.version } : null
+  } catch {
+    return null
+  }
+}
+
 export interface ErrorEnvelope {
   error?: { code?: string; message?: string }
 }

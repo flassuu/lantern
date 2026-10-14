@@ -11,6 +11,9 @@ import {
   type UserStatus,
 } from '../lib/users'
 import { requireRoles } from '../plugins/auth'
+import { hashPassword } from '../lib/passwords'
+import { deleteSessionByHash } from '../lib/tokens'
+import { nowIso } from '../lib/db'
 
 export interface UsersDeps {
   database: Database
@@ -166,6 +169,49 @@ export const userRoutes: FastifyPluginAsync<UsersDeps> = async (
           : sendError(reply, 400, 'INVALID_OPERATION', 'admin accounts cannot be modified')
       }
       return { user: toPublicUser(result.user) }
+    },
+  )
+
+  /**
+   * An admin sets somebody else's password.
+   *
+   * The case is a student who forgot theirs mid-term, or a teacher who needs
+   * back into a laptop somebody else has hands on: the person who holds the
+   * password cannot change it without the old one, so somebody with the admin
+   * role has to be able to. Every session that user held is dropped, because a
+   * reset that leaves the old device signed in is not a reset.
+   */
+  app.patch(
+    '/api/users/:id/password',
+    {
+      preHandler: requireRoles('admin'),
+      schema: {
+        params: statusParamsSchema,
+        body: {
+          type: 'object',
+          required: ['password'],
+          additionalProperties: false,
+          properties: { password: { type: 'string', minLength: 8, maxLength: 128 } },
+        },
+      },
+    },
+    async (request, reply) => {
+      const params = request.params as { id: string }
+      const body = request.body as { password: string }
+      const target = findUserById(db, params.id)
+      if (!target) return sendError(reply, 404, 'NOT_FOUND', 'user not found')
+      db.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?').run(
+        hashPassword(body.password),
+        nowIso(),
+        target.id,
+      )
+      const sessions = db
+        .prepare('SELECT token_hash FROM sessions WHERE user_id = ?')
+        .all(target.id) as Array<{ token_hash: string }>
+      for (const stored of sessions) {
+        deleteSessionByHash(db, stored.token_hash)
+      }
+      return { user: toPublicUser(findUserById(db, params.id)!) }
     },
   )
 

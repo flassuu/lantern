@@ -10,6 +10,8 @@
 
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader};
+
+pub mod probe;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -83,6 +85,28 @@ pub struct ServerStatus {
     pub searched: Vec<String>,
     /// Set when the last start or stop failed.
     pub error: Option<String>,
+    /// Whether this app started the process. False on a server that was already
+    /// listening when the window opened - adopted rather than owned, which is the
+    /// difference between "stop" meaning kill our child and meaning kill a pid
+    /// somebody else owns.
+    pub managed: bool,
+    /// The pid of an adopted server. Set only while `running` and `!managed`.
+    pub external_pid: Option<u32>,
+}
+
+/// A server already listening that this app did not start.
+///
+/// The app adopts one instead of pretending the port is free: a teacher who ran
+/// the server by hand, or who has it on autostart, would otherwise be told to
+/// press Start and watch the port conflict.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalServer {
+    pub port: u16,
+    /// Whoever is holding the port, when the platform can be asked.
+    pub pid: Option<u32>,
+    /// What `/api/health` answers, so the window can say which build is running.
+    pub version: Option<String>,
 }
 
 /// One line of the server's output, already split into what the console needs.
@@ -310,6 +334,8 @@ pub fn start(context: &SpawnContext, state: &HostState) -> ServerStatus {
         status.started_at = Some(now_ms());
         status.exit_code = None;
         status.error = None;
+        status.managed = true;
+        status.external_pid = None;
         status.binary_path = Some(binary.display().to_string());
         status.searched = searched;
     }
@@ -361,8 +387,19 @@ pub fn stop(state: &HostState) -> ServerStatus {
         let _ = child.wait();
     }
     let mut status = state.status.lock().unwrap();
+    // A run this app adopted is not a child, so there is nothing to kill here -
+    // its pid was taken by a listener lookup and stopping it is `stop_foreign`.
+    if !status.managed {
+        if let Some(pid) = status.external_pid {
+            if let Err(error) = probe::kill_pid(pid) {
+                status.error = Some(error);
+            }
+        }
+    }
     status.running = false;
     status.pid = None;
+    status.managed = false;
+    status.external_pid = None;
     status.error = None;
     status.clone()
 }
@@ -372,6 +409,31 @@ pub fn restart(context: &SpawnContext, state: &HostState) -> ServerStatus {
     // The port has to be free before the new process asks for it.
     thread::sleep(Duration::from_millis(200));
     start(context, state)
+}
+
+/**
+ * Takes over a server that was already listening.
+ *
+ * The window calls this before offering to start anything: a machine where the
+ * server is on autostart, or where a teacher ran it from a terminal, is an
+ * ordinary way to find this app and an extraordinary way to lose a class. What
+ * changes is only ownership - the port is in use, so the app reports the run it
+ * found and keeps its hands off the process until the teacher says otherwise.
+ */
+pub fn adopt(state: &HostState, external: &ExternalServer) -> ServerStatus {
+    let mut status = state.status.lock().unwrap();
+    status.running = true;
+    status.managed = false;
+    status.port = external.port;
+    status.pid = external.pid;
+    status.external_pid = external.pid;
+    // The app did not start it, so it cannot say when it did; the uptime readout
+    // stays empty rather than inventing a number.
+    status.started_at = None;
+    status.uptime_ms = None;
+    status.exit_code = None;
+    status.error = None;
+    status.clone()
 }
 
 /// Called when the window closes: a server left running would keep the port bound

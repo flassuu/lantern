@@ -79,6 +79,32 @@ fn restart_server(app: AppHandle) -> ServerStatus {
     host::restart(&spawn_context(app.clone()), &state(&app))
 }
 
+/// Looks for a server already on the port and takes it over if there is one.
+///
+/// The window asks before it offers to start anything: an app that says "start
+/// the server" over a port somebody is already serving on fails on the one
+/// click a teacher makes without reading it.
+#[tauri::command]
+fn adopt_external_server(app: AppHandle) -> ServerStatus {
+    let port = state(&app).settings.lock().unwrap().port;
+    let app_state = state(&app);
+    let mut current = app_state.status.lock().unwrap().clone();
+    // A server this app started is the best kind: nothing to adopt, and nothing
+    // to say about it.
+    if current.managed && current.running {
+        return current;
+    }
+    match host::probe::probe_external(port) {
+        Some(external) => host::adopt(&app_state, &external),
+        None => {
+            current.running = false;
+            current.external_pid = None;
+            current.managed = false;
+            current
+        }
+    }
+}
+
 /// Where the database goes unless the teacher says otherwise.
 ///
 /// An app's data directory, not the working directory: a double-clicked app has
@@ -118,7 +144,8 @@ pub fn run() {
             server_status,
             start_server,
             stop_server,
-            restart_server
+            restart_server,
+            adopt_external_server
         ])
         .build(tauri::generate_context!())
         .expect("error while building the application")

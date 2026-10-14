@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowDown, ArrowUp, Check, FilterX, UserX } from '@lucide/vue'
-import { listUsers, setUserStatus, createUser } from '../../api/users'
+import { ArrowDown, ArrowUp, Check, FilterX, KeyRound, UserX } from '@lucide/vue'
+import { listUsers, setUserStatus, setUserPassword, createUser } from '../../api/users'
 import { ApiError } from '../../api/client'
 import EmptyState from '../common/EmptyState.vue'
 import SkeletonList from '../common/SkeletonList.vue'
@@ -13,6 +13,7 @@ import type { PublicUser, UserRole, UserStatus } from '../../api/types'
 import AppButton from '../../components/common/AppButton.vue'
 import AppCard from '../../components/common/AppCard.vue'
 import AppInput from '../../components/common/AppInput.vue'
+import AppDialog from '../../components/common/AppDialog.vue'
 
 const props = defineProps<{
   focusStatus?: UserStatus | ''
@@ -23,6 +24,12 @@ const emit = defineEmits<{ changed: [] }>()
 const { t } = useI18n()
 const confirm = useConfirm()
 const toast = useToast()
+
+/** The account whose password is being set, and what it is being set to. */
+const passwordFor = ref<PublicUser | null>(null)
+const passwordDraft = ref('')
+const passwordError = ref('')
+const passwordBusy = ref(false)
 
 const users = ref<PublicUser[]>([])
 const loading = ref(false)
@@ -115,6 +122,43 @@ async function changeStatus(user: PublicUser, status: UserStatus) {
     emit('changed')
   } finally {
     busyId.value = ''
+  }
+}
+
+/**
+ * Sets a password for somebody who cannot change their own.
+ *
+ * The only way back into a locked-out account: the holder cannot change it
+ * without the old one, and the admin has it. The dialog says what the change
+ * does - every session that user held ends - because an admin who sets a
+ * password and watches the class stay signed in has been told nothing.
+ */
+function openPassword(user: PublicUser): void {
+  passwordDraft.value = ''
+  passwordError.value = ''
+  passwordFor.value = user
+}
+
+async function applyPassword(): Promise<void> {
+  const user = passwordFor.value
+  if (!user || passwordBusy.value) return
+  if (passwordDraft.value.length < 8) {
+    passwordError.value = t('admin.users.passwordTooShort')
+    return
+  }
+  passwordBusy.value = true
+  passwordError.value = ''
+  try {
+    await setUserPassword(user.id, passwordDraft.value)
+    passwordFor.value = null
+    toast.success(t('admin.users.passwordChanged', { username: user.username }))
+  } catch (error) {
+    passwordError.value =
+      error instanceof ApiError && error.code === 'NOT_FOUND'
+        ? t('admin.users.passwordFailed')
+        : t('admin.users.passwordFailed')
+  } finally {
+    passwordBusy.value = false
   }
 }
 
@@ -429,6 +473,16 @@ watch(
                   >
                     {{ t('admin.block') }}
                   </AppButton>
+                  <AppButton
+                    type="button"
+                    :disabled="busyId === user.id"
+                    :aria-label="t('admin.users.setPasswordFor', { username: user.username })"
+                    @click="openPassword(user)"
+                    variant="secondaryMuted" size="sm"
+                  >
+                    <KeyRound class="size-3.5" aria-hidden="true" />
+                    {{ t('admin.users.password') }}
+                  </AppButton>
                 </div>
               </td>
             </tr>
@@ -489,9 +543,56 @@ watch(
             >
               {{ t('admin.block') }}
             </AppButton>
+            <AppButton
+              type="button"
+              :disabled="busyId === user.id"
+              :aria-label="t('admin.users.setPasswordFor', { username: user.username })"
+              @click="openPassword(user)"
+              variant="secondaryMuted" size="sm"
+            >
+              <KeyRound class="size-3.5" aria-hidden="true" />
+              {{ t('admin.users.password') }}
+            </AppButton>
           </div>
         </AppCard>
       </ul>
     </template>
+
+    <!--
+      Setting a password for somebody who cannot change their own. The dialog is
+      a dialog rather than a field in the row because the row is already four
+      controls wide and because the consequence - every session that user held
+      ends - deserves a sentence of its own.
+    -->
+    <AppDialog
+      v-if="passwordFor"
+      :label="t('admin.users.passwordTitle', { username: passwordFor.username })"
+      @close="passwordFor = null"
+    >
+      <form class="space-y-3 p-4" @submit.prevent="applyPassword">
+        <p class="text-xs text-on-surface-variant">{{ t('admin.users.passwordHint') }}</p>
+        <AppInput
+          v-model="passwordDraft"
+          type="password"
+          autocomplete="new-password"
+          :placeholder="t('admin.users.passwordPlaceholder')"
+        />
+        <p
+          v-if="passwordError"
+          role="alert"
+          class="rounded-xl bg-error-container px-3 py-2 text-xs text-on-error-container"
+        >
+          {{ passwordError }}
+        </p>
+        <div class="flex justify-end gap-2">
+          <AppButton variant="secondary" type="button" @click="passwordFor = null">
+            {{ t('common.cancel') }}
+          </AppButton>
+          <AppButton variant="primary" type="submit" :disabled="passwordBusy">
+            {{ t('admin.users.passwordApply') }}
+          </AppButton>
+        </div>
+      </form>
+    </AppDialog>
   </section>
 </template>

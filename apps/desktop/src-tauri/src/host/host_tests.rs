@@ -172,6 +172,55 @@ fn starts_a_real_server_and_stops_it_again() {
 }
 
 #[test]
+fn sees_a_server_it_did_not_start_and_can_stop_it() {
+    let Some(binary) = sidecar_path() else {
+        eprintln!("skipping: run scripts/desktop-sidecar.sh first");
+        return;
+    };
+    let dir = temp_dir("adopt");
+    let settings = test_settings(&dir, &binary);
+
+    // Start it the way this app does, so there is genuinely a process on the port.
+    let owner = HostState::new(settings.clone());
+    let (context, _lines, _exits) = recording_context();
+    let started = start(&context, &owner);
+    assert!(started.running, "server should be up: {:?}", started.error);
+    assert!(started.managed, "a server this app started is one it owns");
+
+    // Now look at the same port the way a freshly opened window would.
+    let found = probe::probe_external(settings.port)
+        .expect("the server answers a health check on its port");
+    assert_eq!(found.port, settings.port);
+    assert!(found.version.is_some(), "the health answer carries a version");
+    let pid = found.pid.expect("something holding a port has a pid");
+    assert_ne!(pid, started.pid.unwrap(), "the lookup finds the real listener");
+
+    // Adopted, not owned: the app reports the run and stops pretending it is
+    // the one that started it.
+    let fresh = HostState::new(settings.clone());
+    let adopted = adopt(&fresh, &found);
+    assert!(adopted.running);
+    assert!(!adopted.managed);
+    assert_eq!(adopted.external_pid, Some(pid));
+    assert_eq!(adopted.started_at, None, "an adopted run has no start mark to show");
+
+    // And stopping the adopted one ends the process that holds the port.
+    let stopped = stop(&fresh);
+    assert!(!stopped.running);
+    assert!(stopped.external_pid.is_none());
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while std::time::Instant::now() < deadline && probe::probe_external(settings.port).is_some() {
+        thread::sleep(std::time::Duration::from_millis(200));
+    }
+    assert!(
+        probe::probe_external(settings.port).is_none(),
+        "the adopted server is still answering after being stopped"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn surfaces_the_exit_code_of_a_server_that_stops_by_itself() {
     let dir = temp_dir("exit");
     // A stand-in that fails immediately, the way a taken port or a crash does.

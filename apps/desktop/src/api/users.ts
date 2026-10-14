@@ -53,3 +53,19 @@ export async function setUserStatus(id: string, status: UserStatus): Promise<Pub
   })
   return result.user
 }
+
+/**
+ * Sets somebody else's password.
+ *
+ * The person who forgot theirs cannot change it without the old one, so this is
+ * the only way back in for a locked-out account. Every session that user held
+ * ends, which is the point: a reset that leaves the old device signed in is not
+ * a reset.
+ */
+export async function setUserPassword(id: string, password: string): Promise<PublicUser> {
+  const result = await apiFetch<{ user: PublicUser }>(`/api/users/${id}/password`, {
+    method: 'PATCH',
+    body: JSON.stringify({ password }),
+  })
+  return result.user
+}

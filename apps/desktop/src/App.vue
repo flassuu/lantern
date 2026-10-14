@@ -47,6 +47,10 @@ type Screen = 'loading' | 'login' | 'register' | 'server' | 'admin' | 'teacher' 
 const screen = computed<Screen>(() => {
   // The server screen is reachable without signing in: the first thing a teacher
   // may need is to start the server the sign-in talks to.
+  // The panel is opened from the sign-in screen and from both desks. Which way
+  // Back goes is the screen's own business: signed in, `mode` is ignored and
+  // the user lands back on the desk they came from, so a teacher who opened the
+  // panel to check on a running server does not end up at the sign-in form.
   if (mode.value === 'server') return 'server'
   if (status.value !== 'authenticated' || !user.value) {
     if (status.value === 'initializing') return 'loading'
@@ -77,7 +81,7 @@ const screen = computed<Screen>(() => {
     @server="mode = 'server'"
   />
   <ServerView v-else-if="screen === 'server'" @back="mode = 'login'" />
-  <AdminDashboard v-else-if="screen === 'admin'" />
+  <AdminDashboard v-else-if="screen === 'admin'" @server="mode = 'server'" />
   <TeacherDashboard v-else-if="screen === 'teacher'" @server="mode = 'server'" />
   <StudentDashboard v-else-if="screen === 'student'" />
   <ConfirmDialog />

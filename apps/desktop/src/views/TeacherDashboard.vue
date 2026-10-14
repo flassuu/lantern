@@ -47,7 +47,7 @@ onMounted(async () => {
 
 <template>
   <div class="min-h-dvh bg-surface">
-    <AppHeader @server="emit('server')" />
+    <AppHeader hosted @server="emit('server')" />
 
     <main class="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
       <h2 class="text-xl font-semibold text-on-surface">

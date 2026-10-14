@@ -175,6 +175,15 @@ export interface ServerStatus {
   /** Every path the app looked for the binary in, when it found none. */
   searched: string[]
   error: string | null
+  /**
+   * Whether this app started the process. False on a server that was already
+   * listening when the window opened: adopted rather than owned, which is the
+   * difference between "stop" meaning kill our own child and meaning kill a
+   * process somebody else launched.
+   */
+  managed: boolean
+  /** The pid of an adopted server; set only while running and not managed. */
+  externalPid: number | null
 }
 
 export interface ServerLogLine {
@@ -216,6 +225,18 @@ export function startServer(): Promise<ServerStatus | null> {
 
 export function stopServer(): Promise<ServerStatus | null> {
   return call<ServerStatus>('stop_server')
+}
+
+/**
+ * Looks for a server already on the port and takes it over if it finds one.
+ *
+ * Called before the window offers to start anything: a machine with the server
+ * on autostart, or one where a teacher ran it from a terminal, is an ordinary
+ * way to meet this app, and "start the server" over a port somebody is serving
+ * fails on the one click nobody reads.
+ */
+export function adoptExternalServer(): Promise<ServerStatus | null> {
+  return call<ServerStatus>('adopt_external_server')
 }
 
 export function restartServer(): Promise<ServerStatus | null> {

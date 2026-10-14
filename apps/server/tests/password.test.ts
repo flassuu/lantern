@@ -205,4 +205,84 @@ describe('changing your own password', () => {
     expect((again.json() as LoginBody).token).toBeTruthy()
     expect(body.user.username).toBe('admin')
   })
+
+  it('lets an admin set somebody else\u2019s password, and drops their sessions', async () => {
+    await makeUser('forgetful', 'student', 'their-own-pass-1')
+    const studentToken = await tokenFor('forgetful', 'their-own-pass-1')
+    // The test above rotated the admin password, so this is the current one; the
+    // file runs in order and this is what the admin is actually called now.
+    const adminToken = await tokenFor('admin', 'a-better-admin-pass')
+
+    const users = await app.server.inject({
+      method: 'GET',
+      url: '/api/users?role=student',
+      headers: bearer(adminToken),
+    })
+    const target = (users.json() as { users: Array<{ id: string; username: string }> }).users.find(
+      (user) => user.username === 'forgetful',
+    )
+    expect(target).toBeDefined()
+
+    const reset = await app.server.inject({
+      method: 'PATCH',
+      url: `/api/users/${target!.id}/password`,
+      headers: bearer(adminToken),
+      payload: { password: 'admin-set-pass-1' },
+    })
+    expect(reset.statusCode).toBe(200)
+
+    // The new password works...
+    const withNew = await app.server.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username: 'forgetful', password: 'admin-set-pass-1' },
+    })
+    expect(withNew.statusCode).toBe(200)
+
+    // ...the old one does not...
+    const withOld = await app.server.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { username: 'forgetful', password: 'their-own-pass-1' },
+    })
+    expect(withOld.statusCode).toBe(401)
+
+    // ...and the session they were holding is gone, because a reset that leaves
+    // the old device signed in is not a reset.
+    const stale = await app.server.inject({
+      method: 'GET',
+      url: '/api/auth/me',
+      headers: bearer(studentToken),
+    })
+    expect(stale.statusCode).toBe(401)
+  })
+
+  it('will not let a teacher reset somebody\u2019s password', async () => {
+    await makeUser('teacher2', 'teacher')
+    const teacherToken = await tokenFor('teacher2')
+    const target = app.database.raw
+      .prepare("SELECT id FROM users WHERE username = 'forgetful'")
+      .get() as { id: string }
+
+    const res = await app.server.inject({
+      method: 'PATCH',
+      url: `/api/users/${target.id}/password`,
+      headers: bearer(teacherToken),
+      payload: { password: 'teacher-set-pass-1' },
+    })
+    expect(res.statusCode).toBe(403)
+  })
+
+  it('answers 404 for a user that cannot exist', async () => {
+    // The test above rotated the admin password, so this is the current one; the
+    // file runs in order and this is what the admin is actually called now.
+    const adminToken = await tokenFor('admin', 'a-better-admin-pass')
+    const res = await app.server.inject({
+      method: 'PATCH',
+      url: '/api/users/00000000-0000-4000-8000-000000000000/password',
+      headers: bearer(adminToken),
+      payload: { password: 'whatever-pass-1' },
+    })
+    expect(res.statusCode).toBe(404)
+  })
 })

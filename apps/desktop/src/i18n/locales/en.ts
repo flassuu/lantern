@@ -60,6 +60,29 @@ export default {
       applyHint: 'A changed port takes effect after Restart.',
       exitedToast: 'The server stopped (code {code}).',
       unknownExit: 'unknown',
+      adoptedChip: 'Started outside the app',
+      uptimeLabel: 'Up for',
+      noneTitle: 'Nothing is listening on port {port}.',
+      noneHint: 'Start the server and this app will keep it running.',
+      tabs: {
+        status: 'Status',
+        settings: 'Settings',
+        console: 'Console',
+      },
+      tabHint: {
+        status: 'Whether the server is up, and who started it.',
+        settings: 'Where it keeps its data, and what it answers on.',
+        console: 'Everything the server has written since this window opened.',
+      },
+      heading: 'Server panel',
+      subheading: 'The server this classroom runs on.',
+      adoptedTitle: 'A server is already running here',
+      adoptedHint:
+        'This app did not start it, so it works with the process rather than owning it. Everything works as it is; stopping it ends that process.',
+      adoptedPid: 'Process {pid}',
+      adoptedNoPid: 'The process behind it could not be identified on this system.',
+      adoptedStopHint:
+        'Stopping ends a process the app did not start. Start is offered again once the port is free.',
     },
   },
   server: {
@@ -122,6 +145,17 @@ export default {
     },
   },
   admin: {
+      users: {
+        password: 'Password',
+        setPasswordFor: 'Set the password for {username}',
+        passwordTitle: 'New password for {username}',
+        passwordHint: 'Signs them out everywhere, including any device already using the old one.',
+        passwordPlaceholder: 'at least 8 characters',
+        passwordApply: 'Set password',
+        passwordChanged: 'The password for {username} was set.',
+        passwordFailed: 'The password could not be set.',
+        passwordTooShort: 'The password needs at least 8 characters.',
+      },
     heading: 'Administration',
     subheading: 'Accounts, approvals and access.',
     searchPlaceholder: 'Search by name…',

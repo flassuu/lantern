@@ -12,6 +12,10 @@ import type { UserStatus } from '../api/types'
 import AppButton from '../components/common/AppButton.vue'
 import TabStrip from '../components/common/TabStrip.vue'
 
+// The desktop app hosts the server, so the admin can hand over to the panel that
+// starts and stops it - the same way the teacher screen does.
+const emit = defineEmits<{ server: [] }>()
+
 const { t } = useI18n()
 
 type AdminTab = 'users' | 'participants' | 'system' | 'server'
@@ -38,7 +42,7 @@ onMounted(countPending)
 
 <template>
   <div class="min-h-dvh bg-surface">
-    <AppHeader />
+    <AppHeader hosted @server="emit('server')" />
 
     <main class="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
       <h2 class="text-xl font-semibold text-on-surface">

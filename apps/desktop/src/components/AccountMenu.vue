@@ -301,25 +301,25 @@ function leave(): void {
 
 
       <!--
-        Not gated on hosting: what this app is and which version it is does not
-        depend on whether the machine happens to be running the server. It was
-        `hosted`-only, which is why it was missing from the sign-in screen on the
-        phone client and from anywhere the teacher had not signed in yet.
+        The server panel, for a teacher who is already signed in inside the app.
+        It used to be `hosted`-only, which meant it showed on the sign-in screen
+        and nowhere else - so the one moment a teacher wants to see whether the
+        server is up is exactly when it was missing. `hosted` is what the
+        desktop teacher and admin screens now pass, and the phone client still
+        does not.
       -->
       <template v-if="props.hosted">
         <div class="my-1 h-px bg-outline-variant" role="separator" />
-      <button
-        v-if="props.hosted"
-        :data-menu-item="MENU_ITEM_ATTR"
-        type="button"
-        role="menuitem"
-        class="state-layer flex w-full min-h-10 items-center gap-3 px-3 py-2 text-left text-sm text-on-surface focus:outline-none"
-        @click="goToServer"
-      >
-        <Server class="size-4 shrink-0" aria-hidden="true" />
-        <span class="min-w-0 flex-1 truncate">{{ t('desktop.server.title') }}</span>
-      </button>
-
+        <button
+          :data-menu-item="MENU_ITEM_ATTR"
+          type="button"
+          role="menuitem"
+          class="state-layer flex w-full min-h-10 items-center gap-3 px-3 py-2 text-left text-sm text-on-surface focus:outline-none"
+          @click="goToServer"
+        >
+          <Server class="size-4 shrink-0" aria-hidden="true" />
+          <span class="min-w-0 flex-1 truncate">{{ t('desktop.server.title') }}</span>
+        </button>
       </template>
 
       <div class="my-1 h-px bg-outline-variant" role="separator" />
