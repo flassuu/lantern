@@ -643,6 +643,11 @@ export default {
     heading: 'Student home',
     greeting: 'Hello, {name}',
     subheading: 'Join tests, read materials, see your results.',
+    tabs: {
+      join: 'Join a test',
+      courses: 'My courses',
+      results: 'My results',
+    },
     history: {
       heading: 'My results',
       passed: 'Passed',

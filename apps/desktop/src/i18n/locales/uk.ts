@@ -547,7 +547,7 @@ const uk: typeof en = {
       updated: 'Тест оновлено.',
       deleted: 'Тест видалено.',
       runDetails: 'Деталі запуску',
-      questionCount: '{count} питань',
+      questionCount: '{count} пит.',
       totalPoints: '{count} балів',
       estimatedTime: '~{minutes} хв',
       previewTitle: 'Попередній перегляд тесту',
@@ -697,6 +697,11 @@ const uk: typeof en = {
   student: {
     heading: 'Сторінка студента',
     subheading: 'Проходьте тести, читайте матеріали, бачте результати.',
+    tabs: {
+      join: 'Приєднатися',
+      courses: 'Мої курси',
+      results: 'Мої результати',
+    },
     history: {
       heading: 'Мої результати',
       passed: 'Складено',

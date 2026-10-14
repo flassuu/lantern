@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { BookOpen, ChevronDown, Download, Library, Megaphone } from '@lucide/vue'
+import { BookOpen, ChevronDown, Download, Megaphone } from '@lucide/vue'
 import { ApiError } from '../../api/client'
 import { downloadMaterial, getCourse, listCourses } from '../../api/courses'
 import type { CourseDetails, CourseSummary, Material } from '../../api/types'
@@ -104,13 +104,7 @@ onMounted(load)
 
 <template>
   <section>
-    <div class="flex items-center gap-2">
-      <Library class="size-5 shrink-0" aria-hidden="true" />
-      <h3 class="text-base font-semibold text-on-surface">
-        {{ t('student.courses.heading') }}
-      </h3>
-    </div>
-    <p class="mt-1 text-xs text-on-surface-variant">{{ t('student.courses.hint') }}</p>
+    <p class="text-xs text-on-surface-variant">{{ t('student.courses.hint') }}</p>
 
     <p
       v-if="errorKey"

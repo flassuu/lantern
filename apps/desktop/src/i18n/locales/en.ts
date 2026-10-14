@@ -695,6 +695,11 @@ export default {
   student: {
     heading: 'Student home',
     subheading: 'Join tests, read materials, see your results.',
+    tabs: {
+      join: 'Join a test',
+      courses: 'My courses',
+      results: 'My results',
+    },
     history: {
       heading: 'My results',
       passed: 'Passed',

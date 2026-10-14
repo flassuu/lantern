@@ -43,12 +43,8 @@ onMounted(load)
 
 <template>
   <section>
-    <div class="flex items-center gap-2">
-      <History class="size-5 shrink-0" aria-hidden="true" />
-      <h3 class="text-base font-semibold text-on-surface">
-        {{ t('student.history.heading') }}
-      </h3>
-    </div>
+    <!-- No heading of its own: the tab above already says which of the three
+         screens this is, and saying it twice reads as a mistake. -->
 
     <p
       v-if="errorKey"

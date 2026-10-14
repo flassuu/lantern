@@ -2106,7 +2106,9 @@ async function mediaPath(session, fixtures) {
     set.call(input, ${JSON.stringify(fixtures.code)});
     input.dispatchEvent(new Event('input', { bubbles: true }));
     await new Promise((r) => setTimeout(r, 300));
-    const go = [...document.querySelectorAll('button')].find((b) => /^Join|Приєднатися$/.test(b.textContent.trim()));
+    // The tab strip now carries the same word as the join button, so the button
+    // is found by what it is - the join form's own submit - not by its label.
+    const go = document.querySelector('main form button[type=submit]');
     if (!go) return { joined: false, why: 'no join button' };
     go.click();
     // The run is already started, so this is the paper rather than a lobby - and
@@ -2226,9 +2228,8 @@ async function pagedPath(session, fixtures) {
     set.call(input, ${JSON.stringify(code)});
     input.dispatchEvent(new Event('input', { bubbles: true }));
     await new Promise((r) => setTimeout(r, 300));
-    const go = [...document.querySelectorAll('button')].find((b) =>
-      /^Join|Приєднатися$/.test(b.textContent.trim()),
-    );
+    // By role, not by label: the tab strip shares the word with the button.
+    const go = document.querySelector('main form button[type=submit]');
     if (!go) return { ok: false, why: 'no join button' };
     go.click();
 
@@ -2398,7 +2399,7 @@ async function studentResultPath(session, fixtures) {
     if (!field) return { ok: false, why: 'no join field', page: document.body.textContent.slice(0, 120) };
     write(field, ${JSON.stringify(code)});
     await sleep(250);
-    const join = button('^Join$|^Приєднатися$');
+    const join = document.querySelector('main form button[type=submit]');
     if (!join) return { ok: false, why: 'no join button' };
     join.click();
 
@@ -2766,6 +2767,22 @@ async function coursesPath(session, fixtures) {
       leave.click();
       await new Promise((r) => setTimeout(r, 800));
     }
+    // Courses live behind their own tab, the same way the teacher's workbench
+    // puts each screen behind one. Waited for: leaving a run refetches the
+    // session first, so the strip is not on screen the instant the button is
+    // clicked, and a tab click before it exists is a click on nothing.
+    let coursesTab = null;
+    for (let i = 0; i < 40 && !coursesTab; i += 1) {
+      coursesTab = [...document.querySelectorAll('[role=tab]')].find((t) =>
+        /Мої курси|My courses/.test(t.textContent || ''),
+      );
+      if (!coursesTab) await new Promise((r) => setTimeout(r, 250));
+    }
+    if (!coursesTab) {
+      return { opened: false, why: 'no courses tab', page: document.body.textContent.replace(/\\s+/g, ' ').slice(0, 200) };
+    }
+    coursesTab.click();
+    await new Promise((r) => setTimeout(r, 500));
     // The course list is fetched, so the row may not be there on the first
     // frame. Waited for, with what was on screen reported if it never comes.
     let row = null;
