@@ -22,7 +22,7 @@ when the listener speaks HTTPS (see [https.md](./https.md)).
 ```json
 {
   "status": "ok",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "tls": false,
   "database": "ok",
   "uptime_ms": 1234,
@@ -430,7 +430,7 @@ Aggregated DB health and table counts — the admin "System & DB" screen.
 ```json
 {
   "stats": {
-    "version": "0.7.0",
+    "version": "0.8.0",
     "uptimeMs": 1234,
     "schemaVersion": 12,
     "database": "ok",
