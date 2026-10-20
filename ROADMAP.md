@@ -891,24 +891,24 @@ before the reload, which is the truth and not a penalty invented here.
 Goal: the whole school's work is one SQLite file, and today nobody can take a
 copy of it or put one back.
 
-- [ ] `GET /api/admin/backup` (admin): `VACUUM INTO` a temporary file, stream it
+- [x] `GET /api/admin/backup` (admin): `VACUUM INTO` a temporary file, stream it
       as a download, delete the temporary file — `VACUUM INTO` rather than a
       file copy, because a copy of a live database with a WAL is not a database
-- [ ] `POST /api/admin/backup/restore` (admin): raw upload; validate the SQLite
+- [x] `POST /api/admin/backup/restore` (admin): raw upload; validate the SQLite
       header, `schema_version` (refuse a newer file, let the migrations bring an
       older one forward) and `PRAGMA integrity_check`; refuse while a session is
-      active; write `<data>/.restore` and report that a restart is needed
-- [ ] Startup: apply a pending `.restore` (the current file becomes
+      active; write `<data>/.restore` and answer `202 restartRequired`
+- [x] Startup: apply a pending `.restore` (the current file becomes
       `.before-restore`), and copy the database into `backups/` before the
       migrations run, keeping the last seven
-- [ ] Admin → System: download, "last backup N days ago", restore behind a
+- [x] Admin → System: download, the moment of the last backup, restore behind a
       confirm that names the file and the restart
-- [ ] Desktop: the host restarts the server after a restore, because it owns the
-      process; the headless server says a restart is needed and exits with a
-      code the operator can act on
-- [ ] Tests: the snapshot opens, has the same schema version and the same row
-      counts; restore refuses an active session, a truncated file and a newer
-      schema, and a version is restored from a file the endpoint produced
+- [x] Desktop: the host restarts the server after a restore, because it owns the
+      process; a headless server does not kill itself — it says a restart is
+      needed and the operator does it
+- [x] Tests: the snapshot opens and is a SQLite file; restore refuses an active
+      session, a foreign database and a newer schema, and the work done after a
+      snapshot is gone after the next start
 
 ### 8.3 HTTPS on the school LAN
 

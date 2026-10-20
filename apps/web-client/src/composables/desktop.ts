@@ -33,3 +33,12 @@ export async function nativeSavePath(_input: {
 
 /** Nothing native to write to: the browser path never reaches this. */
 export async function nativeWrite(_path: string, _bytes: Uint8Array): Promise<void> {}
+
+/**
+ * Restarting the hosted server is a desktop privilege: a browser has no process
+ * to restart, so the caller is told to do it by hand. Same signature as the
+ * desktop one, so the shared screens ask without branching.
+ */
+export async function restartServer(): Promise<null> {
+  return null
+}

@@ -430,8 +430,9 @@ Aggregated DB health and table counts — the admin "System & DB" screen.
   "stats": {
     "version": "0.7.0",
     "uptimeMs": 1234,
-    "schemaVersion": 5,
+    "schemaVersion": 12,
     "database": "ok",
+    "lastBackupAt": "2026-10-20T16:31:00.000Z",
     "counts": {
       "users": 5, "admins": 1, "teachers": 1, "students": 3,
       "pendingUsers": 1, "approvedUsers": 4, "blockedUsers": 0,
@@ -457,6 +458,36 @@ Flat course → student participation list (the admin "Participants" screen).
 ```
 
 Ordered by course title, then enrollment date.
+
+### `GET /api/admin/backup`
+
+The whole database as one file (`content-type: application/vnd.sqlite3`,
+`content-disposition: attachment; filename="lantern-backup-<date>.db"`).
+
+The copy is written with `VACUUM INTO` — a file copy of a live database with a
+WAL is not a database — streamed, and deleted from the data folder when the
+stream ends. The download stamps `lastBackupAt` in `/api/admin/stats`.
+
+### `POST /api/admin/backup/restore`
+
+Body: the raw database file, `content-type: application/octet-stream`, with a
+64 MB limit. The server checks the SQLite header, `PRAGMA integrity_check` and
+the schema version (an older file is migrated at the next start; a newer one is
+refused). The file is parked as `<data>/.restore`; the running server keeps the
+database it has.
+
+`202` — accepted, `restartRequired: true`. On the desktop the admin panel
+restarts the server itself; a headless server is restarted by its operator.
+
+- `409 SESSION_ACTIVE` — a run is in the lobby, active or paused
+- `400 NOT_SQLITE` — the body is not a SQLite file
+- `400 NOT_LANTERN` — SQLite, but with no `app_meta` (not this app's database)
+- `400 NEWER_SCHEMA` — written by a newer server
+- `400 CORRUPT` — damaged, or unreadable
+
+At the next start the replaced database is kept as `app.db.before-restore`, and
+a copy of the database is written into `<data>/backups/` before any migration
+runs (the newest seven are kept).
 
 ## Journals (`/api/journals`, admin & teacher)
 

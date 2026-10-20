@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { TriangleAlert } from '@lucide/vue'
-import { getSystemStats } from '../../api/admin'
+import { Download, TriangleAlert, Upload } from '@lucide/vue'
+import { downloadBackup, getSystemStats, restoreBackup } from '../../api/admin'
 import { ApiError } from '../../api/client'
 import { getSettings, updateSettings } from '../../api/settings'
+import { useConfirm } from '../../composables/confirm'
+import { isDesktop, restartServer } from '../../composables/desktop'
 import SkeletonList from '../common/SkeletonList.vue'
 import type { ServerSettings, SystemStats, TableCounts } from '../../api/types'
 import AppButton from '../common/AppButton.vue'
@@ -18,7 +20,7 @@ import { isReachableFromPhone } from '../../utils/links'
  * nothing else - no path, no query - because the client is served from the root
  * and a wrong suffix would only be discovered in the middle of a lesson.
  */
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const stats = ref<SystemStats | null>(null)
 const loading = ref(false)
@@ -28,6 +30,15 @@ const settings = ref<ServerSettings | null>(null)
 const draftUrl = ref('')
 const saving = ref(false)
 const saveErrorKey = ref('')
+
+const confirm = useConfirm()
+const backupBusy = ref(false)
+const backupErrorKey = ref('')
+const restoreBusy = ref(false)
+const restoreError = ref('')
+const restoreApplied = ref(false)
+const restartNeeded = ref(false)
+const restoreInput = ref<HTMLInputElement | null>(null)
 
 const countLabels: Array<{ key: keyof TableCounts; label: string }> = [
   { key: 'users', label: 'users' },
@@ -111,6 +122,80 @@ async function load(): Promise<void> {
     errorKey.value = error instanceof ApiError ? error.code : ''
   } finally {
     loading.value = false
+  }
+}
+
+function formatBackup(at: string): string {
+  return new Date(at).toLocaleString(locale.value)
+}
+
+async function download(): Promise<void> {
+  if (backupBusy.value) return
+  backupBusy.value = true
+  backupErrorKey.value = ''
+  try {
+    await downloadBackup()
+    // The server stamps the download; the "last backup" line is now stale.
+    stats.value = await getSystemStats()
+  } catch (error) {
+    backupErrorKey.value =
+      error instanceof ApiError && error.code === 'NETWORK' ? 'network' : 'generic'
+  } finally {
+    backupBusy.value = false
+  }
+}
+
+function chooseRestore(): void {
+  restoreInput.value?.click()
+}
+
+/** Each refusal means a different fix, so the codes are not collapsed. */
+function restoreMessage(error: unknown): string {
+  if (!(error instanceof ApiError)) return t('admin.system.restoreFailed')
+  switch (error.code) {
+    case 'SESSION_ACTIVE':
+      return t('admin.system.restoreActive')
+    case 'NOT_SQLITE':
+    case 'NOT_LANTERN':
+      return t('admin.system.restoreNotDatabase')
+    case 'NEWER_SCHEMA':
+      return t('admin.system.restoreNewer')
+    case 'CORRUPT':
+      return t('admin.system.restoreCorrupt')
+    case 'NETWORK':
+      return t('auth.errors.network')
+    default:
+      return t('admin.system.restoreFailed')
+  }
+}
+
+async function restore(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0] ?? null
+  // Picking the same file again after a refusal must fire `change` again.
+  input.value = ''
+  if (file === null || restoreBusy.value) return
+
+  const ok = await confirm({
+    message: t('admin.system.restoreConfirm', { file: file.name }),
+    confirmLabel: t('admin.system.restoreAction'),
+  })
+  if (!ok) return
+
+  restoreBusy.value = true
+  restoreError.value = ''
+  restoreApplied.value = false
+  restartNeeded.value = false
+  try {
+    await restoreBackup(file)
+    restoreApplied.value = true
+    // The desktop owns the process and can restart it; a browser cannot.
+    if (isDesktop()) await restartServer()
+    else restartNeeded.value = true
+  } catch (error) {
+    restoreError.value = restoreMessage(error)
+  } finally {
+    restoreBusy.value = false
   }
 }
 
@@ -256,6 +341,64 @@ onMounted(load)
             </dd>
           </div>
         </dl>
+      </AppCard>
+
+      <AppCard as="section">
+        <h3 class="text-sm font-semibold text-on-surface">{{ t('admin.system.backup') }}</h3>
+        <p class="mt-1 text-xs text-on-surface-variant">{{ t('admin.system.backupHint') }}</p>
+
+        <p class="mt-3 text-xs text-on-surface-variant">
+          {{ t('admin.system.backupLast') }}
+          <span class="font-semibold text-on-surface">
+            {{
+              stats?.lastBackupAt
+                ? formatBackup(stats.lastBackupAt)
+                : t('admin.system.backupNever')
+            }}
+          </span>
+        </p>
+
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <AppButton variant="secondary" :disabled="backupBusy" @click="download">
+            <Download class="size-4" aria-hidden="true" />
+            {{ t('admin.system.backupDownload') }}
+          </AppButton>
+          <AppButton variant="secondaryMuted" :disabled="restoreBusy" @click="chooseRestore">
+            <Upload class="size-4" aria-hidden="true" />
+            {{ t('admin.system.restoreAction') }}
+          </AppButton>
+        </div>
+
+        <input
+          ref="restoreInput"
+          type="file"
+          accept=".db,application/vnd.sqlite3,application/octet-stream"
+          class="sr-only"
+          :aria-label="t('admin.system.restoreAction')"
+          @change="restore"
+        />
+
+        <p
+          v-if="backupErrorKey"
+          role="alert"
+          class="mt-3 rounded-[var(--radius-control)] bg-error-container px-3 py-2 text-sm text-on-error-container"
+        >
+          {{ t(`admin.errors.${backupErrorKey}`) }}
+        </p>
+        <p
+          v-if="restoreError"
+          role="alert"
+          class="mt-3 rounded-[var(--radius-control)] bg-error-container px-3 py-2 text-sm text-on-error-container"
+        >
+          {{ restoreError }}
+        </p>
+        <p
+          v-if="restoreApplied"
+          role="status"
+          class="mt-3 rounded-[var(--radius-control)] bg-success-container px-3 py-2 text-sm text-on-success-container"
+        >
+          {{ restartNeeded ? t('admin.system.restoreRestart') : t('admin.system.restoreDone') }}
+        </p>
       </AppCard>
 
       <AppCard as="section">

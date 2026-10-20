@@ -6,9 +6,10 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Four changes after 0.7.0, each found by using the thing rather than by reading
+Five changes after 0.7.0, each found by using the thing rather than by reading
 it: a clock that lied, a student screen that grew, a server panel nobody could
-reach, and a paper that emptied itself when the phone reloaded.
+reach, a paper that emptied itself when the phone reloaded, and a gradebook
+nobody could take a copy of.
 
 ### A paper that survives the phone
 
@@ -91,6 +92,35 @@ reach, and a paper that emptied itself when the phone reloaded.
   change theirs without the old one, and there was no way back in.
   `PATCH /api/users/:id/password`, admin only, and it ends every session that
   user held — a reset that leaves the old device signed in is not a reset.
+
+### A gradebook that can be backed up
+
+- **The whole school in one file, on purpose.** `GET /api/admin/backup` streams
+  the database as a download. The copy is made with `VACUUM INTO` rather than a
+  file copy: a live SQLite database with a WAL is a database plus a journal, and
+  copying the first without the second loses exactly the work someone is trying
+  to save. The temporary file goes when the stream ends.
+- **A backup comes back through the door it left by.** `POST
+  /api/admin/backup/restore` takes the file as raw bytes, checks the SQLite
+  header, `PRAGMA integrity_check` and the schema version, and refuses while a
+  run is open. An older file is accepted and migrated at the next start; a file
+  from a newer server is refused instead of being silently downgraded. Each
+  refusal has its own code — `SESSION_ACTIVE`, `NOT_SQLITE`, `NOT_LANTERN`,
+  `NEWER_SCHEMA`, `CORRUPT` — because each one means a different fix.
+- **Nothing is replaced under a running server.** An accepted file is parked as
+  `<data>/.restore` and applied by the next start, which keeps the replaced
+  database as `app.db.before-restore`. The desktop panel restarts the server
+  itself, since it owns the process; a headless server says a restart is needed
+  and leaves the decision to its operator.
+- **A migration keeps what it replaces.** Before the migrations run, a database
+  older than this build is copied into `<data>/backups/`, newest seven kept. Not
+  on every launch: seven identical copies teach nobody anything.
+- **Admin → System has the card.** Download, the moment of the last backup, and
+  restore behind a confirm that names the file.
+- Nine server tests cover the round trip: a snapshot is a SQLite file, only an
+  admin can touch it, a foreign database and a newer schema are refused, work
+  done after a snapshot is gone after the next start, and a run in the lobby
+  blocks a restore.
 
 ### Fixed
 

@@ -208,6 +208,8 @@ export interface SystemStats {
   uptimeMs: number
   schemaVersion: number
   database: 'ok' | 'error'
+  /** ISO timestamp of the last downloaded snapshot; null when nobody took one. */
+  lastBackupAt: string | null
   counts: TableCounts
 }
 

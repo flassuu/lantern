@@ -1,11 +1,17 @@
 // `index.ts` is always the entrypoint; this module is never imported by tests.
 import { join } from 'node:path'
 import { attachConsole } from './lib/console'
+import { applyPendingRestore, snapshotOnUpgrade } from './lib/backup'
 import { seedDemo } from './lib/demo'
 import { loadConfig } from './config'
 import { shutdown, startServer } from './app'
 
 const config = loadConfig(process.argv.slice(2))
+
+// Before anything opens the database: a restore parked by the previous run is
+// the database now, and a migration about to run gets a copy of what it replaces.
+const restored = applyPendingRestore(config.dataDir, config.dbPath)
+const upgradeCopy = snapshotOnUpgrade(config.dbPath, join(config.dataDir, 'backups'))
 
 const app = await startServer({
   host: config.host,
@@ -15,6 +21,13 @@ const app = await startServer({
 })
 
 const { logs } = app
+
+if (restored) {
+  logs.logger.info({ db: config.dbPath }, 'restored the database from the uploaded backup')
+}
+if (upgradeCopy) {
+  logs.logger.info({ copy: upgradeCopy }, 'kept a copy of the database before the migration')
+}
 
 // The demo is asked for out loud, and it refuses a database that already holds
 // work. Both outcomes are logged: a flag that silently did nothing is worse than

@@ -191,6 +191,22 @@ export default {
       courses: 'Courses',
       enrollments: 'Enrollments',
       materials: 'Materials',
+      backup: 'Backup',
+      backupHint:
+        'The whole database as one file. Keep it somewhere that is not this machine.',
+      backupLast: 'Last backup:',
+      backupNever: 'never',
+      backupDownload: 'Download backup',
+      restoreAction: 'Restore from a file',
+      restoreConfirm:
+        'Restore {file}? The current gradebook is replaced at the next start; a copy of it is kept beside the database. Anyone who signed in after that copy will have to sign in again.',
+      restoreDone: 'Backup restored. The server restarted.',
+      restoreRestart: 'Backup accepted. Restart the server to apply it.',
+      restoreFailed: 'The backup could not be restored.',
+      restoreActive: 'A run is open. Finish it before restoring a backup.',
+      restoreNotDatabase: 'That file is not a LANtern database.',
+      restoreNewer: 'That backup comes from a newer version of the server.',
+      restoreCorrupt: 'That backup is damaged.',
     },
   },
   teacher: {

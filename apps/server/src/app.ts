@@ -137,8 +137,8 @@ export function buildApp(options: AppOptions): TestingApp {
   // Phase 3: live session runtime (teacher run + student join/submit).
   void app.register(sessionRoutes, { database })
 
-  // Admin-only introspection: DB health and course participants.
-  void app.register(adminRoutes, { database, version: APP_VERSION })
+  // Admin-only introspection: DB health, course participants, backup/restore.
+  void app.register(adminRoutes, { database, version: APP_VERSION, dataDir })
 
   // Phase 5.1: the address students can open, plus what this machine answers on.
   void app.register(settingsRoutes, { database, port: options.port })
