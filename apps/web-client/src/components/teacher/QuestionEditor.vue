@@ -84,14 +84,20 @@ function removePair(index: number): void {
   >
     <div class="mb-3 flex items-center justify-between gap-2">
       <div class="flex min-w-0 items-center gap-2">
-        <span
-          class="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-container text-xs font-bold text-on-primary-container"
-        >
-          {{ index + 1 }}
-        </span>
-        <span class="truncate text-xs font-semibold text-on-surface-variant">
-          {{ typeLabel(question.type) }}
-        </span>
+        <!-- The card's heading, and nothing else: the number and the type are
+             what name a question, so heading navigation lands on the question
+             rather than on the page. The rate chip stays outside it, or it
+             would be read as part of the name. -->
+        <h4 class="flex min-w-0 items-center gap-2">
+          <span
+            class="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary-container text-xs font-bold text-on-primary-container"
+          >
+            {{ index + 1 }}
+          </span>
+          <span class="truncate text-xs font-semibold text-on-surface-variant">
+            {{ typeLabel(question.type) }}
+          </span>
+        </h4>
         <!-- A question the class mostly misses is worth a second look before the
              next run, and the number says which one it is. -->
         <span

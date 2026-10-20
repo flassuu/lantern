@@ -983,15 +983,28 @@ cover that too, so the rule is written down where it is enforced.
 Goal: the three screens a person actually reads, made readable — the open item
 from 6.6, not a redesign.
 
-- [ ] A pass over `QuestionEditor`, the student runner and the result: heading
+- [x] A pass over `QuestionEditor`, the student runner and the result: heading
       order, spacing, the weight of the score, the hierarchy of the answer
       fields, and the long question body on a 360px screen — in both themes and
       both locales, with no layout shift between them
-- [ ] The empty, loading and error states of the three screens say the same
+- [x] The empty, loading and error states of the three screens say the same
       thing in the same place as the rest of the app
-- [ ] Browser check: insert an image in the editor and see it as a student (the
+- [x] Browser check: insert an image in the editor and see it as a student (the
       other open 6.6 item), on a fresh `--data` directory
-- [ ] No behaviour change: this is the screen, not the rules
+- [x] No behaviour change: this is the screen, not the rules
+
+The question is the heading of its card in all three, `text-base` rather than
+the size of the hint below it, and a word with no spaces in it breaks instead of
+pushing the page sideways — read at 390px by the harness, not by eye. An answer
+carries `border-outline-variant` in both of its states, because the fill alone
+left the options reading as text, and the border in both states is what keeps the
+row from shifting when it is picked.
+
+The picture check brings its own test and its own run. A save rewrites a test's
+questions with new ids, and the paper a student already holds is ordered by the
+ids that were there when they joined — so a test edited while a run of it is live
+comes back to its own students empty. That is a question about editing mid-run,
+not about a screen, and it is left open rather than answered here.
 
 ### 8.7 Closing the phase — v0.8.0
 

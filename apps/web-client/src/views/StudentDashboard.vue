@@ -21,6 +21,7 @@ import {
 } from '../api/sessions'
 import AppButton from '../components/common/AppButton.vue'
 import AppCard from '../components/common/AppCard.vue'
+import SkeletonList from '../components/common/SkeletonList.vue'
 import { usePresence } from '../composables/presence'
 
 const { t } = useI18n()
@@ -202,11 +203,7 @@ onMounted(() => {
         {{ loadError }}
       </p>
 
-      <div v-if="loading" class="mt-6 space-y-3" role="status">
-        <span class="sr-only">{{ t('common.loading') }}</span>
-        <div class="h-4 w-1/2 rounded-full bg-surface-container-highest" aria-hidden="true" />
-        <div class="h-3 w-3/4 rounded-full bg-surface-container-highest" aria-hidden="true" />
-      </div>
+      <SkeletonList v-if="loading" class="mt-6" :rows="3" />
 
       <template v-else-if="held">
         <AppCard as="section" class="mt-6">

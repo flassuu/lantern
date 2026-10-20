@@ -91,6 +91,9 @@ const controlClass =
     />
 
     <!-- single and multiple choice -->
+    <!-- The outline is what makes a row read as the control it is; on a card the
+         fill alone leaves the options looking like paragraphs. It is on both
+         states, so picking one does not shift the row. -->
     <ul v-if="question.type === 'single_choice' || question.type === 'multiple_choice'" class="space-y-1.5">
       <li v-for="option in options" :key="option.key">
         <!--
@@ -99,7 +102,7 @@ const controlClass =
           on every frame of the fade.
         -->
         <label
-          class="state-layer flex cursor-pointer items-center gap-2.5 rounded-xl px-3 py-2 text-sm"
+          class="state-layer flex cursor-pointer items-center gap-2.5 rounded-xl border border-outline-variant px-3 py-2 text-sm"
           :class="
             response.keys.includes(option.key)
               ? 'bg-primary-container font-semibold text-on-primary-container'
@@ -135,13 +138,18 @@ const controlClass =
 
     <!-- true / false -->
     <div v-else-if="question.type === 'true_false'" class="flex flex-wrap gap-2">
+      <!--
+        Two buttons, not a row of text: an answer is a control, and the outline
+        is what says so. It is carried in both states, so the pair does not
+        shift by a pixel when the student picks one.
+      -->
       <button
         v-for="value in [true, false]"
         :key="String(value)"
         type="button"
         :aria-pressed="response.boolean === value"
         @click="setBoolean(value)"
-        class="state-layer flex-1 rounded-xl px-3 py-2 text-sm font-semibold"
+        class="state-layer flex-1 rounded-xl border border-outline-variant px-3 py-2 text-sm font-semibold"
         :class="
           response.boolean === value
             ? 'bg-primary-container text-on-primary-container'

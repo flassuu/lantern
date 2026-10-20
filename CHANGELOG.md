@@ -6,12 +6,13 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Eight changes after 0.7.0, each found by using the thing rather than by reading
+Nine changes after 0.7.0, each found by using the thing rather than by reading
 it: a clock that lied, a student screen that grew, a server panel nobody could
 reach, a paper that emptied itself when the phone reloaded, a gradebook nobody
 could take a copy of, a client a phone could not install or keep offline, a PDF
-that could not spell a Ukrainian name, and a run screen whose clock and search
-box did not do what they looked like they did.
+that could not spell a Ukrainian name, a run screen whose clock and search box
+did not do what they looked like they did, and three screens that were read
+rather than used.
 
 ### A paper that survives the phone
 
@@ -197,6 +198,36 @@ box did not do what they looked like they did.
   Home and End for the ends, and the tab that moved takes the focus with it; only
   the open tab is in the tab order. TEST_PLAN.md carried this as a known failure,
   and the harness now presses the keys rather than reading the markup.
+
+### The editor, the paper, the result
+
+- **The question is the heading of its card.** On the paper and in the result the
+  body of a question was set at 14px — the size of the hint under it and of the
+  answers beside it — and marked up as a paragraph; in the editor the card had no
+  heading at all. It is `text-base` and a heading now (`<h4>` in the editor,
+  `<h3>` on the paper and in the result), so heading navigation walks a paper
+  question by question instead of landing on one wall of text.
+- **A long question wraps instead of pushing the page sideways.** A word with no
+  spaces in it, which is the shape a Ukrainian compound takes, ran off a narrow
+  screen; the heading carries `break-words`. The harness opens a paper at 390px
+  whose second question holds a fifty-character word, and reads both the box of
+  the heading and the width of the page.
+- **An answer is a control, not a paragraph.** The choice rows and the
+  true/false pair on the paper and in the result carry `border-outline-variant`:
+  on a card, the fill alone left the options reading as lines of text rather than
+  as things to tap. Both states carry the border, so picking an answer does not
+  move the row by a pixel.
+- **The result's true/false line has its space back.** The label and its value
+  are two spans, and Vue condenses the whitespace between elements away, so the
+  screen read `Правда / Хиба:Правда`; a flex row with a gap carries the space.
+- **The loading skeleton is the app's skeleton.** The student dashboard's loading
+  state was two bars drawn by hand where the rest of the app shows
+  `SkeletonList`.
+- **The browser now inserts a picture through the editor.** The harness uploaded
+  its diagram through the API, which proved the student half of the feature and
+  nothing at all about the control a teacher uses. The new path sets a file on
+  the editor's own input — the same handler the button calls — saves the test,
+  joins the run and reads the picture on the paper at 390px.
 
 ### Fixed
 

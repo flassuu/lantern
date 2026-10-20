@@ -345,10 +345,13 @@ onBeforeUnmount(() => {
         {{ t('student.paged.of', { current: page + 1, total: questions.length }) }}
       </p>
       <AppCard as="section">
+        <!-- The question is the card's heading, and the largest thing on it: at
+             14px it read as one more line of the card, and a long word in a
+             language like Ukrainian ran off a 360px screen at that size. -->
         <div class="flex items-start justify-between gap-3">
-          <p class="text-sm font-semibold text-on-surface">
+          <h3 class="min-w-0 break-words text-base font-semibold text-on-surface">
             {{ page + 1 }}. {{ current.body }}
-          </p>
+          </h3>
           <span
             class="shrink-0 rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant"
           >
@@ -378,9 +381,9 @@ onBeforeUnmount(() => {
     <ol v-else class="space-y-3">
       <AppCard as="li" v-for="(question, index) in questions" :key="question.id">
         <div class="flex items-start justify-between gap-3">
-          <p class="text-sm font-semibold text-on-surface">
+          <h3 class="min-w-0 break-words text-base font-semibold text-on-surface">
             {{ index + 1 }}. {{ question.body }}
-          </p>
+          </h3>
           <span
             class="shrink-0 rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant"
           >

@@ -100,9 +100,9 @@ function trueFalseAnswer(question: GradedQuestion): boolean | null {
     <ol class="space-y-3">
       <AppCard as="li" v-for="(question, index) in result.questions" :key="question.id">
         <div class="flex items-start justify-between gap-3">
-          <p class="text-sm font-semibold text-on-surface">
+          <h3 class="min-w-0 break-words text-base font-semibold text-on-surface">
             {{ index + 1 }}. {{ question.body }}
-          </p>
+          </h3>
           <span
             class="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold"
             :class="
@@ -121,10 +121,12 @@ function trueFalseAnswer(question: GradedQuestion): boolean | null {
           v-if="question.type === 'single_choice' || question.type === 'multiple_choice'"
           class="mt-3 space-y-1.5"
         >
+          <!-- Both states carry the outline: the correct option is the one that
+               is filled, and the rest still have to read as options. -->
           <li
             v-for="option in optionsOf(question)"
             :key="option.key"
-            class="flex items-center gap-2 rounded-xl px-3 py-2 text-sm"
+            class="flex items-center gap-2 rounded-xl border border-outline-variant px-3 py-2 text-sm"
             :class="
               isChosen(question, option.key)
                 ? 'bg-success-container font-semibold text-on-success-container'
@@ -136,7 +138,10 @@ function trueFalseAnswer(question: GradedQuestion): boolean | null {
           </li>
         </ul>
 
-        <p v-else-if="question.type === 'true_false'" class="mt-3 text-sm">
+        <!-- The label and the value are two spans, and Vue condenses the
+             whitespace between them away: "Правда / Хиба:Правда" had no space at
+             all. The gap carries it, so it survives the compiler. -->
+        <p v-else-if="question.type === 'true_false'" class="mt-3 flex flex-wrap items-baseline gap-1 text-sm">
           <span class="text-on-surface-variant">{{ t('teacher.editor.trueValue') }} / {{ t('teacher.editor.falseValue') }}:</span>
           <span class="font-semibold text-on-success-container">
             {{ trueFalseAnswer(question) === null ? '—' : trueFalseAnswer(question) ? t('teacher.editor.trueValue') : t('teacher.editor.falseValue') }}

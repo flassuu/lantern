@@ -2175,6 +2175,190 @@ async function mediaPath(session, fixtures) {
 }
 
 /**
+ * A picture inserted in the editor, found on the paper.
+ *
+ * The other open item from 6.6. The harness already uploaded its diagram
+ * through the API, which proves the student side of the feature and nothing at
+ * all about the control a teacher uses: the button, the file input behind it and
+ * the save that follows. This one sets a file on that input - the same handler
+ * the button calls - saves the test, and then reads the paper as a student.
+ *
+ * It brings its own test and its own run. The fixture's run is already live with
+ * a student in it, and a save rewrites a test's questions, so the paper that
+ * student is holding - ordered by the ids that were there when they joined -
+ * would come back empty. Editing a test mid-run is a question of its own; this
+ * path is about a picture that has to be on the paper before anybody joins.
+ */
+async function editorImagePath(session, fixtures) {
+  const paper = await api('/api/tests', {
+    token: fixtures.teacher,
+    method: 'POST',
+    body: {
+      title: `Inserted picture ${SUFFIX}`,
+      questions: [
+        {
+          type: 'true_false',
+          body: 'A picture goes here?',
+          points: 1,
+          position: 0,
+          payload: { correct: true },
+        },
+      ],
+    },
+  })
+  created.tests.push(paper.test.id)
+  const run = await api('/api/sessions', {
+    token: fixtures.teacher,
+    method: 'POST',
+    body: { testId: paper.test.id, name: `Inserted picture run ${SUFFIX}` },
+  })
+  created.sessions.push(run.session.id)
+  await api(`/api/sessions/${run.session.id}/start`, { token: fixtures.teacher, method: 'POST' })
+
+  const context = await session.page(1100, 1000)
+  await openApp(session, context, { token: fixtures.teacher, locale: 'en', width: 1100, height: 1000 })
+  await settle(session, context, 'tabs')
+  await clickTab(session, context, '^Tests$', 1800)
+
+  const uploaded = await session.run(
+    context,
+    `
+    const row = [...document.querySelectorAll('li')].find((li) =>
+      li.textContent.includes(${JSON.stringify(`Inserted picture ${SUFFIX}`)}),
+    );
+    if (!row) return { ok: false, why: 'no test row' };
+    const edit = [...row.querySelectorAll('button')].find((b) => /^Edit$/.test(b.textContent.trim()));
+    if (!edit) return { ok: false, why: 'no edit button on the row' };
+    edit.click();
+    let fieldset = null;
+    for (let i = 0; i < 40 && !fieldset; i += 1) {
+      fieldset = document.querySelector('fieldset');
+      if (!fieldset) await new Promise((r) => setTimeout(r, 250));
+    }
+    if (!fieldset) return { ok: false, why: 'the editor never opened' };
+
+    const input = fieldset.querySelector('input[type=file]');
+    if (!input) return { ok: false, why: 'the question has no upload control' };
+
+    // A file a person could have chosen: the same bytes the API uploads use,
+    // handed to the input the way the file dialog hands them over.
+    const bytes = Uint8Array.from(
+      atob(${JSON.stringify(makePng(200, 100).toString('base64'))}),
+      (c) => c.charCodeAt(0),
+    );
+    const file = new File([bytes], 'inserted.png', { type: 'image/png' });
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    input.files = transfer.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // Waited for by its size: the question starts with no picture at all, so a
+    // 200 pixel one can only be the file just handed over.
+    for (let i = 0; i < 80; i += 1) {
+      const img = fieldset.querySelector('img');
+      if (img && img.complete && img.naturalWidth === 200) {
+        return { ok: true, blob: img.src.startsWith('blob:'), w: img.naturalWidth };
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    const drawn = fieldset.querySelector('img');
+    return {
+      ok: false,
+      why: 'the inserted picture never appeared (' + (drawn ? drawn.naturalWidth + 'px' : 'no image at all') + ')',
+    };
+  `,
+  )
+  check(
+    'teacher: a picture inserted in the editor uploads and draws itself',
+    uploaded.ok === true && uploaded.blob === true && uploaded.w === 200,
+    uploaded.why ?? `blob=${uploaded.blob} (${uploaded.w}px)`,
+  )
+  await session.screenshot(context, join(SHOTS, 'teacher-editor-inserted.png'))
+
+  // Saved, or the paper never sees it: the editor keeps the question in a form
+  // and the file only becomes part of the test when the form is submitted.
+  const saved = await session.run(
+    context,
+    `
+    const button = document.querySelector('main form button[type=submit]');
+    if (!button) return { ok: false, why: 'no save button' };
+    button.click();
+    await new Promise((r) => setTimeout(r, 2000));
+    return { ok: true, stillEditing: !!document.querySelector('fieldset') };
+  `,
+  )
+  const stored = await api(`/api/tests/${paper.test.id}`, { token: fixtures.teacher })
+  const media = stored.test.questions[0]?.payload?.media
+  const assetId = typeof media?.assetId === 'string' ? media.assetId : null
+  check(
+    'teacher: the saved test carries the inserted picture',
+    saved.ok === true && saved.stillEditing === false && assetId !== null,
+    saved.why ?? `asset=${assetId}`,
+  )
+
+  // And the student, on a phone, on the paper: the picture the teacher put there
+  // through the editor, which is the half of the feature the API upload never
+  // touched.
+  //
+  // Joined through the API rather than the join card, and on purpose: the other
+  // paths already left this student in the fixture's run, so the dashboard opens
+  // straight into that paper and there is no card to type a code into. What is
+  // under test here is the picture, and joining is covered by its own path.
+  await api('/api/sessions/join', {
+    token: fixtures.student,
+    method: 'POST',
+    body: { code: run.session.joinCode },
+  })
+
+  const studentContext = await session.page(390, 844)
+  await openApp(session, studentContext, { token: fixtures.student, locale: 'uk', width: 390, height: 844 })
+  await settle(session, studentContext, 'content')
+
+  const seen = await session.run(
+    studentContext,
+    `
+    for (let i = 0; i < 80; i += 1) {
+      const img = [...document.querySelectorAll('main img')].at(-1);
+      if (img && img.complete && img.naturalWidth === 200) {
+        const box = img.getBoundingClientRect();
+        return {
+          ok: true,
+          blob: img.src.startsWith('blob:'),
+          w: img.naturalWidth,
+          withinScreen: box.right <= window.innerWidth + 1,
+        };
+      }
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    const drawn = [...document.querySelectorAll('main img')].at(-1);
+    return {
+      ok: false,
+      why: 'shows ' + (drawn ? drawn.naturalWidth + 'px' : 'no picture') + ', paper ' +
+        (document.body.textContent.includes('A picture goes here?') ? 'open' : 'not open'),
+      page: document.body.textContent.replace(/\\s+/g, ' ').slice(0, 160),
+    };
+  `,
+  )
+  check(
+    'student: the picture the teacher inserted is the one on the paper',
+    seen.ok === true && seen.blob === true && seen.w === 200 && seen.withinScreen === true,
+    seen.why ? `${seen.why} — page: ${seen.page ?? ''}` : `blob=${seen.blob} (${seen.w}px)`,
+  )
+
+  await session.screenshot(studentContext, join(SHOTS, 'student-paper-inserted.png'))
+  await contextClose(session, studentContext)
+  await contextClose(session, context)
+
+  // Closed, not left open: the paths below put this student in the fixture's run
+  // and `/current` hands back the newest one they are still in.
+  await api(`/api/sessions/${run.session.id}`, {
+    token: fixtures.teacher,
+    method: 'PATCH',
+    body: { status: 'finished' },
+  })
+}
+
+/**
  * One question at a time, which is what a teacher picks for a class that should
  * not see the whole paper at once (6.4 `questionsPerPage`).
  *
@@ -2196,7 +2380,14 @@ async function pagedPath(session, fixtures) {
       settings: { questionsPerPage: 'one' },
       questions: [1, 2].map((number) => ({
         type: 'true_false',
-        body: `Paged question ${number}?`,
+        // The second one carries a word with no spaces in it, because that is
+        // the shape a long Ukrainian answer takes and the one a 360px screen
+        // cannot break without `break-words`: ordinary sentences wrap on their
+        // own and would pass whether or not the rule is there.
+        body:
+          number === 1
+            ? 'Paged question 1?'
+            : 'Paged question 2? наддовгесловосільськогосподарськемашинобудування and the rest of a sentence that wraps',
         points: 1,
         position: number - 1,
         payload: { correct: true },
@@ -2255,6 +2446,19 @@ async function pagedPath(session, fixtures) {
       submit: [...document.querySelectorAll('button')].some((b) =>
         /Надіслати|Submit/.test(b.textContent.trim()),
       ),
+      // The question is the card's heading, so that is what the wrap is measured
+      // on: a box wider than the screen is the whole page scrolling sideways.
+      wrap: (() => {
+        const heading = document.querySelector('main h3');
+        if (!heading) return null;
+        const box = heading.getBoundingClientRect();
+        return {
+          right: Math.round(box.right),
+          clipped: heading.scrollWidth > heading.clientWidth + 1,
+          sideways: document.documentElement.scrollWidth > window.innerWidth + 1,
+          lines: Math.round(box.height / 24),
+        };
+      })(),
     });
     if (!pager) return { ok: false, why: 'no pager', page: document.body.textContent.slice(0, 160) };
     const before = read();
@@ -2286,6 +2490,15 @@ async function pagedPath(session, fixtures) {
     seen.why ?? `pager=${seen.after?.pager} first=${seen.after?.first} second=${seen.after?.second}`,
   )
   await session.screenshot(context, join(SHOTS, 'student-paged-runner.png'))
+  check(
+    'student: a long question wraps instead of pushing the page sideways',
+    seen.ok === true &&
+      seen.after.wrap !== null &&
+      seen.after.wrap.sideways === false &&
+      seen.after.wrap.clipped === false &&
+      seen.after.wrap.right <= 390,
+    seen.why ?? `wrap=${JSON.stringify(seen.after?.wrap)}`,
+  )
   await contextClose(session, context)
   // Left open, this run would be the student's current one and would follow them
   // into the next path, where the dashboard would show a paper instead of a code.
@@ -3349,6 +3562,11 @@ async function main() {
     // and out of the run, and this one joins a run.
     console.log('\npictures in questions')
     await mediaPath(session, fixtures)
+
+    // After it, and before the run is closed: the picture this path inserts is
+    // on a paper a student has to be able to open.
+    console.log('\na picture inserted in the editor')
+    await editorImagePath(session, fixtures)
 
     // Last: it closes the run the picture path left open by submitting to it.
     console.log('\nthe journal')
