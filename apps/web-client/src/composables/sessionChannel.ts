@@ -1,5 +1,5 @@
 import { onBeforeUnmount, ref, type Ref } from 'vue'
-import { getToken } from '../api/client'
+import { getToken, socketBase } from '../api/client'
 import { getParticipants, type LiveSessionStatus, type ParticipantEntry } from '../api/sessions'
 
 /** How often the board is re-read while the socket is down, and as a safety net. */
@@ -18,8 +18,7 @@ export interface SessionChannel {
 function socketUrl(sessionId: string): string | null {
   const token = getToken()
   if (!token) return null
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  return `${protocol}://${window.location.host}/ws/sessions/${sessionId}?token=${encodeURIComponent(token)}`
+  return `${socketBase()}/ws/sessions/${sessionId}?token=${encodeURIComponent(token)}`
 }
 
 /**

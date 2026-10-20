@@ -1,5 +1,14 @@
-import { existsSync, mkdirSync, realpathSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { dirname, isAbsolute, resolve } from 'node:path'
+
+/** A flag that cannot be honoured, with a sentence a teacher can act on. */
+export class ConfigError extends Error {}
+
+/** TLS material, read at startup so a bad path fails before the port opens. */
+export interface TlsConfig {
+  cert: Buffer
+  key: Buffer
+}
 
 export interface ServerConfig {
   host: string
@@ -12,6 +21,8 @@ export interface ServerConfig {
   console: boolean
   /** Fill a fresh database with demo data. Never implicit: see `lib/demo.ts`. */
   seedDemo: boolean
+  /** Null means plain HTTP, which stays the default on a classroom LAN. */
+  tls: TlsConfig | null
 }
 
 function arg(argv: string[], flag: string): string | undefined {
@@ -58,6 +69,32 @@ function resolveWebRoot(baseDirValue: string): string {
   return ''
 }
 
+/**
+ * Both certificate flags or neither.
+ *
+ * A server that quietly falls back to plain HTTP when one flag is mistyped is
+ * the worst outcome: the lesson runs, the passwords cross the room in clear
+ * text, and nobody notices. A missing file stops the process with a sentence
+ * that names the flag instead.
+ */
+function readTls(argv: string[]): TlsConfig | null {
+  const certPath = arg(argv, '--tls-cert')
+  const keyPath = arg(argv, '--tls-key')
+  if (!certPath && !keyPath) return null
+  if (!certPath || !keyPath) {
+    throw new ConfigError('--tls-cert and --tls-key go together: give both, or neither')
+  }
+  return { cert: readPem(certPath, '--tls-cert'), key: readPem(keyPath, '--tls-key') }
+}
+
+function readPem(path: string, flag: string): Buffer {
+  try {
+    return readFileSync(path)
+  } catch {
+    throw new ConfigError(`${flag}: cannot read ${path}`)
+  }
+}
+
 export function loadConfig(argv: string[]): ServerConfig {
   const baseDirValue = baseDir()
   // A relative --data would tie the database and uploads to the working
@@ -80,5 +117,6 @@ export function loadConfig(argv: string[]): ServerConfig {
     console: !argv.includes('--no-console'),
     // A flag with no value, like `--no-console`: its presence is the meaning.
     seedDemo: argv.includes('--seed-demo'),
+    tls: readTls(argv),
   }
 }

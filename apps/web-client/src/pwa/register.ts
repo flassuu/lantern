@@ -1,10 +1,11 @@
 import i18n from '../i18n'
 import { useToast } from '../composables/toast'
+import { isSecureContext } from './secure'
 
 /**
  * Registers the offline shell, and only where it belongs.
  *
- * Four things must be true before a service worker is registered, and each one
+ * Five things must be true before a service worker is registered, and each one
  * is a place it would otherwise do harm:
  *
  * - **A production build.** In development the worker would serve yesterday's
@@ -15,6 +16,8 @@ import { useToast } from '../composables/toast'
  * - **Not with `?nosw` in the address.** A worker that has gone wrong on a
  *   phone nobody can reach is unkillable from the outside; this is the way out.
  * - **A browser that has them at all.**
+ * - **A secure context.** Over plain HTTP on a LAN address the browser refuses
+ *   the worker outright; registering anyway only hides that from the reader.
  *
  * A new build taking over is announced rather than applied: reloading the page
  * under a student who is half way through a paper would throw their answers
@@ -23,6 +26,7 @@ import { useToast } from '../composables/toast'
 export function registerServiceWorker(): void {
   if (!import.meta.env.PROD) return
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
+  if (!isSecureContext()) return
   const globals = window as unknown as Record<string, unknown>
   if ('__TAURI__' in globals || '__TAURI_INTERNALS__' in globals) return
 

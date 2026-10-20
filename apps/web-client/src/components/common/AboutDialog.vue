@@ -6,6 +6,7 @@ import AppDialog from './AppDialog.vue'
 import BrandMark from '../BrandMark.vue'
 import { effectiveBaseUrl } from '../../composables/settings'
 import { appVersion } from '../../composables/desktop'
+import { isSecureContext } from '../../pwa/secure'
 import AppButton from './AppButton.vue'
 import { useDialogFocus } from '../../composables/focusTrap'
 
@@ -17,6 +18,8 @@ const { t } = useI18n()
 const panelRef = ref<HTMLElement | null>(null)
 const closeRef = ref<HTMLButtonElement | null>(null)
 const version = ref('')
+// A worker, and therefore an installable copy, needs https; the page knows.
+const secure = isSecureContext()
 
 useDialogFocus(
   () => props.open,
@@ -62,6 +65,12 @@ onMounted(async () => {
           <dt class="text-on-surface-variant">{{ t('common.about.server') }}</dt>
           <dd class="min-w-0 truncate font-mono text-xs text-on-surface">
             {{ effectiveBaseUrl() }}
+          </dd>
+        </div>
+        <div class="flex items-baseline justify-between gap-3">
+          <dt class="text-on-surface-variant">{{ t('common.about.offlineCopy') }}</dt>
+          <dd class="font-semibold text-on-surface">
+            {{ secure ? t('common.about.installable') : t('common.about.needsHttps') }}
           </dd>
         </div>
       </dl>

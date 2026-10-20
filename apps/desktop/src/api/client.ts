@@ -28,6 +28,18 @@ export function apiUrl(path: string): string {
   return `${apiBase}${path}`
 }
 
+/**
+ * The API origin as a WebSocket base.
+ *
+ * The desktop window is served by Tauri, not by the server: `window.location`
+ * carries the webview's host and no port, so a socket built from it lands
+ * nowhere. The API base is the one address the app already trusts for REST, and
+ * it follows https to wss on its own.
+ */
+export function socketBase(): string {
+  return apiBase.replace(/^http/, 'ws')
+}
+
 export class ApiError extends Error {
   readonly status: number
   readonly code: string

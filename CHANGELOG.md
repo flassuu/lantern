@@ -6,10 +6,10 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Five changes after 0.7.0, each found by using the thing rather than by reading
+Six changes after 0.7.0, each found by using the thing rather than by reading
 it: a clock that lied, a student screen that grew, a server panel nobody could
-reach, a paper that emptied itself when the phone reloaded, and a gradebook
-nobody could take a copy of.
+reach, a paper that emptied itself when the phone reloaded, a gradebook nobody
+could take a copy of, and a client a phone could not install or keep offline.
 
 ### A paper that survives the phone
 
@@ -121,6 +121,33 @@ nobody could take a copy of.
   admin can touch it, a foreign database and a newer schema are refused, work
   done after a snapshot is gone after the next start, and a run in the lobby
   blocks a restore.
+
+### A certificate, when there is one
+
+- **`--tls-cert` and `--tls-key`, both or neither.** With them the listener
+  speaks HTTPS; without them nothing changes, because a classroom with no
+  internet has no authority to ask and a server that refuses to start without
+  TLS is a server a teacher cannot run. One flag on its own, or a file that
+  cannot be read, stops the process with a sentence naming the flag — silently
+  falling back to plain HTTP on a typo is the one outcome worth crashing for.
+  `/api/health` answers `"tls": true`, and the startup line says `https://`.
+- **The sockets follow the scheme they are given.** They were built from
+  `window.location`, which in the desktop app is the Tauri window rather than
+  the server: the host had no port, the socket never opened, and the live board
+  quietly fell back to polling. They are built from the API base now — which is
+  `https`-aware — and the student client, served by the server, keeps following
+  its own page.
+- **The app says whether it can be installed.** A service worker, and therefore
+  an installable offline copy, exists only in a secure context. Registration now
+  checks for one instead of failing inside a `catch`, About shows "Offline copy
+  — Installable / Needs HTTPS", and the offline banner adds why there is nothing
+  cached to fall back on.
+- **`docs/https.md`.** A local CA with `openssl` (a phone trusts a CA, not a
+  leaf), Caddy and nginx recipes with the upgrade headers the live board needs,
+  and the note that `publicBaseUrl` takes an `https` address unchanged.
+- The harness accepts a local certificate (`acceptInsecureCerts`) and takes
+  `BASE=https://…` with `NODE_EXTRA_CA_CERTS`; a full run against a self-signed
+  certificate passes, sockets included.
 
 ### Fixed
 

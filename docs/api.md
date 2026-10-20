@@ -16,12 +16,14 @@ the Vite dev proxy is only a convenience for `pnpm dev:web` / `dev:desktop`.
 
 ### `GET /api/health`
 
-Probe used by clients to confirm the local server is up. Public.
+Probe used by clients to confirm the local server is up. Public. `tls` is true
+when the listener speaks HTTPS (see [https.md](./https.md)).
 
 ```json
 {
   "status": "ok",
   "version": "0.7.0",
+  "tls": false,
   "database": "ok",
   "uptime_ms": 1234,
   "timestamp": "2026-01-01T00:00:00.000Z"

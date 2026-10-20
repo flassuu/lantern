@@ -1,5 +1,5 @@
 import { onBeforeUnmount, ref, type Ref } from 'vue'
-import { getToken } from '../api/client'
+import { getToken, socketBase } from '../api/client'
 import { listLogs } from '../api/logs'
 import type { LogEntry } from '../api/types'
 
@@ -22,9 +22,8 @@ export interface LogStream {
 function socketUrl(since: number): string | null {
   const token = getToken()
   if (!token) return null
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
   const query = `token=${encodeURIComponent(token)}&since=${since}`
-  return `${protocol}://${window.location.host}/ws/server?${query}`
+  return `${socketBase()}/ws/server?${query}`
 }
 
 /**

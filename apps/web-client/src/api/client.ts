@@ -27,6 +27,18 @@ export function setToken(token: string | null): void {
   else localStorage.removeItem(TOKEN_KEY)
 }
 
+/**
+ * The page's origin as a WebSocket base.
+ *
+ * The student client is served by the server itself, so an https page gets a
+ * wss socket without being told: a browser refuses a plain ws connection from a
+ * secure page, and the live board would go quiet with nothing to explain it.
+ */
+export function socketBase(): string {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${window.location.host}`
+}
+
 /** Lightweight reachability probe for the offline banner / health polling. */
 export async function checkHealth(): Promise<boolean> {
   try {

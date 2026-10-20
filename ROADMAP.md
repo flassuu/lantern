@@ -915,18 +915,18 @@ copy of it or put one back.
 Goal: an origin a phone can install the client from, and a password that is not
 sent across the room in clear text.
 
-- [ ] `--tls-cert` and `--tls-key` (both or neither, validated at startup) →
+- [x] `--tls-cert` and `--tls-key` (both or neither, validated at startup) →
       `fastify({ https })`; the WebSocket URL follows the scheme instead of
       assuming `ws:`; `/api/health` reports whether this server speaks TLS
-- [ ] The join link and the QR take an `https` `publicBaseUrl` unchanged — the
+- [x] The join link and the QR take an `https` `publicBaseUrl` unchanged — the
       validation already allows it — and the client's base follows the page
-- [ ] `docs/https.md`: a Caddy recipe, and a local-CA recipe with `openssl`,
+- [x] `docs/https.md`: a Caddy recipe, and a local-CA recipe with `openssl`,
       including the part that matters on Android — a phone trusts a **CA**, not
       a leaf certificate, so a self-signed leaf produces a warning nobody can
       dismiss once and forget
-- [ ] The PWA gate says "installable" only on a secure context, and the offline
+- [x] The PWA gate says "installable" only on a secure context, and the offline
       banner says why when it is not, instead of leaving the limit undocumented
-- [ ] Tests: the config accepts both flags or neither and refuses one; health
+- [x] Tests: the config accepts both flags or neither and refuses one; health
       reports the scheme; the link builder keeps `https`; a browser run against
       a local certificate, with the harness given the CA
 

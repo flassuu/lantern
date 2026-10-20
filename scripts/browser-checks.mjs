@@ -13,6 +13,7 @@
  *
  *   pnpm check:browser                  # needs a server on :3300
  *   BASE=http://host:3300 pnpm check:browser
+ *   BASE=https://host:3300 NODE_EXTRA_CA_CERTS=ca.crt pnpm check:browser
  *   TEACHER_PASSWORD=... pnpm check:browser
  *
  * It creates the accounts, the test, the session and the room it needs, and
@@ -111,7 +112,12 @@ class Session {
       if (message.type === 'error') pending.reject(new Error(message.message ?? 'BiDi error'))
       else pending.resolve(message.result)
     })
-    await session.send('session.new', { capabilities: {} })
+    // `acceptInsecureCerts` is for a run against a local certificate: the check
+    // is about the interface, not about whether a CA is on this machine, and a
+    // self-signed leaf would otherwise stop the run at the first navigation.
+    await session.send('session.new', {
+      capabilities: { alwaysMatch: { acceptInsecureCerts: true } },
+    })
     return session
   }
 

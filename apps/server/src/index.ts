@@ -3,10 +3,18 @@ import { join } from 'node:path'
 import { attachConsole } from './lib/console'
 import { applyPendingRestore, snapshotOnUpgrade } from './lib/backup'
 import { seedDemo } from './lib/demo'
-import { loadConfig } from './config'
+import { ConfigError, loadConfig, type ServerConfig } from './config'
 import { shutdown, startServer } from './app'
 
-const config = loadConfig(process.argv.slice(2))
+let config: ServerConfig
+try {
+  config = loadConfig(process.argv.slice(2))
+} catch (error) {
+  if (!(error instanceof ConfigError)) throw error
+  // A stack trace for a mistyped flag is noise in a classroom log.
+  process.stderr.write(`${error.message}\n`)
+  process.exit(1)
+}
 
 // Before anything opens the database: a restore parked by the previous run is
 // the database now, and a migration about to run gets a copy of what it replaces.
@@ -18,6 +26,7 @@ const app = await startServer({
   port: config.port,
   dbPath: config.dbPath,
   webRoot: config.webRoot,
+  tls: config.tls,
 })
 
 const { logs } = app
@@ -50,9 +59,10 @@ if (config.seedDemo) {
   }
 }
 
+const scheme = config.tls ? 'https' : 'http'
 logs.logger.info(
-  { url: `http://${config.host}:${config.port}`, db: config.dbPath, webRoot: config.webRoot },
-  `listening on http://${config.host}:${config.port}`,
+  { url: `${scheme}://${config.host}:${config.port}`, db: config.dbPath, webRoot: config.webRoot },
+  `listening on ${scheme}://${config.host}:${config.port}`,
 )
 
 let stopping = false

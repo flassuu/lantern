@@ -1,5 +1,5 @@
 import { onBeforeUnmount, ref, watch, type Ref } from 'vue'
-import { getToken } from '../api/client'
+import { getToken, socketBase } from '../api/client'
 import type { LiveSessionStatus } from '../api/sessions'
 
 /**
@@ -83,10 +83,9 @@ export function usePresence(sessionId: Ref<string | null>) {
     close()
     const token = getToken()
     if (!token) return
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
     try {
       socket = new WebSocket(
-        `${protocol}://${window.location.host}/ws/sessions/${session}?token=${encodeURIComponent(token)}`,
+        `${socketBase()}/ws/sessions/${session}?token=${encodeURIComponent(token)}`,
       )
     } catch {
       return

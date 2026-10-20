@@ -30,9 +30,12 @@ describe('server scaffold', () => {
       status: string
       database: string
       version: string
+      tls: boolean
     }
     expect(body.status).toBe('ok')
     expect(body.database).toBe('ok')
     expect(body.version).toBe(APP_VERSION)
+    // Plain HTTP unless the config handed the listener a certificate.
+    expect(body.tls).toBe(false)
   })
 })

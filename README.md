@@ -173,6 +173,7 @@ always opens an older database.
 - [Architecture](./docs/architecture.md)
 - [Database schema](./docs/schema.md)
 - [API reference](./docs/api.md)
+- [HTTPS on the school LAN](./docs/https.md)
 - [Roadmap](./ROADMAP.md)
 - [Changelog](./CHANGELOG.md)
 

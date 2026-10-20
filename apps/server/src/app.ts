@@ -32,6 +32,8 @@ export interface AppOptions {
   webRoot: string | null
   /** Base directory for file uploads; defaults to the DB directory. */
   dataDir?: string
+  /** PEM material. Null or absent means plain HTTP. */
+  tls?: { cert: Buffer; key: Buffer } | null
 }
 
 export interface TestingApp {
@@ -63,6 +65,10 @@ export function buildApp(options: AppOptions): TestingApp {
   // infer pino's own Logger type, while every plugin in this app is typed
   // against the base logger. Nothing is widened to `any`.
   const app = Fastify({
+    // TLS is a startup decision, not a runtime one: the certificate is read
+    // once by the config and either the listener speaks HTTPS or it does not.
+    // `null` is Fastify's own way of saying "plain HTTP".
+    https: options.tls ?? null,
     loggerInstance: logs.logger,
     // pino logs every request twice — "incoming request" and "request completed" —
     // which is half a console of noise for a teacher and no duration anywhere.
@@ -122,6 +128,7 @@ export function buildApp(options: AppOptions): TestingApp {
 
   void app.register(healthRoutes, {
     version: APP_VERSION,
+    tls: options.tls !== null && options.tls !== undefined,
     checkDatabase: () => checkDatabase(database),
   })
 
