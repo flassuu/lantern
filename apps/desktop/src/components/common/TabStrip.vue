@@ -79,6 +79,34 @@ function select(value: T): void {
   emit('update:modelValue', value)
 }
 
+/**
+ * The row is one tab stop, and the arrows walk inside it.
+ *
+ * A tablist is a single control: the reader lands on the tab that is open, and
+ * from there left and right move along the row, Home and End jump to the ends.
+ * The tab that was walked to also takes the focus, because a selection that
+ * moves while the focus stays behind is a move nobody can see.
+ */
+function onKeydown(event: KeyboardEvent): void {
+  const root = container.value
+  if (!root) return
+  const tabs = Array.from(root.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+  const current = tabs.indexOf(document.activeElement as HTMLButtonElement)
+  if (current < 0) return
+  let next = current
+  if (event.key === 'ArrowRight') next = (current + 1) % tabs.length
+  else if (event.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length
+  else if (event.key === 'Home') next = 0
+  else if (event.key === 'End') next = tabs.length - 1
+  else return
+  event.preventDefault()
+  const tab = tabs[next]
+  const item = props.items[next]
+  if (!tab || !item) return
+  select(item.value)
+  tab.focus()
+}
+
 const gridStyle = computed(() => ({
   gridTemplateColumns: `repeat(${props.items.length}, minmax(0, 1fr))`,
 }))
@@ -91,6 +119,7 @@ const gridStyle = computed(() => ({
     :style="gridStyle"
     role="tablist"
     :aria-label="ariaLabel"
+    @keydown="onKeydown"
   >
     <span
       aria-hidden="true"

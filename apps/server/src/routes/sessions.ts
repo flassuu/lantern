@@ -602,6 +602,34 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
   )
 
   /**
+   * Throws a run away: a session opened on the wrong paper, or twice by mistake,
+   * is not something a teacher wants to keep in the library forever.
+   *
+   * A run that is still going is refused - students are answering in it, and a
+   * board that vanishes under them is worse than a row that stays. Finishing it
+   * first is one tap. Everything a run produced hangs off it by foreign key, so
+   * the delete takes the participants, their answers and their events with it.
+   */
+  app.delete(
+    '/api/sessions/:id',
+    { preHandler: requireRoles('admin', 'teacher'), schema: { params: idParamsSchema } },
+    async (request, reply) => {
+      const { id } = request.params as { id: string }
+      const row = findSessionRow(db, id)
+      if (!row) return sendError(reply, 404, 'NOT_FOUND', 'session not found')
+      const session = toSession(row)
+      if (session.ownerId !== request.session?.userId && request.session?.role !== 'admin') {
+        return sendError(reply, 403, 'FORBIDDEN', 'this session belongs to another teacher')
+      }
+      if (session.status === 'active' || session.status === 'paused') {
+        return sendError(reply, 409, 'CONFLICT', 'finish the run before deleting it')
+      }
+      db.prepare('DELETE FROM live_sessions WHERE id = ?').run(id)
+      return reply.code(204).send()
+    },
+  )
+
+  /**
    * Opens the doors: stamps the clock and flips the lobby to a running session.
    * Only meaningful from the lobby; starting a started run leaves it alone.
    */

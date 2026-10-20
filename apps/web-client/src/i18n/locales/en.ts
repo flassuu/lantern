@@ -343,6 +343,10 @@ export default {
         range: 'Showing {first}-{last} of {total}',
         previous: 'Previous page',
         next: 'Next page',
+        delete: 'Delete {name}',
+        deleteBlocked: 'Finish the run before deleting it.',
+        deleteConfirm: 'Delete "{name}"? The students who sat it, their answers and their events go with it.',
+        deleted: 'Run "{name}" deleted.',
       },
     },
     types: {
@@ -634,6 +638,7 @@ export default {
       attachTest: 'Choose a test…',
       attachSearch: 'Search your tests…',
       attachNoMatch: 'No test matches your search.',
+      attachMatches: '{shown} of {total} tests',
       allTestsAttached: 'All of your tests are already attached to this course.',
       detach: 'Detach',
       upload: 'Upload file',
@@ -795,6 +800,7 @@ export default {
       needsHttps: 'Needs HTTPS',
     },
     save: 'Save',
+    delete: 'Delete',
     refresh: 'Refresh',
   },
   footer: {

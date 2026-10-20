@@ -303,6 +303,14 @@ export async function setSessionStatus(
   return normalizeSession(result.session)
 }
 
+/**
+ * Throws a run away. A run that is still going is refused by the server; the
+ * library only offers this for the ones that are over or never started.
+ */
+export async function deleteSession(sessionId: string): Promise<void> {
+  await apiFetch<void>(`/api/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
+}
+
 /** Student only. The code is normalised server-side, so case and spaces are fine. */
 export async function joinSession(code: string): Promise<SessionState> {
   return apiFetch<SessionState>('/api/sessions/join', {

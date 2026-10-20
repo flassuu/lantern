@@ -152,7 +152,8 @@ Work top to bottom. Tick what works, note what does not.
 - [ ] Destructive action → always asks first, naming the thing
 - [ ] Dialog: `Esc` closes, `Tab` stays inside, focus comes back
 - [ ] Whole app with the keyboard only → every control reachable, visible focus
-- [ ] Tab strips with arrow keys → **expected to fail today**, that is a finding
+- [ ] Tab strips with arrow keys → arrows walk the row, `Home`/`End` jump to the
+      ends, and only the open tab is in the tab order
 - [ ] No emoji anywhere, icons only
 - [ ] OS "reduce motion" on → animations actually stop
 

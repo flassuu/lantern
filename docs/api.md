@@ -895,6 +895,20 @@ has started the paper is out and the rules are frozen, so a later attempt answer
 Answering before the run starts is refused with `409`: the paper has not been
 handed out, and grading one early would score a sheet the student never saw.
 
+### `DELETE /api/sessions/:id`
+
+Admin & teacher (owner) → `204`. A run opened on the wrong paper, or twice by
+mistake, does not have to stay in the library forever.
+
+`409 CONFLICT` while the run is `active` or `paused` — students are answering in
+it, and a board that vanishes under them is worse than a row that stays.
+Finishing it first is one tap. A `lobby` nobody started, and any finished run,
+may go.
+
+Participants, their answers and their events hang off the session by foreign
+key, so the delete takes them with it. `403` for another teacher's run, `404`
+for an id that is not there.
+
 ### `GET /api/sessions/:id/participants`
 
 Admin & teacher (owner). The live board: the session plus one row per student.

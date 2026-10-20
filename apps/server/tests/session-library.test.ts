@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { buildApp, type TestingApp } from '../src/app'
-import { bearer, insertTeacher, signInAs } from './support'
+import { createUser } from '../src/lib/users'
+import { bearer, insertTeacher, insertTestAdmin, signInAs } from './support'
 
 // Deterministic teacher bootstrap, and a known password for the seeded one.
 process.env.TEACHER_PASSWORD = 'teacher-pass-1'
@@ -17,6 +18,7 @@ let app: TestingApp
 let tmpDir: string
 let teacherA: string
 let teacherB: string
+let admin: string
 let testId: string
 
 /** A one-question test, because a session cannot start without questions. */
@@ -66,6 +68,10 @@ beforeAll(async () => {
   teacherA = await signInAs(app, 'teacher', 'teacher-pass-1')
   insertTeacher(app, 'teacherB', 'teacher-pass-1')
   teacherB = await signInAs(app, 'teacherB', 'teacher-pass-1')
+  // An admin is not a teacher: the only thing they do here is reach a run that
+  // is not theirs, which is the one thing a library delete has to allow.
+  insertTestAdmin(app)
+  admin = await signInAs(app, 'admin', process.env.ADMIN_PASSWORD!)
   testId = await makeTest(teacherA, 'Library paper')
 
   // Five runs, named so an alphabetical sort means something, and stamped with
@@ -191,6 +197,197 @@ describe('one session by id', () => {
 
     const missing = await app.server.inject({
       method: 'GET',
+      url: '/api/sessions/00000000-0000-4000-8000-000000000000',
+      headers: bearer(teacherA),
+    })
+    expect(missing.statusCode).toBe(404)
+  })
+})
+
+/** The code the class reads off the board, straight from the row. */
+function joinCodeOf(sessionId: string): string {
+  const row = app.database.raw
+    .prepare('SELECT join_code FROM live_sessions WHERE id = ?')
+    .get(sessionId) as { join_code: string }
+  return row.join_code
+}
+
+/**
+ * Everything this run left in the database: the class that sat it, what they
+ * answered, and the events that marked it.
+ *
+ * Answers point at a participation rather than at the run, so they are counted
+ * through it - which is also the only way to see whether the cascade reached
+ * them.
+ */
+function leftBehind(sessionId: string): number {
+  const row = app.database.raw
+    .prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM participations WHERE session_id = ?) AS participants,
+         (SELECT COUNT(*) FROM participation_events WHERE session_id = ?) AS events,
+         (SELECT COUNT(*) FROM participation_answers WHERE participation_id IN
+            (SELECT id FROM participations WHERE session_id = ?)) AS answers`,
+    )
+    .get(sessionId, sessionId, sessionId) as {
+    participants: number
+    events: number
+    answers: number
+  }
+  return row.participants + row.events + row.answers
+}
+
+/** A student of the class, inserted as the console's `student` command would. */
+async function joinStudent(username: string, joinCode: string): Promise<string> {
+  createUser(app.database.raw, {
+    role: 'student',
+    status: 'approved',
+    username,
+    password: 'student-pass-1',
+    fullName: username,
+  })
+  const token = await signInAs(app, username, 'student-pass-1')
+  const joined = await app.server.inject({
+    method: 'POST',
+    url: '/api/sessions/join',
+    headers: bearer(token),
+    payload: { code: joinCode },
+  })
+  expect(joined.statusCode).toBe(201)
+  return token
+}
+
+describe('throwing a run away', () => {
+  it('takes the class and their answers with it', async () => {
+    const sessionId = await startSession(teacherA, 'Mistaken run')
+    const started = await app.server.inject({
+      method: 'POST',
+      url: `/api/sessions/${sessionId}/start`,
+      headers: bearer(teacherA),
+    })
+    expect(started.statusCode).toBe(200)
+
+    const student = await joinStudent('delstudent', joinCodeOf(sessionId))
+    const state = await app.server.inject({
+      method: 'GET',
+      url: '/api/sessions/current',
+      headers: bearer(student),
+    })
+    const questionId = (state.json() as { questions: Array<{ id: string }> }).questions[0]!.id
+    const submitted = await app.server.inject({
+      method: 'POST',
+      url: `/api/sessions/${sessionId}/submit`,
+      headers: bearer(student),
+      payload: { answers: { [questionId]: { boolean: true } } },
+    })
+    expect(submitted.statusCode).toBe(200)
+    expect(leftBehind(sessionId)).toBeGreaterThan(0)
+
+    // The class has handed the paper in, so the run is over and can go.
+    const finished = await app.server.inject({
+      method: 'PATCH',
+      url: `/api/sessions/${sessionId}`,
+      headers: bearer(teacherA),
+      payload: { status: 'finished' },
+    })
+    expect(finished.statusCode).toBe(200)
+
+    const deleted = await app.server.inject({
+      method: 'DELETE',
+      url: `/api/sessions/${sessionId}`,
+      headers: bearer(teacherA),
+    })
+    expect(deleted.statusCode).toBe(204)
+
+    // Gone by id, gone from the list, and nothing left behind pointing at it.
+    const gone = await app.server.inject({
+      method: 'GET',
+      url: `/api/sessions/${sessionId}`,
+      headers: bearer(teacherA),
+    })
+    expect(gone.statusCode).toBe(404)
+    expect((await list(teacherA)).sessions.some((row) => row.id === sessionId)).toBe(false)
+    expect(leftBehind(sessionId)).toBe(0)
+  })
+
+  it('is the owner\'s to do, or an admin\'s', async () => {
+    const sessionId = await startSession(teacherA, 'Somebody else\'s run')
+
+    const refused = await app.server.inject({
+      method: 'DELETE',
+      url: `/api/sessions/${sessionId}`,
+      headers: bearer(teacherB),
+    })
+    expect(refused.statusCode).toBe(403)
+    const survives = await app.server.inject({
+      method: 'GET',
+      url: `/api/sessions/${sessionId}`,
+      headers: bearer(teacherA),
+    })
+    expect(survives.statusCode).toBe(200)
+
+    const byAdmin = await app.server.inject({
+      method: 'DELETE',
+      url: `/api/sessions/${sessionId}`,
+      headers: bearer(admin),
+    })
+    expect(byAdmin.statusCode).toBe(204)
+  })
+
+  it('refuses a run that is still going, and allows it once it is over', async () => {
+    const sessionId = await startSession(teacherA, 'Still running')
+    await app.server.inject({
+      method: 'POST',
+      url: `/api/sessions/${sessionId}/start`,
+      headers: bearer(teacherA),
+    })
+
+    const running = await app.server.inject({
+      method: 'DELETE',
+      url: `/api/sessions/${sessionId}`,
+      headers: bearer(teacherA),
+    })
+    expect(running.statusCode).toBe(409)
+
+    // A pause is still a class mid-answer, so it is refused as well.
+    await app.server.inject({
+      method: 'PATCH',
+      url: `/api/sessions/${sessionId}`,
+      headers: bearer(teacherA),
+      payload: { status: 'paused' },
+    })
+    const paused = await app.server.inject({
+      method: 'DELETE',
+      url: `/api/sessions/${sessionId}`,
+      headers: bearer(teacherA),
+    })
+    expect(paused.statusCode).toBe(409)
+
+    await app.server.inject({
+      method: 'PATCH',
+      url: `/api/sessions/${sessionId}`,
+      headers: bearer(teacherA),
+      payload: { status: 'finished' },
+    })
+    const finished = await app.server.inject({
+      method: 'DELETE',
+      url: `/api/sessions/${sessionId}`,
+      headers: bearer(teacherA),
+    })
+    expect(finished.statusCode).toBe(204)
+  })
+
+  it('throws away a lobby nobody ever started, and 404s one that is not there', async () => {
+    const sessionId = await startSession(teacherA, 'Opened by mistake')
+    const deleted = await app.server.inject({
+      method: 'DELETE',
+      url: `/api/sessions/${sessionId}`,
+      headers: bearer(teacherA),
+    })
+    expect(deleted.statusCode).toBe(204)
+
+    const missing = await app.server.inject({
+      method: 'DELETE',
       url: '/api/sessions/00000000-0000-4000-8000-000000000000',
       headers: bearer(teacherA),
     })

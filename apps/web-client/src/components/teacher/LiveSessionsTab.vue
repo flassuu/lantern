@@ -220,6 +220,14 @@ function errorMessage(error: unknown): string {
   return t('teacher.errors.generic')
 }
 
+/**
+ * A run thrown away in the library is gone from the open tabs as well: the list
+ * is refetched, which also moves the selection off the run that no longer is.
+ */
+function onLibraryDeleted(): void {
+  void load()
+}
+
 async function load(): Promise<void> {
   loading.value = true
   errorKey.value = ''
@@ -550,11 +558,11 @@ onMounted(() => {
           as="section"
           :class="sessions[0]?.id === selectedId ? 'rounded-tl-none' : ''"
         >
-          <div class="flex flex-wrap items-start justify-between gap-3">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <!-- The run, and immediately to its right what it is and what it
                  asks: the chips are the footnote to the run, so they stand
                  beside it rather than being pushed to the far edge of the row. -->
-            <div class="flex min-w-0 items-start gap-3">
+            <div class="flex min-w-0 items-start gap-3" data-run-data>
               <div class="min-w-0">
                 <h4 class="truncate text-lg font-semibold text-on-surface">{{ selectedName }}</h4>
                 <!-- A run the teacher named shows the paper it ran as well: the
@@ -613,35 +621,39 @@ onMounted(() => {
 
             <!-- The clock, and the one thing a teacher reaches for when a class
                  is running out of time. A lobby has no clock to show; the tiles
-                 below are all zero anyway. -->
-            <div v-if="boardStatus !== 'lobby'" class="flex items-stretch gap-2">
-              <!-- The height of the clock beside it: adding time is a nudge, and a
-                   full-width button for it would read as the screen's main action.
-                   The width is a floor of its own rather than `aspect-square`,
-                   because the clock's height comes from `self-stretch` - and a
-                   stretched height is decided after the width, so the ratio never
-                   gets a chance to apply. The result was a 27px-wide button with
-                   text in it: under the floor a thumb can hit. -->
-              <button
-                type="button"
-                class="state-layer grid min-w-11 shrink-0 place-items-center self-stretch rounded-[var(--radius-control)] bg-primary text-xs font-semibold text-on-primary transition-colors duration-200 disabled:pointer-events-none disabled:opacity-60"
-                :disabled="!canExtend"
-                :title="t('teacher.live.addTimeTitle')"
-                @click="extend(15)"
-              >
-                {{ t('teacher.live.addTime', { seconds: 15 }) }}
-              </button>
+                 below are all zero anyway. The column is reversed rather than
+                 the DOM: the clock is read first, and only its place changes -
+                 above the button on a wide screen, under it on a phone, where
+                 the thumb reaches the button before the numbers. -->
+            <div
+              v-if="boardStatus !== 'lobby'"
+              class="flex shrink-0 flex-col-reverse items-start gap-2 sm:flex-col sm:items-end"
+            >
               <!-- The clock keeps its own second, so a run ticking does not
                    re-render the rest of the board. -->
               <RunTimer
+                data-run-clock
                 :started-at="selected.startedAt"
                 :finished-at="selected.finishedAt"
                 :time-limit-sec="selected.timeLimitSec"
                 :status="boardStatus"
                 :paused-at="selected.pausedAt"
               />
+              <!-- Time is a nudge, not the screen's main action, so it keeps
+                   the width of its label and the floor a thumb needs. -->
+              <button
+                type="button"
+                data-run-extend
+                class="state-layer grid min-h-11 min-w-11 place-items-center rounded-[var(--radius-control)] bg-primary px-2 text-xs font-semibold text-on-primary transition-colors duration-200 disabled:pointer-events-none disabled:opacity-60"
+                :disabled="!canExtend"
+                :title="t('teacher.live.addTimeTitle')"
+                @click="extend(15)"
+              >
+                {{ t('teacher.live.addTime', { seconds: 15 }) }}
+              </button>
             </div>
           </div>
+
           <div class="mt-4 rounded-2xl border border-outline-variant bg-surface-container-high p-3 sm:p-4">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div class="min-w-0">
@@ -1056,6 +1068,7 @@ onMounted(() => {
             :tests="props.tests"
             :busy="starting"
             show-settings
+            :room-name-of="roomNameOf"
             @select="chooseTestForStart"
           />
 
@@ -1146,6 +1159,7 @@ onMounted(() => {
       :selected-id="selectedId"
       @select="selectedId = $event"
       @close="showLibrary = false"
+      @deleted="onLibraryDeleted"
     />
   </div>
 </template>

@@ -16,8 +16,14 @@ const props = withDefaults(
      * rest. In the course picker the same line would be noise.
      */
     showSettings?: boolean
+    /**
+     * The room a test was written for, by id. Passed by a caller that knows the
+     * rooms, so the same picker searches them only where there is something to
+     * say; the course picker attaches a paper to a course, not to a room.
+     */
+    roomNameOf?: (roomId: string | null) => string
   }>(),
-  { busy: false, showSettings: false },
+  { busy: false, showSettings: false, roomNameOf: undefined },
 )
 
 const emit = defineEmits<{ select: [testId: string] }>()
@@ -25,10 +31,26 @@ const emit = defineEmits<{ select: [testId: string] }>()
 const { t } = useI18n()
 const query = ref('')
 
+function roomOf(test: TestSummary): string {
+  return props.roomNameOf?.(test.roomId) ?? ''
+}
+
+/**
+ * What the box looks through: the title a teacher names the paper by, the tags
+ * they file it under, and the room it was written for.
+ *
+ * The title alone was not enough to find a paper: a teacher who knows the class
+ * and the topic but not the file name had the box refuse what the list plainly
+ * held.
+ */
 const filtered = computed(() => {
   const needle = query.value.trim().toLowerCase()
   if (!needle) return props.tests
-  return props.tests.filter((test) => test.title.toLowerCase().includes(needle))
+  return props.tests.filter((test) => {
+    if (test.title.toLowerCase().includes(needle)) return true
+    if (test.tags.some((tag) => tag.name.toLowerCase().includes(needle))) return true
+    return roomOf(test).toLowerCase().includes(needle)
+  })
 })
 
 /**
@@ -62,6 +84,12 @@ const summaries = computed(() => {
       />
     </label>
 
+    <!-- A search that finds nothing has to say how much it looked at, or the
+         teacher cannot tell an empty list from a list the box cannot see. -->
+    <p v-if="query.trim()" class="mt-1 text-xs text-on-surface-variant">
+      {{ t('teacher.courses.attachMatches', { shown: filtered.length, total: tests.length }) }}
+    </p>
+
     <p
       v-if="tests.length === 0"
       class="mt-2 flex items-center gap-1.5 text-xs text-on-surface-variant"
@@ -83,6 +111,7 @@ const summaries = computed(() => {
         <button
           type="button"
           :disabled="busy"
+          :data-picker-row="test.id"
           class="state-layer flex w-full items-center justify-between gap-2 rounded-xl bg-surface px-3 py-2 text-left disabled:opacity-60"
           @click="emit('select', test.id)"
         >
@@ -92,6 +121,7 @@ const summaries = computed(() => {
             </span>
             <span class="block text-xs text-on-surface-variant">
               {{ t('teacher.tests.questionCount', { count: test.questionCount }) }}
+              <span v-if="roomOf(test)"> · {{ roomOf(test) }}</span>
               <span v-if="test.timeLimitSec">
                 · {{ test.timeLimitSec / 60 }} {{ t('teacher.tests.minutes') }}
               </span>

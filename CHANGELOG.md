@@ -6,11 +6,12 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Seven changes after 0.7.0, each found by using the thing rather than by reading
+Eight changes after 0.7.0, each found by using the thing rather than by reading
 it: a clock that lied, a student screen that grew, a server panel nobody could
 reach, a paper that emptied itself when the phone reloaded, a gradebook nobody
-could take a copy of, a client a phone could not install or keep offline, and a
-PDF that could not spell a Ukrainian name.
+could take a copy of, a client a phone could not install or keep offline, a PDF
+that could not spell a Ukrainian name, and a run screen whose clock and search
+box did not do what they looked like they did.
 
 ### A paper that survives the phone
 
@@ -169,6 +170,33 @@ PDF that could not spell a Ukrainian name.
 - The browser harness now names its student `Петро Шевченко` and checks the
   print action on the finished board: the name on the page is the name as it was
   written, and the action reaches the print dialog.
+
+### Four things the screens got wrong
+
+- **The live header reads left to right.** The run's data — name, paper, room,
+  labels, clock times — on the left, the clock on the right, and `+15s` under the
+  clock where there is room for a column and above it on a phone, where the thumb
+  reaches the button before the numbers. It had been arranged and reverted twice,
+  so this time it is measured: the browser harness reads both boxes at 1100px and
+  at 390px and checks the clock is beside the data on the wide screen, under it
+  on the phone, and the button on the right side of the clock in both.
+- **The picker's search box finds a paper by its label or its room**, not only by
+  its title: a teacher who knows the class and the topic but not the file name
+  had the box refuse what the list plainly held. It also says how much it looked
+  at — `3 of 12 tests` — so a search that finds nothing cannot be mistaken for an
+  empty list. Each row names its room next to the question count.
+- **A run can be thrown away.** `DELETE /api/sessions/:id` (`204`), for the
+  owner or an admin: a session opened on the wrong paper, or twice by mistake,
+  no longer stays in the library forever. A run that is `active` or `paused` is
+  refused with `409` — students are answering in it — and a `lobby` nobody
+  started, or anything finished, may go. Participants, answers and events hang
+  off the session by foreign key and go with it. The library's row carries a
+  delete button that asks by name first, and says why it is unavailable instead
+  of hiding itself.
+- **The tab row is one tab stop.** `TabStrip` now answers the arrow keys, with
+  Home and End for the ends, and the tab that moved takes the focus with it; only
+  the open tab is in the tab order. TEST_PLAN.md carried this as a known failure,
+  and the harness now presses the keys rather than reading the markup.
 
 ### Fixed
 

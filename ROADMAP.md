@@ -957,23 +957,26 @@ the font, not with transliteration.
 Goal: the bugs found by using the app, fixed once, with a check so they stay
 fixed.
 
-- [ ] The live session header: the run's data on the left, the clock on the
+- [x] The live session header: the run's data on the left, the clock on the
       right, `+15s` under the clock on wide screens and above it on a phone.
       This was attempted twice and reverted twice; it gets a browser check this
       time rather than a third attempt at the markup
-- [ ] `TestPicker`: search over the title, the tags and the room's name, and a
+- [x] `TestPicker`: search over the title, the tags and the room's name, and a
       count that says what was searched — the tests were there, the box could
       not find them
-- [ ] `DELETE /api/sessions/:id` — the owner only, refused while the run is
+- [x] `DELETE /api/sessions/:id` — the owner only, refused while the run is
       active, cascading to participants, answers and events (the foreign keys
       already cascade); a confirm that names the run, and the library no longer
       keeps a mistaken session forever
-- [ ] `TabStrip`: arrow keys move the selection, `Home` and `End` jump to the
+- [x] `TabStrip`: arrow keys move the selection, `Home` and `End` jump to the
       ends, and only the selected tab is in the tab order — `TEST_PLAN.md` has
       this written down as a known failure, which is the one finding that should
       stop being true
-- [ ] Tests: deleting a run (permissions, the refusal while active, the
+- [x] Tests: deleting a run (permissions, the refusal while active, the
       cascade), and harness checks for the header, the picker and the tab keys
+
+An admin may delete anyone's run, as with every other session route; the tests
+cover that too, so the rule is written down where it is enforced.
 
 ### 8.6 The editor, the paper, the result
 

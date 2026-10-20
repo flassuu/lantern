@@ -9,10 +9,12 @@ import {
   ChevronDown,
   Search,
   SlidersHorizontal,
+  Trash2,
   X,
 } from '@lucide/vue'
 import { ApiError } from '../../api/client'
 import {
+  deleteSession,
   listSessionPage,
   type LiveSessionStatus,
   type SessionSort,
@@ -24,8 +26,10 @@ import SkeletonList from '../common/SkeletonList.vue'
 import AppButton from '../../components/common/AppButton.vue'
 import AppDialog from '../../components/common/AppDialog.vue'
 import AppInput from '../../components/common/AppInput.vue'
+import { useConfirm } from '../../composables/confirm'
 import { useDialogFocus } from '../../composables/focusTrap'
 import { getRoomsState, loadRooms } from '../../composables/rooms'
+import { useToast } from '../../composables/toast'
 
 /**
  * Every session the teacher has ever run, with the tools to find one.
@@ -43,9 +47,11 @@ const props = defineProps<{
   selectedId: string
 }>()
 
-const emit = defineEmits<{ select: [string]; close: [] }>()
+const emit = defineEmits<{ select: [string]; close: []; deleted: [string] }>()
 
 const { t } = useI18n()
+const confirm = useConfirm()
+const toast = useToast()
 
 const PAGE = 20
 
@@ -84,6 +90,8 @@ const sessions = ref<SessionSummary[]>([])
 const total = ref(0)
 const loading = ref(true)
 const errorKey = ref('')
+/** The row whose delete is in flight; the rest keep their buttons quiet. */
+const deletingId = ref('')
 
 const range = computed(() => {
   if (total.value === 0) return ''
@@ -189,6 +197,48 @@ function labelOf(session: SessionSummary): string {
 
 function roomNameOf(id: string | null): string {
   return rooms.rooms.find((room) => room.id === id)?.name ?? ''
+}
+
+/**
+ * A run in progress is not on offer. Students are answering in it, and a board
+ * that vanishes under them is worse than a row that stays; finishing it is one
+ * tap away in the Live tab. A lobby nobody started, or a run that is over, is
+ * exactly what this is for.
+ */
+function canDelete(session: SessionSummary): boolean {
+  return session.status !== 'active' && session.status !== 'paused'
+}
+
+/**
+ * Deletes a run, after asking for it by name.
+ *
+ * The question names the run because the list is a long one and the wrong row
+ * is easy to hit; the delete itself is server-side and cascades to the
+ * participants, their answers and their events.
+ */
+async function remove(session: SessionSummary): Promise<void> {
+  if (!canDelete(session) || deletingId.value !== '') return
+  const name = labelOf(session)
+  const ok = await confirm({
+    message: t('teacher.live.library.deleteConfirm', { name }),
+    confirmLabel: t('common.delete'),
+  })
+  if (!ok) return
+  deletingId.value = session.id
+  errorKey.value = ''
+  try {
+    await deleteSession(session.id)
+    // The last row of a page cannot be the page: step back rather than showing
+    // an empty list with a full page behind it.
+    if (sessions.value.length === 1 && offset.value >= PAGE) offset.value -= PAGE
+    await load()
+    toast.success(t('teacher.live.library.deleted', { name }))
+    emit('deleted', session.id)
+  } catch (error) {
+    errorKey.value = errorKeyOf(error)
+  } finally {
+    deletingId.value = ''
+  }
 }
 
 onMounted(async () => {
@@ -410,10 +460,10 @@ defineExpose({ load })
           {{ t('teacher.live.library.empty') }}
         </p>
         <ul v-else class="space-y-1">
-          <li v-for="session in sessions" :key="session.id">
+          <li v-for="session in sessions" :key="session.id" class="flex items-center gap-1">
             <button
               type="button"
-              class="state-layer flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left"
+              class="state-layer flex w-full min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left"
               :class="session.id === selectedId ? 'bg-primary-container text-on-primary-container' : 'hover:bg-surface-container'"
               @click="pick(session.id)"
             >
@@ -439,6 +489,28 @@ defineExpose({ load })
                 </span>
               </span>
             </button>
+            <!-- The run's own row, and one action that throws it away. A run in
+                 progress keeps the button but cannot press it: the row says why
+                 rather than pretending the action does not exist. -->
+            <AppButton
+              variant="ghostDanger"
+              size="sm"
+              icon
+              :disabled="!canDelete(session) || deletingId === session.id"
+              :title="
+                canDelete(session)
+                  ? t('teacher.live.library.delete', { name: labelOf(session) })
+                  : t('teacher.live.library.deleteBlocked')
+              "
+              :aria-label="
+                canDelete(session)
+                  ? t('teacher.live.library.delete', { name: labelOf(session) })
+                  : t('teacher.live.library.deleteBlocked')
+              "
+              @click="remove(session)"
+            >
+              <Trash2 class="size-4" aria-hidden="true" />
+            </AppButton>
           </li>
         </ul>
       </div>

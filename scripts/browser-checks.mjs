@@ -434,6 +434,7 @@ async function seed() {
     testTitle: `Browser check ${SUFFIX}`,
     assetId,
     code: session.session.joinCode,
+    roomName: `Room ${SUFFIX}`,
   }
 }
 
@@ -2608,6 +2609,252 @@ async function studentResultPath(session, fixtures) {
 
 
 /**
+ * The live run's header: the run's data on the left, the clock on the right, and
+ * the button that adds time under the clock where there is room for a column and
+ * above it where there is not.
+ *
+ * This arrangement was changed twice and reverted twice, which is why it is
+ * measured here rather than looked at: two boxes and three numbers are the whole
+ * question, and a screenshot cannot answer it after the fact.
+ */
+async function liveHeaderPath(session, fixtures) {
+  const measure = async (width, height) => {
+    const context = await session.page(width, height)
+    await openApp(session, context, { token: fixtures.teacher, locale: 'en', width, height })
+    await settle(session, context, 'tabs')
+    await clickTab(session, context, '^Live$', 1800)
+    const result = await session.run(
+      context,
+      `
+      const run = [...document.querySelectorAll('li, article, button')].find((el) =>
+        /Result run/.test(el.textContent || ''),
+      );
+      if (!run) return { ok: false, why: 'no run card on the board' };
+      (run.querySelector('button') ?? run).click();
+      let clock = null;
+      for (let i = 0; i < 60 && clock === null; i += 1) {
+        clock = document.querySelector('[data-run-clock]');
+        if (clock === null) await new Promise((r) => setTimeout(r, 250));
+      }
+      if (clock === null) return { ok: false, why: 'the clock never appeared' };
+      const extend = document.querySelector('[data-run-extend]');
+      if (extend === null) return { ok: false, why: 'the add-time button never appeared' };
+      const data = document.querySelector('[data-run-data]');
+      const box = (el) => { const r = el.getBoundingClientRect(); return {
+        left: Math.round(r.left), right: Math.round(r.right),
+        top: Math.round(r.top), bottom: Math.round(r.bottom),
+        width: Math.round(r.width), height: Math.round(r.height),
+      }; };
+      const wide = window.innerWidth >= 640;
+      return { ok: true, wide, data: box(data), clock: box(clock), extend: box(extend),
+        withinScreen: document.querySelector('#app').scrollWidth <= window.innerWidth + 1 };
+    `,
+    )
+    await session.screenshot(context, join(SHOTS, `live-header-${width}.png`))
+    await contextClose(session, context)
+    return result
+  }
+
+  const wide = await measure(1100, 900)
+  const sameRow = wide.data.top < wide.clock.bottom && wide.clock.top < wide.data.bottom
+  check(
+    'teacher: a wide header puts the clock to the right of the run',
+    wide.ok === true && wide.clock.left >= wide.data.right - 1 && sameRow,
+    wide.why ?? `data=${JSON.stringify(wide.data)} clock=${JSON.stringify(wide.clock)}`,
+  )
+  check(
+    'teacher: a wide header puts the add-time button under the clock',
+    wide.ok === true &&
+      wide.extend.top >= wide.clock.bottom - 1 &&
+      Math.abs(wide.extend.right - wide.clock.right) <= 2,
+    wide.why ?? `clock=${JSON.stringify(wide.clock)} extend=${JSON.stringify(wide.extend)}`,
+  )
+
+  const phone = await measure(390, 900)
+  check(
+    'teacher: a phone header stacks the clock under the run',
+    phone.ok === true && phone.clock.top >= phone.data.bottom - 1,
+    phone.why ?? `data=${JSON.stringify(phone.data)} clock=${JSON.stringify(phone.clock)}`,
+  )
+  check(
+    'teacher: a phone header puts the add-time button above the clock',
+    phone.ok === true && phone.extend.bottom <= phone.clock.top + 1,
+    phone.why ?? `clock=${JSON.stringify(phone.clock)} extend=${JSON.stringify(phone.extend)}`,
+  )
+  check(
+    'teacher: the header fits a phone',
+    phone.ok === true && phone.withinScreen === true,
+    phone.why ?? '',
+  )
+}
+
+/**
+ * The picker's search box: it looks through the title, the labels and the room,
+ * and it says how much it looked at.
+ *
+ * The row it has to find is one whose title carries neither of the two strings
+ * typed here - the label and the room name - so a box that only reads titles
+ * fails this, which is exactly what it used to do.
+ */
+async function pickerPath(session, fixtures) {
+  const context = await session.page(1100, 900)
+  await openApp(session, context, { token: fixtures.teacher, locale: 'en', width: 1100, height: 900 })
+  await settle(session, context, 'tabs')
+  await clickTab(session, context, '^Live$', 1800)
+
+  const result = await session.run(
+    context,
+    `
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const wanted = ${JSON.stringify(fixtures.testId)};
+    const open = [...document.querySelectorAll('button')].find((b) =>
+      /Start a session/.test(b.textContent || ''),
+    );
+    if (!open) return { ok: false, why: 'no button opens the start dialog' };
+    open.click();
+
+    let box = null;
+    for (let i = 0; i < 40 && box === null; i += 1) {
+      box = document.querySelector('[role=dialog] input[type=search]');
+      if (box === null) await sleep(250);
+    }
+    if (box === null) return { ok: false, why: 'the search box never appeared' };
+
+    const type = async (text) => {
+      box.value = text;
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+      await sleep(200);
+    };
+    const state = () => {
+      const rows = [...document.querySelectorAll('[data-picker-row]')];
+      const line = [...document.querySelectorAll('[role=dialog] p')]
+        .map((p) => p.textContent.replace(/\\s+/g, ' ').trim())
+        .find((text) => / of \\d+ tests?$/.test(text)) || '';
+      return {
+        rows: rows.length,
+        found: rows.some((row) => row.getAttribute('data-picker-row') === wanted),
+        line,
+      };
+    };
+
+    await type('');
+    const all = state();
+    await type('Fractions');
+    const byTag = state();
+    await type(${JSON.stringify(fixtures.roomName)});
+    const byRoom = state();
+    await type('zzzz');
+    const none = state();
+    return { ok: true, all, byTag, byRoom, none };
+  `,
+  )
+  await session.screenshot(context, join(SHOTS, 'picker-search.png'))
+  await contextClose(session, context)
+
+  const shown = (state) => Number(/(\d+) of \d+ tests?/.exec(state.line)?.[1] ?? -1)
+  check(
+    'teacher: the picker lists the tests it was given',
+    result.ok === true && result.all.rows > 0 && result.all.found === true,
+    result.why ?? JSON.stringify(result.all),
+  )
+  check(
+    'teacher: the picker finds a test by its label',
+    result.ok === true && result.byTag.found === true && shown(result.byTag) === result.byTag.rows,
+    result.why ?? JSON.stringify(result.byTag),
+  )
+  check(
+    'teacher: the picker finds a test by its room',
+    result.ok === true && result.byRoom.found === true && shown(result.byRoom) === result.byRoom.rows,
+    result.why ?? JSON.stringify(result.byRoom),
+  )
+  check(
+    'teacher: a search that finds nothing says how much it searched',
+    result.ok === true && result.none.rows === 0 && shown(result.none) === 0,
+    result.why ?? JSON.stringify(result.none),
+  )
+}
+
+/**
+ * The tab row is one tab stop, and the arrows walk inside it.
+ *
+ * TEST_PLAN.md carried this as a known failure: the tabs were reachable one by
+ * one with Tab and the arrow keys did nothing, which is not how a tablist is
+ * meant to behave.
+ */
+async function tabKeysPath(session, fixtures) {
+  const context = await session.page(1100, 900)
+  await openApp(session, context, { token: fixtures.teacher, locale: 'en', width: 1100, height: 900 })
+  await settle(session, context, 'tabs')
+
+  const result = await session.run(
+    context,
+    `
+    const strip = document.querySelector('[role=tablist]');
+    if (!strip) return { ok: false, why: 'no tablist on the dashboard' };
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const now = () => [...strip.querySelectorAll('[role=tab]')];
+    const where = () => {
+      const tabs = now();
+      return {
+        index: tabs.findIndex((t) => t.getAttribute('aria-selected') === 'true'),
+        focused: tabs.indexOf(document.activeElement),
+        // Exactly one tab may be in the tab order: the one that is open.
+        reachable: tabs.filter((t) => t.getAttribute('tabindex') === '0').length,
+      };
+    };
+    const press = async (key) => {
+      document.activeElement.dispatchEvent(
+        new KeyboardEvent('keydown', { key, bubbles: true }),
+      );
+      await sleep(400);
+      return where();
+    };
+
+    const tabs = now();
+    if (tabs.length < 3) return { ok: false, why: 'only ' + tabs.length + ' tabs' };
+    const start = where();
+    tabs[start.index].focus();
+    return {
+      ok: true,
+      count: tabs.length,
+      labels: tabs.map((t) => t.textContent.replace(/\\s+/g, ' ').trim()),
+      start,
+      right: await press('ArrowRight'),
+      left: await press('ArrowLeft'),
+      end: await press('End'),
+      home: await press('Home'),
+    };
+  `,
+  )
+  await contextClose(session, context)
+
+  const bad = result.ok !== true
+  if (bad) {
+    check('teacher: the tab row answers the arrow keys', false, result.why ?? '')
+    return
+  }
+  const right = (result.start.index + 1) % result.count
+  const left = result.start.index
+  check(
+    'teacher: the arrow keys walk the tabs and take the focus with them',
+    result.right.index === right && result.right.focused === right && result.left.index === left && result.left.focused === left,
+    `labels=${JSON.stringify(result.labels)} start=${JSON.stringify(result.start)} right=${JSON.stringify(result.right)} left=${JSON.stringify(result.left)}`,
+  )
+  check(
+    'teacher: Home and End jump to the ends of the tab row',
+    result.end.index === result.count - 1 && result.home.index === 0,
+    `end=${JSON.stringify(result.end)} home=${JSON.stringify(result.home)}`,
+  )
+  check(
+    'teacher: only the open tab is in the tab order',
+    [result.start, result.right, result.left, result.end, result.home].every(
+      (state) => state.reachable === 1,
+    ),
+    `start=${JSON.stringify(result.start)} right=${JSON.stringify(result.right)}`,
+  )
+}
+
+/**
  * The paper survives the phone: an answer given before a reload is still on the
  * paper after it, and what is submitted is what was filled in. The draft is the
  * only reason a reload mid-test does not cost the class its work.
@@ -3113,6 +3360,15 @@ async function main() {
     // Last of all: it submits, which closes the run the others were answering in.
     console.log('\nthe whole student run')
     await studentResultPath(session, fixtures)
+
+    console.log('\nthe live run header')
+    await liveHeaderPath(session, fixtures)
+
+    console.log('\nthe start dialog\'s search box')
+    await pickerPath(session, fixtures)
+
+    console.log('\nthe tab keys')
+    await tabKeysPath(session, fixtures)
 
     // A fresh run of its own, so the reload cannot disturb the papers above.
     console.log('\na paper that survives a reload')

@@ -345,6 +345,10 @@ const uk: typeof en = {
         range: 'Показано {first}-{last} з {total}',
         previous: 'Попередня сторінка',
         next: 'Наступна сторінка',
+        delete: 'Видалити {name}',
+        deleteBlocked: 'Спершу завершіть запуск.',
+        deleteConfirm: 'Видалити «{name}»? Разом із нею зникнуть учасники, їхні відповіді та події.',
+        deleted: 'Запуск «{name}» видалено.',
       },
     },
     types: {
@@ -636,6 +640,7 @@ const uk: typeof en = {
       attachTest: 'Оберіть тест…',
       attachSearch: 'Пошук ваших тестів…',
       attachNoMatch: 'Жоден тест не знайдено за запитом.',
+      attachMatches: '{shown} з {total} тестів',
       allTestsAttached: 'Усі ваші тести вже прикріплені до цього курсу.',
       detach: 'Відкріпити',
       upload: 'Завантажити файл',
@@ -796,6 +801,7 @@ const uk: typeof en = {
       needsHttps: 'Потрібен HTTPS',
     },
     save: 'Зберегти',
+    delete: 'Видалити',
     refresh: 'Оновити',
   },
   footer: {
