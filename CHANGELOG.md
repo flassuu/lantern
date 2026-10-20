@@ -4,6 +4,73 @@ All notable changes to this project are documented in this file.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning follows [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+Three changes after 0.7.0, each found by using the thing rather than by reading
+it: a clock that lied, a student screen that grew, and a server panel nobody
+could reach.
+
+### A clock that tells the truth
+
+- **A run on hold no longer runs out.** `isSessionOver` compared the wall clock
+  against the start mark and never looked at the pause, while the start mark
+  moves only when the run resumes. A paper paused with thirty seconds left was
+  handed back graded four and a half minutes later — the one thing a pause is
+  for. A run on hold is now never out of time, and resuming gives back exactly
+  what was left.
+- **`+15s` and a pause reach the student.** The status frame carried the word
+  "paused" and nothing else, so a phone never heard a new limit, a pause mark or
+  a start mark that moved; its clock ran against numbers the server had left
+  behind. The frame now carries `startedAt`, `pausedAt` and `timeLimitSec`, and
+  the dashboard folds them into the session the runner already reads. A frame
+  with no clock in it is ignored rather than blanking one that works.
+- Both regressions are pinned by tests that move the clock instead of sleeping:
+  a run paused with thirty seconds left is still paused, still joined, and still
+  has those thirty seconds after four and a half minutes; a run twenty seconds
+  past its deadline stays open when it is given thirty more.
+
+### The student side gets the workbench's tabs
+
+- **Join, courses and results are three tabs, not one long page.** The same
+  `TabStrip`, the same transition and the same width as the teacher's workbench.
+  A link from a teacher's QR lands on the join tab with the code filled in; the
+  states that own the whole screen — a lobby, a paper, a result — keep it whole
+  and get no tabs.
+- **The two lists lost their own headings**, because the tab above already names
+  the screen; the hint under the courses stayed, because it says what the tab
+  does not.
+- **The harness finds controls by role now.** It looked for the join button by
+  its text, and the new tab carries the same word, so five checks were clicking
+  a tab. Buttons are found by `main form button[type=submit]`, and the courses
+  tab is waited for rather than assumed.
+- The question count reads as a word again — `{count} questions`, not
+  `{count} que`.
+
+### The server panel
+
+- **It adopts a server it did not start.** A server already listening — on
+  autostart, or started from a terminal — used to meet "Start the server" and an
+  address-in-use error. A TCP connect and one `GET /api/health` now say whether
+  the port holds this app's server and which build it is: the panel reports it
+  as running, labels it as started outside the app, and stops it by the pid that
+  holds the port (`ss`, `lsof` or `netstat`, by number, `SIGTERM`). A port held
+  by something else is reported and left alone.
+- **Three tabs instead of a wall.** Status, Settings and Console on the same
+  `TabStrip` as the workbench; the console no longer sits under seven inputs for
+  the whole lesson. Status gained the numbers the buttons act on: port, version,
+  process, uptime.
+- **Reachable while signed in.** The row in the profile menu was gated on
+  `hosted`, which only the sign-in and register screens pass — so the one moment
+  a teacher wants to check the server was exactly when it was missing. The
+  desktop teacher and admin screens pass it now; the phone client does not.
+
+### User management
+
+- **An admin can set somebody else's password.** A locked-out student cannot
+  change theirs without the old one, and there was no way back in.
+  `PATCH /api/users/:id/password`, admin only, and it ends every session that
+  user held — a reset that leaves the old device signed in is not a reset.
+
 ## [0.7.0] — 2026-10-11
 
 Phase 7, and the last of the classroom work before the polish. Everything here

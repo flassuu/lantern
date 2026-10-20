@@ -17,6 +17,7 @@ verified, not when it is planned.
 | Phase 5 — Deployment | **0.5.0** (done) | The three ways it has to run: desktop host, school server, classroom without an admin |
 | Phase 6 — Classroom experience | **0.6.0** (done) | Rooms & tags, a session lobby, per-student detail, media in questions, course lessons & announcements, journals |
 | Phase 7 — MVP polish | **0.7.0** (done) | Packaging polish, e2e, screenshots, offline PWA |
+| Phase 8 — Release readiness | 0.8.0 | What it cannot yet survive: a paper, a backup, a report, an address |
 
 The UI/UX polish pass (originally planned as its own 0.1.1) shipped together
 with Phase 2 as **0.2.0** — separating them would have meant a release that
@@ -590,13 +591,14 @@ prettier result for both teacher and student.
 - [x] Client: editor statistics — count and points chips, an estimated time, and
       for an existing test the per-question difficulty from its results; a
       polished `TestPreviewDialog` that shows media
-- [ ] Client: a readability and beauty pass over the editor, the student runner
-      and the result screen
 - [x] i18n: `teacher.editor.media.*`, `common.image.*`
 - [x] Tests: assets CRUD, permissions and limits; export/import with media
       (`imagesDropped`); payload sanitisation drops images nobody owns
-- [ ] Browser harness: inserts an image and sees it as a student — run on
-      demand, with a fresh `--data` directory
+
+Two items from this list were still open when Phase 7 shipped: a readability
+pass over the editor, the runner and the result, and a browser check that
+inserts an image and sees it as a student. Both were carried into Phase 8.6
+rather than left open here.
 
 ### 6.7 Courses — lessons, announcements, media — **done**
 
@@ -835,6 +837,191 @@ versioned caches, no caching of mutations and a kill switch are the answer. Demo
 data could land on top of real work - it refuses a populated database. The
 AppImage could take a release down again - its job is best-effort and its asset is
 published only after a successful run.
+
+## Phase 8 — Release readiness (v0.8.0)
+
+Goal: **0.7.0 can be shown; this phase is about what it cannot yet survive.**
+Four gaps still matter — a phone that reloads in the middle of a paper, a
+gradebook nobody has a copy of, an address no phone can install the client from,
+and a report that prints Ukrainian names in Latin letters — and four things
+found by using the app are still wrong or missing. Nothing else is in this
+phase: no feature that is not on that list.
+
+**Decisions taken before the phase (binding):**
+
+- **No new dependencies.** The draft lives in `localStorage`, the snapshot is
+  `VACUUM INTO`, and TLS is two files the school already has.
+- **TLS is configuration, not invention.** `--tls-cert` and `--tls-key`, plus a
+  documented reverse-proxy and local-CA recipe. A generator of self-signed
+  certificates would mean a certificate library, or `openssl` on every target,
+  to produce a file a school can already get from its own proxy.
+- **The server-side PDF is retired, not repaired.** Helvetica has no Cyrillic,
+  and printing Ukrainian correctly would mean shipping a font and a subsetter
+  for a file the browser's print dialog already makes from a screen that prints
+  correctly. CSV and TXT stay.
+- **This is not 1.0.0.** That remains the pass done by hand, screen by screen,
+  which is not planned here and is not claimed by this release.
+
+### 8.1 A paper that survives the phone
+
+Goal: an answer that was given is an answer that was kept — when the phone
+reloads, the browser crashes, or the tab is closed by a thumb reaching for
+something else.
+
+- [ ] `composables/sessionDraft.ts`, byte-identical twins in both apps: one
+      versioned entry per `sessionId:userId`, holding the answers and the
+      timings, dropped when the run is submitted and when the user signs out —
+      a phone passed around a classroom is the normal case, not the exception
+- [ ] `SessionRunner.vue` (twins): write on every answer and page change, with
+      a debounce; restore on mount while the server still says the paper is
+      open; say plainly that the answers came back, because a paper that fills
+      itself in silently is a paper nobody trusts
+- [ ] Submit keeps what it has: a retry with backoff, a button that says "not
+      sent" rather than a toast that disappears, and the draft cleared only
+      after the server confirms the submission or says it is already in
+- [ ] Tests: the store as a pure module (versioning, per-key isolation, a
+      cleared entry) and a browser check that answers two questions, reloads,
+      and submits the same paper
+
+The clock stays the server's. A restored paper has less time left than it had
+before the reload, which is the truth and not a penalty invented here.
+
+### 8.2 A gradebook that can be backed up
+
+Goal: the whole school's work is one SQLite file, and today nobody can take a
+copy of it or put one back.
+
+- [ ] `GET /api/admin/backup` (admin): `VACUUM INTO` a temporary file, stream it
+      as a download, delete the temporary file — `VACUUM INTO` rather than a
+      file copy, because a copy of a live database with a WAL is not a database
+- [ ] `POST /api/admin/backup/restore` (admin): raw upload; validate the SQLite
+      header, `schema_version` (refuse a newer file, let the migrations bring an
+      older one forward) and `PRAGMA integrity_check`; refuse while a session is
+      active; write `<data>/.restore` and report that a restart is needed
+- [ ] Startup: apply a pending `.restore` (the current file becomes
+      `.before-restore`), and copy the database into `backups/` before the
+      migrations run, keeping the last seven
+- [ ] Admin → System: download, "last backup N days ago", restore behind a
+      confirm that names the file and the restart
+- [ ] Desktop: the host restarts the server after a restore, because it owns the
+      process; the headless server says a restart is needed and exits with a
+      code the operator can act on
+- [ ] Tests: the snapshot opens, has the same schema version and the same row
+      counts; restore refuses an active session, a truncated file and a newer
+      schema, and a version is restored from a file the endpoint produced
+
+### 8.3 HTTPS on the school LAN
+
+Goal: an origin a phone can install the client from, and a password that is not
+sent across the room in clear text.
+
+- [ ] `--tls-cert` and `--tls-key` (both or neither, validated at startup) →
+      `fastify({ https })`; the WebSocket URL follows the scheme instead of
+      assuming `ws:`; `/api/health` reports whether this server speaks TLS
+- [ ] The join link and the QR take an `https` `publicBaseUrl` unchanged — the
+      validation already allows it — and the client's base follows the page
+- [ ] `docs/https.md`: a Caddy recipe, and a local-CA recipe with `openssl`,
+      including the part that matters on Android — a phone trusts a **CA**, not
+      a leaf certificate, so a self-signed leaf produces a warning nobody can
+      dismiss once and forget
+- [ ] The PWA gate says "installable" only on a secure context, and the offline
+      banner says why when it is not, instead of leaving the limit undocumented
+- [ ] Tests: the config accepts both flags or neither and refuses one; health
+      reports the scheme; the link builder keeps `https`; a browser run against
+      a local certificate, with the harness given the CA
+
+This changes the origin everywhere. The harness runs once more at the end of the
+phase, not in the middle of it.
+
+### 8.4 A report that prints Ukrainian
+
+Goal: a report a Ukrainian school can print, instead of names spelled in Latin
+letters.
+
+- [ ] Remove `lib/pdf.ts`, the `pdf` member of `ExportFormat`, and the
+      `format=pdf` branch; CSV and TXT are the two formats left
+- [ ] The session results screen gets the print action the journal and the test
+      report already have; the print stylesheet already collapses the theme to
+      ink on white
+- [ ] i18n: the export control says print, and the dialog no longer offers a
+      format that cannot spell the class list
+- [ ] Tests: the route rejects `pdf` with a clear 400; the print path is checked
+      in the harness against a Cyrillic name
+
+A PDF with an embedded font is a megabyte of glyphs and a font subsetter for a
+file the print dialog already makes. If one is ever wanted, it comes back with
+the font, not with transliteration.
+
+### 8.5 The screens that were reported
+
+Goal: the bugs found by using the app, fixed once, with a check so they stay
+fixed.
+
+- [ ] The live session header: the run's data on the left, the clock on the
+      right, `+15s` under the clock on wide screens and above it on a phone.
+      This was attempted twice and reverted twice; it gets a browser check this
+      time rather than a third attempt at the markup
+- [ ] `TestPicker`: search over the title, the tags and the room's name, and a
+      count that says what was searched — the tests were there, the box could
+      not find them
+- [ ] `DELETE /api/sessions/:id` — the owner only, refused while the run is
+      active, cascading to participants, answers and events (the foreign keys
+      already cascade); a confirm that names the run, and the library no longer
+      keeps a mistaken session forever
+- [ ] `TabStrip`: arrow keys move the selection, `Home` and `End` jump to the
+      ends, and only the selected tab is in the tab order — `TEST_PLAN.md` has
+      this written down as a known failure, which is the one finding that should
+      stop being true
+- [ ] Tests: deleting a run (permissions, the refusal while active, the
+      cascade), and harness checks for the header, the picker and the tab keys
+
+### 8.6 The editor, the paper, the result
+
+Goal: the three screens a person actually reads, made readable — the open item
+from 6.6, not a redesign.
+
+- [ ] A pass over `QuestionEditor`, the student runner and the result: heading
+      order, spacing, the weight of the score, the hierarchy of the answer
+      fields, and the long question body on a 360px screen — in both themes and
+      both locales, with no layout shift between them
+- [ ] The empty, loading and error states of the three screens say the same
+      thing in the same place as the rest of the app
+- [ ] Browser check: insert an image in the editor and see it as a student (the
+      other open 6.6 item), on a fresh `--data` directory
+- [ ] No behaviour change: this is the screen, not the rules
+
+### 8.7 Closing the phase — v0.8.0
+
+- [x] `CHANGELOG.md` has an `Unreleased` section again: the three commits after
+      0.7.0 — the clock, the student tabs, the server panel — are written in,
+      and it is kept current from here rather than reconstructed at the end
+- [ ] Docs: `api.md` (backup, restore, session delete, TLS flags), `schema.md`
+      if the restore touches it, `scenarios.md` with the backup and HTTPS
+      runbooks, `TEST_PLAN.md` with the tab keys as a pass, README status
+- [ ] Every manifest at `0.8.0` in one scripted pass, the full gate once, tag
+      `v0.8.0`, release notes from the changelog, and the released assets
+      downloaded and started as a user would
+
+**Order and dependencies.** 8.1 → 8.2 → 8.3 → 8.4 → 8.5 → 8.6 → 8.7. 8.1
+and 8.2 are independent of everything else and can go first; 8.3 changes the
+origin, the join link and the QR, so 8.5 and 8.6 come after it and the harness
+runs at the end. 8.2 and 8.5 both touch the admin and the live screens, so they
+do not run in parallel.
+
+**Assumptions to keep in view.** There is no internet in the classroom, so a
+backup is a file the teacher carries out on a stick and a certificate is one the
+school already has; TLS stays optional and everything must work exactly as
+before without it; the draft is a convenience, never a second source of truth —
+the server's submission is the record; and a finished run is data, which is why
+deleting one asks first.
+
+**Risks.** Deleting a session destroys a gradebook row by row — owner only, not
+while the run is active, behind a confirm that names it. A restore can destroy
+one faster — the current file is copied aside first, and the confirm says so.
+TLS misconfiguration makes the app unreachable rather than insecure — the flags
+are optional, both or neither, and a certificate that fails to load says which
+file and why. The live header has been broken twice already — the third attempt
+starts from a browser check, not from the markup.
 
 ## Out of scope (v1)
 

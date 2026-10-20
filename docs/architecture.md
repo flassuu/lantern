@@ -37,7 +37,7 @@ gated by the logged-in role.
     localhost)
 ```
 
-The server lives on the admin machine (embedded as a sidecar). Teachers and
+The server lives on the teacher's machine, bundled with the desktop app. Teachers and
 students connect to it over the LAN. Web clients are served by the server
 itself as static files.
 
@@ -75,16 +75,18 @@ itself as static files.
 
 - Provides the same frontend in a native window for admin & teacher workflows
   (and for students who prefer a desktop app).
-- **It hosts the server.** The bundle carries it as a Tauri sidecar
-  (`bundle.externalBin`), and `src-tauri/src/host.rs` spawns it with
+- **It hosts the server.** The bundle carries it as a **resource**
+  (`bundle.resources`), not as a sidecar: an `externalBin` lands in `usr/bin`,
+  where `linuxdeploy` rewrites it with `patchelf` and corrupts a
+  `bun build --compile` binary - which is what kept the AppImage broken from
+  0.5.1 to 0.7.0. `src-tauri/src/host.rs` spawns it from `resource_dir()` with
   `std::process`: settings, `--port`/`--data`/`--webroot`, the piped stdout read
   into Tauri events, and a watcher that reports an exit nobody asked for. No new
   Rust dependency, and the module knows nothing about Tauri — it is handed two
   closures, which is what lets the tests spawn a real server.
-- The sidecar file is produced by `scripts/desktop-sidecar.sh` (`pnpm
-  desktop:sidecar`), because Tauri looks for `binaries/lantern-server-<rust
-  triple>` and nothing else can produce it. CI runs that step before every
-  `tauri build`.
+- The resource is staged by `scripts/desktop-sidecar.sh` (`pnpm
+  desktop:sidecar`) into `src-tauri/resources/lantern-server[.exe]`, the name the
+  host looks for next to the app. CI runs that step before every `tauri build`.
 - The API base is a **variable, not a build-time constant**: the port is a host
   setting, and changing it must not need a rebuild (`setApiBase()` in
   `api/client.ts`).
