@@ -1,19 +1,18 @@
 import { nativeSavePath, nativeWrite } from './desktop'
 
 /** What a session's results can be written as. */
-export type ExportFormat = 'csv' | 'txt' | 'pdf'
+export type ExportFormat = 'csv' | 'txt'
 
 /** The formats offered in the save dialog; the filter list is the choice. */
 const FILTERS = [
   { name: 'CSV', extensions: ['csv'] },
   { name: 'Text', extensions: ['txt'] },
-  { name: 'PDF', extensions: ['pdf'] },
 ]
 
 /** The format a chosen file name asks for; CSV when it says nothing. */
 function formatOf(name: string): ExportFormat {
   const extension = name.slice(name.lastIndexOf('.') + 1).toLowerCase()
-  return extension === 'pdf' || extension === 'txt' ? extension : 'csv'
+  return extension === 'txt' ? 'txt' : 'csv'
 }
 
 /** The browser's own save dialog, where there is one (Chromium, not WebKit). */
@@ -34,7 +33,7 @@ type SavePicker = (options: {
  * Asks where and in what format, then writes it there.
  *
  * The desktop answers with one system dialog whose filters are the formats, so
- * choosing CSV or PDF and choosing a folder are the same gesture. A browser has
+ * choosing CSV or TXT and choosing a folder are the same gesture. A browser has
  * no such thing: Chromium's file picker does the same job, and where even that
  * is missing the CSV is handed to the browser and the teacher deals with their
  * own download folder. Returns false when the teacher closed the dialog.
@@ -59,7 +58,6 @@ export async function saveExport(
         types: [
           { description: 'CSV', accept: { 'text/csv': ['.csv'] } },
           { description: 'Text', accept: { 'text/plain': ['.txt'] } },
-          { description: 'PDF', accept: { 'application/pdf': ['.pdf'] } },
         ],
       })
     } catch (error) {

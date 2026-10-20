@@ -254,7 +254,7 @@ export async function setSessionSettings(
 }
 
 /** The formats a session's results can be written as. */
-export type SessionExportFormat = 'csv' | 'txt' | 'pdf'
+export type SessionExportFormat = 'csv' | 'txt'
 
 /** One session's results, in the format the save dialog asked for. */
 export async function sessionResultsBlob(

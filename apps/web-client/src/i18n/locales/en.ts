@@ -268,6 +268,7 @@ export default {
       finishConfirmOutstand:
         'Finish this session? {count} student(s) have not submitted yet and will be marked as unanswered.',
       board: 'Board: {done} of {joined} submitted',
+      printResults: 'Print results',
       exportResults: 'Export results',
       exportNeedsFinished: 'Finish the run first',
       live: 'Live updates on.',

@@ -13,6 +13,7 @@ import {
   Pause,
   Percent,
   Play,
+  Printer,
   QrCode,
   Radio,
   Square,
@@ -405,6 +406,12 @@ async function changeStatus(status: LiveSessionStatus): Promise<void> {
   } catch (error) {
     actionError.value = errorMessage(error)
   }
+}
+
+/** The browser's own print dialog: the fonts are on the machine, unlike the
+ *  PDF writer this screen used to have, which knew only Helvetica. */
+function printResults(): void {
+  window.print()
 }
 
 async function exportResults(): Promise<void> {
@@ -811,22 +818,29 @@ onMounted(() => {
               <CircleCheck class="size-3.5" aria-hidden="true" />
               {{ t('teacher.sessionSettings.released') }}
             </span>
-            <!-- Results are what the export is for, so it waits for the run to
-                 be over: before that there is nothing finished to write out. The
-                 hint lives on the wrapper, because a disabled button ignores the
-                 pointer and its own tooltip would never appear. -->
-            <span
-              class="ms-auto"
-              :title="boardStatus === 'finished' ? '' : t('teacher.live.exportNeedsFinished')"
-            >
-              <AppButton
-                variant="secondary"
-                :disabled="exporting || boardStatus !== 'finished'"
-                @click="exportResults"
-              >
-                <Download class="size-3.5" aria-hidden="true" />
-                {{ t('teacher.live.exportResults') }}
+            <!-- Printing reads what is on the screen, so it works while the room
+                 is still working. The export writes finished results, so it waits
+                 for the run to be over; the hint lives on the wrapper, because a
+                 disabled button ignores the pointer and its own tooltip never
+                 appears. Two buttons, wrapping, because a 320px teacher screen
+                 has no room for either of them beside the clock. -->
+            <span class="ms-auto flex flex-wrap items-center justify-end gap-2">
+              <AppButton variant="secondary" @click="printResults">
+                <Printer class="size-3.5" aria-hidden="true" />
+                {{ t('teacher.live.printResults') }}
               </AppButton>
+              <span
+                :title="boardStatus === 'finished' ? '' : t('teacher.live.exportNeedsFinished')"
+              >
+                <AppButton
+                  variant="secondary"
+                  :disabled="exporting || boardStatus !== 'finished'"
+                  @click="exportResults"
+                >
+                  <Download class="size-3.5" aria-hidden="true" />
+                  {{ t('teacher.live.exportResults') }}
+                </AppButton>
+              </span>
             </span>
           </div>
         </AppCard>

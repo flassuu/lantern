@@ -58,7 +58,7 @@ import {
 } from '../lib/live'
 import { requireRoles } from '../plugins/auth'
 import { resolveSession } from '../lib/tokens'
-import { sessionExport, sessionResultsCsv, type ExportFormat } from '../lib/results'
+import { sessionExport, sessionResultsCsv } from '../lib/results'
 
 export interface SessionRoutesDeps {
   database: Database
@@ -681,7 +681,12 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
 
   /**
    * The same results in whichever shape the teacher picked in the save dialog.
-   * One reader, three writers, so a column cannot mean two things across formats.
+   * One reader, two writers, so a column cannot mean two things across formats.
+   *
+   * `pdf` used to be a third writer. It is refused by name rather than by the
+   * schema so the answer says why: a PDF built here has only the standard
+   * Helvetica and no Cyrillic, so the class list came out transliterated. Print
+   * the screen instead - the browser embeds the fonts.
    */
   app.get(
     '/api/sessions/:id/results',
@@ -692,7 +697,7 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
         querystring: {
           type: 'object',
           additionalProperties: false,
-          properties: { format: { type: 'string', enum: ['csv', 'txt', 'pdf'] } },
+          properties: { format: { type: 'string' } },
         },
       },
     },
@@ -705,7 +710,10 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
         return sendError(reply, 403, 'FORBIDDEN', 'this session belongs to another teacher')
       }
       const test = findTestRow(db, session.testId)
-      const format = (request.query as { format?: ExportFormat }).format ?? 'csv'
+      const format = (request.query as { format?: string }).format ?? 'csv'
+      if (format !== 'csv' && format !== 'txt') {
+        return sendError(reply, 400, 'UNSUPPORTED_FORMAT', 'results are written as csv or txt')
+      }
       const { filename, contentType, body } = sessionExport(
         db,
         id,

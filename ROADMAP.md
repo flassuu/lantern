@@ -938,14 +938,14 @@ phase, not in the middle of it.
 Goal: a report a Ukrainian school can print, instead of names spelled in Latin
 letters.
 
-- [ ] Remove `lib/pdf.ts`, the `pdf` member of `ExportFormat`, and the
+- [x] Remove `lib/pdf.ts`, the `pdf` member of `ExportFormat`, and the
       `format=pdf` branch; CSV and TXT are the two formats left
-- [ ] The session results screen gets the print action the journal and the test
+- [x] The session results screen gets the print action the journal and the test
       report already have; the print stylesheet already collapses the theme to
       ink on white
-- [ ] i18n: the export control says print, and the dialog no longer offers a
+- [x] i18n: the export control says print, and the dialog no longer offers a
       format that cannot spell the class list
-- [ ] Tests: the route rejects `pdf` with a clear 400; the print path is checked
+- [x] Tests: the route rejects `pdf` with a clear 400; the print path is checked
       in the harness against a Cyrillic name
 
 A PDF with an embedded font is a megabyte of glyphs and a font subsetter for a

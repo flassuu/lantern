@@ -389,19 +389,17 @@ describe('session csv export', () => {
     expect(text.payload as string).toContain('halyna')
     expect(text.headers['content-disposition']).toContain('.txt"')
 
+    // The PDF writer is gone: it had no Cyrillic and transliterated the class
+    // list. The refusal names the two formats that can spell a name.
     const pdf = await app.server.inject({
       method: 'GET',
       url: `/api/sessions/${sessionId}/results?format=pdf`,
       headers: bearer(teacherToken),
     })
-    expect(pdf.statusCode).toBe(200)
-    expect(pdf.headers['content-type']).toContain('application/pdf')
-    expect(pdf.headers['content-disposition']).toContain('.pdf"')
-    const bytes = pdf.rawPayload
-    // A PDF that parses is a PDF that starts right and ends right.
-    expect(bytes.subarray(0, 5).toString()).toBe('%PDF-')
-    expect(bytes.subarray(-6).toString()).toContain('%%EOF')
-    expect(bytes.toString('latin1')).toContain('/BaseFont /Helvetica')
+    expect(pdf.statusCode).toBe(400)
+    const refused = pdf.json() as { error: { code: string; message: string } }
+    expect(refused.error.code).toBe('UNSUPPORTED_FORMAT')
+    expect(refused.error.message).toContain('csv or txt')
   })
 
   it('refuses the export of another teacher session', async () => {

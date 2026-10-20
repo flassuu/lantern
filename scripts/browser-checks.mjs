@@ -405,7 +405,7 @@ async function seed() {
     body: {
       username: NAMES.student,
       password: 'browsercheck-pass-1',
-      fullName: 'Check Student',
+      fullName: 'Петро Шевченко',
       roomKey: room.room.key,
     },
   })
@@ -1143,7 +1143,7 @@ async function studentPath(session, fixtures, context) {
     context,
     `
     for (let i = 0; i < 40; i += 1) {
-      if (document.body.textContent.includes('Check Student')) return 'ready';
+      if (document.body.textContent.includes('Петро Шевченко')) return 'ready';
       await new Promise((r) => setTimeout(r, 250));
     }
     return 'still loading: ' + document.body.textContent.replace(/\\s+/g, ' ').slice(0, 80);
@@ -1155,7 +1155,7 @@ async function studentPath(session, fixtures, context) {
     `
     const text = document.body.textContent;
     return {
-      name: text.includes('Check Student'),
+      name: text.includes('Петро Шевченко'),
       keys: /\b(student|common|auth)\.[a-z]+\b/.test(text),
       // What the page actually said, because "the name is missing" and "the
       // screen we signed in to is the login form" are different bugs.
@@ -1194,7 +1194,7 @@ async function studentPath(session, fixtures, context) {
     const text = panel.textContent;
     const result = {
       opened: true,
-      hasName: /Check Student/.test(text),
+      hasName: /Петро Шевченко/.test(text),
       hasUsername: /browsercheck_s/.test(text),
       // This screen runs in Ukrainian, so the rows are matched in both
       // languages rather than assuming the English one.
@@ -1836,7 +1836,7 @@ async function journalPath(session, fixtures) {
     }
     const cells = [...document.querySelectorAll('tbody td')];
     return {
-      student: text.includes('Check Student'),
+      student: text.includes('Петро Шевченко'),
       columns: [...document.querySelectorAll('thead th')].map((th) => th.textContent.trim()),
       cells: cells.length,
       dashes: cells.filter((c) => c.textContent.trim() === '—').length,
@@ -2567,7 +2567,7 @@ async function studentResultPath(session, fixtures) {
     target.click();
     for (let i = 0; i < 60; i += 1) {
       const text = document.body.textContent.replace(/\\s+/g, ' ');
-      if (/Check Student/.test(text) && /100%/.test(text)) return { ok: true, page: text.slice(0, 200) };
+      if (/Петро Шевченко/.test(text) && /100%/.test(text)) return { ok: true, page: text.slice(0, 200) };
       await new Promise((r) => setTimeout(r, 250));
     }
     return { ok: false, why: 'the board never showed the score', page: document.body.textContent.replace(/\\s+/g, ' ').slice(0, 200) };
@@ -2575,6 +2575,34 @@ async function studentResultPath(session, fixtures) {
   )
   check('teacher: the board shows the submitted score', board.ok === true, board.why ?? board.page)
   await session.screenshot(boardContext, join(SHOTS, 'teacher-board-submitted.png'))
+
+  // Printing replaces the PDF export, which had no Cyrillic: the browser has
+  // the fonts the name is actually set in. `window.print` is stubbed, because a
+  // headless run has no print dialog to answer.
+  const printed = await session.run(
+    boardContext,
+    `
+    const name = 'Петро Шевченко';
+    if (!document.body.textContent.includes(name)) {
+      return { ok: false, why: 'the class list does not spell the name in Cyrillic' };
+    }
+    let calls = 0;
+    window.print = () => { calls += 1; };
+    const button = [...document.querySelectorAll('button')].find((el) =>
+      /Print results/i.test(el.textContent || ''),
+    );
+    if (!button) return { ok: false, why: 'no print action on a finished run' };
+    if (button.disabled) return { ok: false, why: 'print is disabled on a finished run' };
+    button.click();
+    await new Promise((r) => setTimeout(r, 100));
+    return { ok: calls === 1, why: 'window.print called ' + calls + ' times' };
+  `,
+  )
+  check(
+    'teacher: the finished run prints the class list as it is written',
+    printed.ok === true,
+    printed.why,
+  )
   await contextClose(session, boardContext)
 }
 

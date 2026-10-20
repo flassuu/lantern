@@ -270,6 +270,7 @@ const uk: typeof en = {
       finishConfirmOutstand:
         'Завершити сесію? {count} студентів ще не надіслали відповіді, їх буде зараховано як без відповіді.',
       board: 'Дошка: {done} з {joined} надіслали',
+      printResults: 'Друк результатів',
       exportResults: 'Експорт результатів',
       exportNeedsFinished: 'Спочатку завершіть запуск',
       live: 'Оновлення наживо увімкнено.',

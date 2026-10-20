@@ -1,6 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite'
 import type { QuestionType } from './tests'
-import { buildPdf } from './pdf'
 
 /** One row of the grade journal: a student's record for one test. */
 export interface JournalRow {
@@ -300,37 +299,7 @@ export function sessionTxt(report: SessionReport): string {
   ].join('\n')
 }
 
-/** The student table as a PDF. See ./pdf.ts for what the font can and cannot do. */
-export function sessionPdf(report: SessionReport): Uint8Array {
-  return buildPdf({
-    title: report.title,
-    metaLines: [
-      `Join code: ${report.joinCode}`,
-      `Status: ${report.status}`,
-      `Started: ${report.startedAt}`,
-      `Finished: ${report.finishedAt ?? ''}`,
-      `Pass mark: ${report.passMark}`,
-    ],
-    columns: [
-      { label: 'Student', width: 28 },
-      { label: 'Username', width: 16 },
-      { label: 'Status', width: 15 },
-      { label: 'Score', width: 12, align: 'right' },
-      { label: 'Percent', width: 15, align: 'right' },
-      { label: 'Passed', width: 14 },
-    ],
-    rows: report.rows.map((row) => [
-      row.fullName,
-      row.username,
-      row.status,
-      row.score === null ? '' : `${row.score}/${row.maxScore ?? ''}`,
-      row.percent === null ? '' : `${row.percent}%`,
-      passedText(row.passed),
-    ]),
-  })
-}
-
-export type ExportFormat = 'csv' | 'txt' | 'pdf'
+export type ExportFormat = 'csv' | 'txt'
 
 export interface SessionExport {
   filename: string
@@ -347,9 +316,6 @@ export function sessionExport(
 ): SessionExport {
   const report = sessionReport(db, sessionId, title)
   const base = `session-${report.joinCode === '' ? sessionId : report.joinCode}`
-  if (format === 'pdf') {
-    return { filename: `${base}.pdf`, contentType: 'application/pdf', body: sessionPdf(report) }
-  }
   if (format === 'txt') {
     return {
       filename: `${base}.txt`,

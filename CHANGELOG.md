@@ -6,10 +6,11 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Six changes after 0.7.0, each found by using the thing rather than by reading
+Seven changes after 0.7.0, each found by using the thing rather than by reading
 it: a clock that lied, a student screen that grew, a server panel nobody could
 reach, a paper that emptied itself when the phone reloaded, a gradebook nobody
-could take a copy of, and a client a phone could not install or keep offline.
+could take a copy of, a client a phone could not install or keep offline, and a
+PDF that could not spell a Ukrainian name.
 
 ### A paper that survives the phone
 
@@ -148,6 +149,26 @@ could take a copy of, and a client a phone could not install or keep offline.
 - The harness accepts a local certificate (`acceptInsecureCerts`) and takes
   `BASE=https://…` with `NODE_EXTRA_CA_CERTS`; a full run against a self-signed
   certificate passes, sockets included.
+
+### A report that prints Ukrainian
+
+- **The PDF export is gone.** It was built on the standard Helvetica, which has
+  no Cyrillic at all, so `Шевченко` came out `Shevchenko` — in a report meant to
+  be handed back to the class. `GET /api/sessions/:id/results?format=pdf` now
+  answers `400 UNSUPPORTED_FORMAT` and names the two formats that can spell a
+  name. CSV and TXT are unchanged and still come from the same reader, so their
+  columns agree. A real PDF would mean shipping a font and a subsetter for a
+  file the print dialog already makes.
+- **The run's board prints.** The action the journal and the test report already
+  had: one button, the browser's own print dialog, and whatever font the name is
+  set in. It works while the room is still working, because it prints what is on
+  the screen; the export still waits for the run to finish, because it writes
+  finished results.
+- **The save dialog offers two formats instead of three**, and the two buttons
+  wrap instead of running off the edge of a 320px screen.
+- The browser harness now names its student `Петро Шевченко` and checks the
+  print action on the finished board: the name on the page is the name as it was
+  written, and the action reaches the print dialog.
 
 ### Fixed
 
