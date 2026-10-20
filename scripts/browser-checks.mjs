@@ -2574,6 +2574,205 @@ async function studentResultPath(session, fixtures) {
 
 
 /**
+ * The paper survives the phone: an answer given before a reload is still on the
+ * paper after it, and what is submitted is what was filled in. The draft is the
+ * only reason a reload mid-test does not cost the class its work.
+ */
+async function studentDraftPath(session, fixtures) {
+  const paper = await api('/api/tests', {
+    token: fixtures.teacher,
+    method: 'POST',
+    body: {
+      title: `Draft ${SUFFIX}`,
+      passingPercent: 50,
+      questions: [
+        {
+          type: 'single_choice',
+          position: 0,
+          body: 'Which one is a noble gas?',
+          points: 1,
+          payload: {
+            options: [
+              { key: 'a', text: 'Helium' },
+              { key: 'b', text: 'Hydrogen' },
+            ],
+            correct: 'a',
+          },
+        },
+        {
+          type: 'single_choice',
+          position: 1,
+          body: 'Which one is a metal?',
+          points: 1,
+          payload: {
+            options: [
+              { key: 'a', text: 'Iron' },
+              { key: 'b', text: 'Oxygen' },
+            ],
+            correct: 'a',
+          },
+        },
+        {
+          type: 'true_false',
+          position: 2,
+          body: 'Water boils at 100 degrees at sea level.',
+          points: 1,
+          payload: { correct: true },
+        },
+      ],
+    },
+  })
+  created.tests.push(paper.test.id)
+  const run = await api('/api/sessions', {
+    token: fixtures.teacher,
+    method: 'POST',
+    body: { testId: paper.test.id, name: `Draft run ${SUFFIX}` },
+  })
+  created.sessions.push(run.session.id)
+  await api(`/api/sessions/${run.session.id}/start`, { token: fixtures.teacher, method: 'POST' })
+
+  const context = await session.page(390, 844)
+  await openApp(session, context, { token: fixtures.student, locale: 'uk', width: 390, height: 844 })
+  await settle(session, context, 'content')
+
+  const answered = await session.run(
+    context,
+    `
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const write = (el, value) => {
+      const desc = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value');
+      desc.set.call(el, value);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    let field = null;
+    for (let i = 0; i < 40 && !field; i += 1) {
+      field = document.querySelector('input[inputmode=text]');
+      if (!field) await sleep(250);
+    }
+    if (!field) return { ok: false, why: 'no join field' };
+    write(field, ${JSON.stringify(run.session.joinCode)});
+    await sleep(250);
+    const join = document.querySelector('main form button[type=submit]');
+    if (!join) return { ok: false, why: 'no join button' };
+    join.click();
+    for (let i = 0; i < 60; i += 1) {
+      const radio = [...document.querySelectorAll('input[type=radio]')].find((r) => r.value === 'a');
+      if (radio) {
+        radio.click();
+        // Past the 400ms the runner waits before it writes the draft.
+        await sleep(800);
+        return { ok: radio.checked };
+      }
+      await sleep(250);
+    }
+    return { ok: false, why: 'the paper never arrived' };
+  `,
+  )
+  check('student: an answer is given before the reload', answered.ok === true, answered.why ?? '')
+
+  // The reload this check exists for: the app boots from the token in
+  // localStorage and must come back to the same paper, not to the join gate.
+  await session.goto(context, BASE)
+  await settle(session, context, 'content')
+  const restored = await session.run(
+    context,
+    `
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    for (let i = 0; i < 60; i += 1) {
+      const radios = [...document.querySelectorAll('input[type=radio]')];
+      const groups = [...new Set(radios.map((r) => r.name))];
+      if (groups.length >= 2) {
+        const first = radios.find((r) => r.name === groups[0] && r.value === 'a');
+        const second = radios.find((r) => r.name === groups[1] && r.value === 'a');
+        const kept = Boolean(first && first.checked);
+        if (second) {
+          second.click();
+          await sleep(300);
+        }
+        const text = document.body.textContent.replace(/\\s+/g, ' ');
+        return {
+          paper: true,
+          kept,
+          // Each question is its own radio group: answering the second must not
+          // clear the first, which a shared name used to do.
+          both: Boolean(first && first.checked && second && second.checked),
+          said: /відновлено/i.test(text),
+        };
+      }
+      await sleep(250);
+    }
+    return { paper: false, page: document.body.textContent.replace(/\\s+/g, ' ').slice(0, 200) };
+  `,
+  )
+  check(
+    'student: the answer is still there after a reload',
+    restored.paper === true && restored.kept === true,
+    restored.page ?? `paper=${restored.paper} kept=${restored.kept}`,
+  )
+  check(
+    'student: two single-choice questions are two radio groups',
+    restored.both === true,
+    restored.page ?? `both=${restored.both}`,
+  )
+  check(
+    'student: the paper says the answers came back',
+    restored.said === true,
+    restored.page ?? `said=${restored.said}`,
+  )
+
+  const submitted = await session.run(
+    context,
+    `
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const button = (pattern) =>
+      [...document.querySelectorAll('button')].find((b) => new RegExp(pattern).test(b.textContent.trim()));
+    const toggles = [...document.querySelectorAll('button[aria-pressed]')];
+    if (!toggles[0]) return { ok: false, why: 'no true/false control' };
+    toggles[0].click();
+    await sleep(800);
+    const send = button('^Надіслати відповіді$|^Submit answers$');
+    if (!send) return { ok: false, why: 'no submit button' };
+    send.click();
+    let dialog = null;
+    for (let i = 0; i < 40 && !dialog; i += 1) {
+      dialog = document.querySelector('[role=dialog]');
+      if (!dialog) await sleep(250);
+    }
+    if (!dialog) return { ok: false, why: 'no confirmation dialog' };
+    const yes = [...dialog.querySelectorAll('button')].find((b) =>
+      /^Підтвердити$|^Confirm$/.test(b.textContent.trim()),
+    );
+    if (!yes) return { ok: false, why: 'no confirm button in the dialog' };
+    yes.click();
+    let text = '';
+    for (let i = 0; i < 60; i += 1) {
+      text = document.body.textContent.replace(/\\s+/g, ' ');
+      const found = text.match(/(\\d+)%/);
+      if (found) return { ok: true, percent: Number(found[1]), text: text.slice(0, 160) };
+      await sleep(250);
+    }
+    return { ok: false, why: 'no result', text: text.slice(0, 160) };
+  `,
+  )
+  check(
+    'student: the restored paper submits both answers',
+    submitted.ok === true && submitted.percent === 100,
+    submitted.why ?? `percent=${submitted.percent} ${submitted.text}`,
+  )
+  await session.screenshot(context, join(SHOTS, 'student-restored.png'))
+  await contextClose(session, context)
+
+  const rows = await api(`/api/sessions/${run.session.id}/participants`, { token: fixtures.teacher })
+  const row = rows.participants.find((entry) => entry.username.startsWith('browsercheck_s'))
+  check(
+    'student: the server received the answer given before the reload',
+    row !== undefined && row.percent === 100,
+    JSON.stringify(row ?? null),
+  )
+}
+
+
+/**
  * The offline shell: a manifest the page points at, and a worker that registers.
  *
  * It runs on the loopback address, which is a secure context, and that is the
@@ -2880,6 +3079,10 @@ async function main() {
     // Last of all: it submits, which closes the run the others were answering in.
     console.log('\nthe whole student run')
     await studentResultPath(session, fixtures)
+
+    // A fresh run of its own, so the reload cannot disturb the papers above.
+    console.log('\na paper that survives a reload')
+    await studentDraftPath(session, fixtures)
 
     await session.close()
   } catch (error) {

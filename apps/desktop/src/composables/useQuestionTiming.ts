@@ -23,6 +23,12 @@ export interface QuestionTiming {
   setCurrent: (questionId: string | null) => void
   /** Records a write to an answer. The first write is answering, not changing. */
   noteChange: (questionId: string) => void
+  /**
+   * Seeds what a reload interrupted. `answered` is the list of questions that
+   * already hold an answer: the next edit of one of them is a change, not the
+   * first answer, exactly as it would have been without the reload.
+   */
+  restore: (timings: QuestionTimings, answered: string[]) => void
   /** What to send with the paper. */
   snapshot: () => QuestionTimings
 }
@@ -57,6 +63,14 @@ export function useQuestionTiming(): QuestionTiming {
     changed.set(questionId, (changed.get(questionId) ?? 0) + 1)
   }
 
+  function restore(timings: QuestionTimings, answered: string[]): void {
+    for (const [questionId, entry] of Object.entries(timings)) {
+      if (entry.timeMs > 0) spent.set(questionId, entry.timeMs)
+      if (entry.changed > 0) changed.set(questionId, entry.changed)
+    }
+    for (const questionId of answered) written.add(questionId)
+  }
+
   function snapshot(): QuestionTimings {
     const result: QuestionTimings = {}
     for (const questionId of new Set([...spent.keys(), ...changed.keys()])) {
@@ -89,6 +103,7 @@ export function useQuestionTiming(): QuestionTiming {
       current.value = questionId
     },
     noteChange,
+    restore,
     snapshot,
   }
 }

@@ -6,9 +6,30 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Three changes after 0.7.0, each found by using the thing rather than by reading
-it: a clock that lied, a student screen that grew, and a server panel nobody
-could reach.
+Four changes after 0.7.0, each found by using the thing rather than by reading
+it: a clock that lied, a student screen that grew, a server panel nobody could
+reach, and a paper that emptied itself when the phone reloaded.
+
+### A paper that survives the phone
+
+- **An answer given before a reload is still there after it.** The runner used
+  to keep the paper in memory only: a battery saver killing the tab, a thumb on
+  the wrong button or a browser crash handed the student back an empty paper.
+  The answers, the page and the time spent on each question now live in
+  `localStorage`, one entry per run and student, written on a 400ms debounce and
+  flushed when the tab is hidden or closed. The paper says the answers came back
+  rather than filling itself in silently.
+- **A submit that did not reach the server says so and waits.** It was a toast
+  that disappeared while the paper was still on screen and still unsent. It is
+  now a banner that stays, with a button to try again; the draft stays too.
+- **A paper the server already has is not sent twice.** A `CONFLICT` answer -
+  a retry that went through without its response reaching the client, or the
+  sweep at the deadline - clears the draft and opens the result, held or not.
+- **Signing out takes the drafts with it.** A phone passed around a classroom is
+  the normal case; the next student starts on an empty paper.
+- **A status frame no longer empties the paper.** The runner reset every answer
+  whenever the questions array changed identity. It now reacts to a different
+  set of question ids and keeps the answers to the questions that remain.
 
 ### A clock that tells the truth
 
@@ -70,6 +91,13 @@ could reach.
   change theirs without the old one, and there was no way back in.
   `PATCH /api/users/:id/password`, admin only, and it ends every session that
   user held — a reset that leaves the old device signed in is not a reset.
+
+### Fixed
+
+- **Each single-choice question is its own radio group.** Every option on the
+  paper shared `name="choice"`, so two single-choice questions were one group
+  and answering the second unticked the first. The group is the question's id
+  now, and a paper with two of them is checked for it.
 
 ## [0.7.0] — 2026-10-11
 

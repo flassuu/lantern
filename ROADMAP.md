@@ -868,18 +868,18 @@ Goal: an answer that was given is an answer that was kept — when the phone
 reloads, the browser crashes, or the tab is closed by a thumb reaching for
 something else.
 
-- [ ] `composables/sessionDraft.ts`, byte-identical twins in both apps: one
+- [x] `composables/sessionDraft.ts`, byte-identical twins in both apps: one
       versioned entry per `sessionId:userId`, holding the answers and the
       timings, dropped when the run is submitted and when the user signs out —
       a phone passed around a classroom is the normal case, not the exception
-- [ ] `SessionRunner.vue` (twins): write on every answer and page change, with
+- [x] `SessionRunner.vue` (twins): write on every answer and page change, with
       a debounce; restore on mount while the server still says the paper is
       open; say plainly that the answers came back, because a paper that fills
       itself in silently is a paper nobody trusts
-- [ ] Submit keeps what it has: a retry with backoff, a button that says "not
+- [x] Submit keeps what it has: a retry with backoff, a button that says "not
       sent" rather than a toast that disappears, and the draft cleared only
       after the server confirms the submission or says it is already in
-- [ ] Tests: the store as a pure module (versioning, per-key isolation, a
+- [x] Tests: the store as a pure module (versioning, per-key isolation, a
       cleared entry) and a browser check that answers two questions, reloads,
       and submits the same paper
 

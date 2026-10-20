@@ -106,9 +106,12 @@ const controlClass =
               : 'bg-surface text-on-surface'
           "
         >
+          <!-- The group is the question, not the paper: one shared name made
+               every single-choice question a single radio group, and answering
+               one unticked the last. -->
           <input
             :type="question.type === 'single_choice' ? 'radio' : 'checkbox'"
-            name="choice"
+            :name="question.id"
             :value="option.key"
             :checked="response.keys.includes(option.key)"
             class="size-4 shrink-0"

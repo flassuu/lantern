@@ -691,6 +691,9 @@ export default {
     },
     runner: {
       leftWarning: 'You left the test. It is recorded; you can carry on.',
+      restored: 'Your answers were restored after the reload.',
+      notSent: 'Your answers are not sent yet. They are kept on this device.',
+      retry: 'Try again',
       progress: 'Answered {answered} of {total}',
       points: '{points} points in total',
       timeLeft: 'Time left',

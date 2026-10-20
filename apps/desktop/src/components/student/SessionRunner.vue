@@ -9,6 +9,7 @@ import {
   buildAnswers,
   emptyResponses,
   formatClock,
+  isAnswered,
   matchingChoices,
   paperOptions,
   remainingMs,
@@ -17,8 +18,9 @@ import {
   type Responses,
 } from '../../student/sessionLogic'
 import { useConfirm } from '../../composables/confirm'
+import { clearDraft, readDraft, writeDraft, type SessionDraft } from '../../composables/sessionDraft'
 import { useQuestionTiming } from '../../composables/useQuestionTiming'
-import { useToast } from '../../composables/toast'
+import { useAuth } from '../../stores/auth'
 import QuestionAnswerInput from './QuestionAnswerInput.vue'
 import AppButton from '../../components/common/AppButton.vue'
 import AppCard from '../../components/common/AppCard.vue'
@@ -35,7 +37,6 @@ const emit = defineEmits<{ submitted: [sessionId: string, released: boolean] }>(
 
 const { t } = useI18n()
 const confirm = useConfirm()
-const toast = useToast()
 
 const questions = computed<StudentQuestion[]>(() => props.state.questions)
 const responses = ref<Responses>(emptyResponses(props.state.questions))
@@ -98,6 +99,72 @@ function responseFor(question: StudentQuestion): QuestionResponse {
  */
 const timing = useQuestionTiming()
 
+const { user } = useAuth()
+const userId = user.value?.id ?? null
+/** A reload handed the paper back with at least one answer on it. */
+const restored = ref(false)
+/** The last submit did not reach the server; the draft is still on the device. */
+const submitError = ref(false)
+
+const savedDraft = userId === null ? null : readDraft(props.state.session.id, userId)
+if (savedDraft !== null) restoreDraft(savedDraft)
+
+/**
+ * Puts the stored paper back: the answers that still have a question, the page
+ * they were on, and the time already spent on each question. Answers to
+ * questions the teacher has since removed are dropped with the draft.
+ */
+function restoreDraft(draft: SessionDraft): void {
+  const slots = emptyResponses(questions.value)
+  for (const [questionId, response] of Object.entries(draft.responses)) {
+    if (questionId in slots) slots[questionId] = response
+  }
+  responses.value = slots
+  page.value = Math.min(Math.max(draft.page, 0), lastPage.value)
+
+  const answeredIds = questions.value
+    .filter((question) => isAnswered(question, slots[question.id]))
+    .map((question) => question.id)
+  timing.restore(draft.timing, answeredIds)
+  restored.value = answeredIds.length > 0
+}
+
+let draftTimer: number | undefined
+
+function saveDraft(): void {
+  // A paper on its way to the server is not a draft any more.
+  if (userId === null || submitting.value) return
+  writeDraft(props.state.session.id, userId, {
+    page: page.value,
+    responses: responses.value,
+    timing: timing.snapshot(),
+  })
+}
+
+function scheduleDraft(): void {
+  if (draftTimer !== undefined) window.clearTimeout(draftTimer)
+  draftTimer = window.setTimeout(() => {
+    draftTimer = undefined
+    saveDraft()
+  }, 400)
+}
+
+/** A reload or a hidden tab can arrive before the debounce does. */
+function flushDraft(): void {
+  if (draftTimer === undefined) return
+  window.clearTimeout(draftTimer)
+  draftTimer = undefined
+  saveDraft()
+}
+
+function forgetDraft(): void {
+  if (draftTimer !== undefined) {
+    window.clearTimeout(draftTimer)
+    draftTimer = undefined
+  }
+  if (userId !== null) clearDraft(props.state.session.id, userId)
+}
+
 // The question on screen is the one the clock runs on. A paper shown all at
 // once has no such question, so no time is measured at all - which the detail
 // view says with a dash rather than pretending it was instant.
@@ -114,13 +181,27 @@ function onAnswer(questionId: string, response: QuestionResponse): void {
   timing.noteChange(questionId)
 }
 
+/**
+ * Sends the paper. A retry after a failure does not ask for confirmation again:
+ * the student already pressed the button that asked.
+ */
 async function send(): Promise<void> {
   if (submitting.value) return
-  const ok = await confirm({
-    message: t('student.runner.submitConfirm', { answered: answered.value, total: questions.value.length }),
-  })
-  if (!ok) return
+  if (!submitError.value) {
+    const ok = await confirm({
+      message: t('student.runner.submitConfirm', {
+        answered: answered.value,
+        total: questions.value.length,
+      }),
+    })
+    if (!ok) return
+  }
+  await submit()
+}
+
+async function submit(): Promise<void> {
   submitting.value = true
+  submitError.value = false
   try {
     const outcome = await submitSession(
       props.state.session.id,
@@ -129,24 +210,41 @@ async function send(): Promise<void> {
     )
     // `released` is false when the teacher holds the results: the paper was
     // graded, but the student is not shown how they did yet.
+    forgetDraft()
     emit('submitted', props.state.session.id, outcome.released)
   } catch (error) {
-    toast.error(
-      error instanceof ApiError && error.code === 'CONFLICT'
-        ? t('student.errors.alreadySubmitted')
-        : t('student.errors.submitFailed'),
-    )
+    if (error instanceof ApiError && error.code === 'CONFLICT') {
+      // The server already has this paper: a send that went through without its
+      // answer reaching us, or the sweep at the deadline. Nothing is left to
+      // send, and nothing is worth keeping on the device.
+      forgetDraft()
+      emit('submitted', props.state.session.id, true)
+      return
+    }
+    // The paper stays on screen and the draft stays on the device: the student
+    // can try again without losing either.
+    submitError.value = true
   } finally {
     submitting.value = false
   }
 }
 
-watch(
-  () => props.state.questions,
-  (next) => {
-    responses.value = emptyResponses(next)
-  },
-)
+// A status frame carries the same questions and must not wipe the paper; a
+// question the teacher adds or removes changes the slots and keeps the answers
+// already given to the rest.
+const questionIds = computed(() => questions.value.map((question) => question.id).join('\n'))
+
+watch(questionIds, () => {
+  const slots = emptyResponses(questions.value)
+  for (const [questionId, response] of Object.entries(responses.value)) {
+    if (questionId in slots) slots[questionId] = response
+  }
+  responses.value = slots
+})
+
+// Every answer and every page turn reaches the device a moment later: a
+// keystroke does not need its own write, a reload does not miss one.
+watch([responses, page], scheduleDraft, { deep: true })
 
 // How far the student is, for the teacher's board: the page in paged mode, and
 // how many were answered either way.
@@ -160,7 +258,15 @@ onMounted(() => {
   ticker = window.setInterval(() => {
     now.value = Date.now()
   }, 1000)
+  // A reload, a closed tab or a phone put in a pocket can arrive before the
+  // debounce does; the draft is written on the way out.
+  window.addEventListener('pagehide', flushDraft)
+  document.addEventListener('visibilitychange', onHidden)
 })
+
+function onHidden(): void {
+  if (document.visibilityState === 'hidden') flushDraft()
+}
 
 // A zero on the clock submits whatever is on the paper, exactly like the
 // server-side sweep does when the teacher forgets to end the session.
@@ -169,7 +275,10 @@ watch(expired, (isExpired) => {
 })
 
 onBeforeUnmount(() => {
+  flushDraft()
   if (ticker !== undefined) window.clearInterval(ticker)
+  window.removeEventListener('pagehide', flushDraft)
+  document.removeEventListener('visibilitychange', onHidden)
 })
 </script>
 
@@ -219,6 +328,15 @@ onBeforeUnmount(() => {
     >
       <TriangleAlert class="size-3.5 shrink-0" aria-hidden="true" />
       {{ t('student.runner.leftWarning') }}
+    </p>
+
+    <p
+      v-if="restored"
+      role="status"
+      class="flex items-center gap-2 rounded-xl bg-surface-container-high px-3 py-2 text-xs text-on-surface-variant"
+    >
+      <Check class="size-3.5 shrink-0" aria-hidden="true" />
+      {{ t('student.runner.restored') }}
     </p>
 
     <!-- One question at a time: a pager above, a single card below. -->
@@ -279,6 +397,18 @@ onBeforeUnmount(() => {
         />
       </AppCard>
     </ol>
+
+    <div
+      v-if="submitError"
+      role="alert"
+      class="flex flex-wrap items-center gap-2 rounded-xl bg-error-container px-3 py-2 text-sm text-on-error-container"
+    >
+      <TriangleAlert class="size-4 shrink-0" aria-hidden="true" />
+      <span class="min-w-0 flex-1">{{ t('student.runner.notSent') }}</span>
+      <AppButton variant="secondary" size="sm" :disabled="submitting" @click="send">
+        {{ t('student.runner.retry') }}
+      </AppButton>
+    </div>
 
     <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <p class="text-xs text-on-surface-variant">

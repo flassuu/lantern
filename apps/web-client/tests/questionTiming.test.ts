@@ -83,4 +83,19 @@ describe('what each question cost', () => {
       assert.deepEqual(timing.snapshot(), {})
     })
   })
+
+  it('carries the numbers across a reload and counts the next edit as a change', () => {
+    withClock((timing, advance) => {
+      timing.restore({ q1: { timeMs: 4_000, changed: 1 } }, ['q1', 'q2'])
+      timing.setCurrent('q2')
+      advance(1_000)
+      // q1 was answered before the reload, so this is a change, not an answer.
+      timing.noteChange('q1')
+
+      const snapshot = timing.snapshot()
+      assert.equal(snapshot.q1?.timeMs, 4_000)
+      assert.equal(snapshot.q1?.changed, 2)
+      assert.equal(snapshot.q2?.timeMs, 1_000)
+    })
+  })
 })
