@@ -711,4 +711,29 @@
     animation: skeleton-in var(--motion-short) var(--ease-standard) 220ms backwards;
   }
 
+  /* Scrollbar — thin and subtle: narrow, transparent track, and only lightly
+     tinted so it stays out of the way when nothing is scrolling. Hovering makes
+     it easier to grab. It never covers fixed toolbars or panels. */
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: var(--outline-variant) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+    background: transparent;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--outline-variant);
+    border-radius: 3px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--outline);
+  }
+
 }
