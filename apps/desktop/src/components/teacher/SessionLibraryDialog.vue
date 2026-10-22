@@ -90,6 +90,7 @@ const sessions = ref<SessionSummary[]>([])
 const total = ref(0)
 const loading = ref(true)
 const errorKey = ref('')
+const lastError = ref<unknown>(null)
 /** The row whose delete is in flight; the rest keep their buttons quiet. */
 const deletingId = ref('')
 
@@ -239,6 +240,7 @@ async function remove(session: SessionSummary): Promise<void> {
     emit('deleted', session.id)
   } catch (error) {
     errorKey.value = errorKeyOf(error)
+    lastError.value = error
   } finally {
     deletingId.value = ''
   }
@@ -456,7 +458,7 @@ defineExpose({ load })
           role="alert"
           class="m-2 rounded-xl bg-error-container px-3 py-2 text-sm text-on-error-container"
         >
-          {{ t(`teacher.errors.${errorKey}`) }}
+          {{ lastError instanceof ApiError ? lastError.message : t(`teacher.errors.${errorKey}`) }}
         </p>
         <SkeletonList v-else-if="loading && sessions.length === 0" :rows="4" />
         <p v-else-if="sessions.length === 0" class="p-6 text-center text-sm text-on-surface-variant">
