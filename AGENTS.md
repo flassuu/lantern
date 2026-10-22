@@ -107,38 +107,51 @@ raw palette classes. Exactly **two themes**: light and dark.
 
 ## Quality gate
 
-Scale it to the change — see Working rules, rule 3.
+Scale it to the change. **Tests run only when the user asks for them.**
 
-1. `pnpm typecheck` per touched package; `pnpm --filter <pkg> test` for touched
-   logic; `pnpm build:server` / `pnpm build:web` when server or web touched.
-2. `pnpm check:browser` after touching a screen; `pnpm smoke:console` after
-   touching the logger or console; `cargo test` after touching `src-tauri`.
+1. `pnpm typecheck` for the touched package is the default check. Add
+   `pnpm build:server` / `pnpm build:web` only when the change touches the
+   server, the build or something typecheck cannot see.
+2. `pnpm test`, `pnpm check:browser`, `pnpm smoke:console` and `cargo test` are
+   run on request only — never "just in case", never after a small UI change.
 3. Update `CHANGELOG.md` (Unreleased) on user-visible behavior changes.
 
 ## Working rules
 
-1. **Two failures on the same error is the limit.** After the second, stop and
-   do not repeat the same approach: either add diagnostics (state dump,
-   screenshot, verbose output) or ask me.
-2. **Before any run longer than a minute, make the script report its state on
-   failure** — screenshot, page state, logs. Diagnose from data, not theories.
-3. **Verification is proportional.** Cosmetic or UI-only change: typecheck plus
-   one targeted check. The full gate runs once, right before a commit, only for
-   affected packages. Never between debugging iterations.
-4. **Do not invent test infrastructure.** If a mature tool exists (Playwright
-   for browser checks), use it. Ask me before adding a tool or dependency.
-5. **Never `pkill`/`killall` with a pattern that also appears in your own
+1. **Speed is the default.** A minor change is one turn: edit, typecheck the
+   touched package, report. Do not narrate, do not re-read what was just
+   written, do not re-verify the same thing twice. The user is waiting.
+2. **Tests only on request.** `pnpm test`, `pnpm check:browser`,
+   `pnpm smoke:console`, `cargo test` and every other suite run only when the
+   user asks for them. `typecheck` of the touched package is the normal check.
+3. **No screenshots.** Never take a screenshot and never read or analyse an
+   image of the screen or of the running app. Judge the change from the code.
+4. **No scripted edits.** Change sources with the dedicated file tools only.
+   Writing a Python or shell script that rewrites source files is forbidden.
+   Read-only commands and one-off data queries (`sqlite3 -readonly`, `grep`,
+   `git diff`) stay fine.
+5. **No verification loops.** At most one focused check after an edit. If the
+   cause of a failure is not obvious, stop and ask — never re-run the same
+   check hoping for a different result. Two failures on the same error: stop.
+6. **Ask, do not guess.** If a request is ambiguous — how wide "a bit wider"
+   is, which state a block is optimised for, where a control goes — ask one
+   short question before editing instead of inventing an answer.
+7. **Do not invent test infrastructure.** If a mature tool exists (Playwright
+   for browser checks), use it, and only when asked. Ask before adding a tool
+   or a dependency.
+8. **Never `pkill`/`killall` with a pattern that also appears in your own
    command line** — it kills your own shell. Find the PID first (`ss -lptn`,
    a precise `pgrep`), then kill by PID.
-6. **Scope discipline.** Do only what was asked. A useful change outside the
+9. **Scope discipline.** Do only what was asked. A useful change outside the
    request is never silent: tell me and let me decide, or make it a separate
    commit and say so explicitly.
-7. **More than 3 files touched: write a short plan first** (steps and files)
-   and wait for my confirmation before editing.
-8. **Batch mechanical edits.** One scripted pass with an expected-match-count
-   assertion, not several sequential `sed` calls.
-9. **Set a sufficient timeout on the first attempt** for slow commands (commits
-   with hooks, builds) instead of retrying.
-10. **One session, one task.** If a new request changes what you just finished
+10. **More than 3 files touched: write a short plan first** (steps and files)
+    and wait for my confirmation before editing.
+11. **Batch mechanical edits through the file tools.** Rename with one
+    `replaceAll` edit rather than a sequence of `sed` calls; assert the result
+    by reading the diff, not by scripting the file.
+12. **Set a sufficient timeout on the first attempt** for slow commands (commits
+    with hooks, builds) instead of retrying.
+13. **One session, one task.** If a new request changes what you just finished
     (a rename right after a release), point it out and propose the next version.
-11. **Comments in English only. No emoji in any output.**
+14. **Comments in English only. No emoji in any output.**
