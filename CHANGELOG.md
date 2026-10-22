@@ -273,6 +273,11 @@ board whose controls were more kinds than one run needs.
   the run's labels; folding them over the list wiped the teacher's own tags
   until a manual reload. The action payloads carry the tags now, and a client
   faced with an empty set keeps the ones the list showed.
+- **Deleting a session says why it refused.** The library used to answer every
+  server refusal - the run is still running, the run belongs to another teacher,
+  the run is already gone - with the same generic line; the message that came
+  from the server is now shown, and the delete button reads the reason rather
+  than asking to try again.
 
 ### Fixed
 

@@ -122,6 +122,9 @@ const filterCount = computed(
 function errorKeyOf(error: unknown): string {
   if (!(error instanceof ApiError)) return 'generic'
   if (error.code === 'NETWORK') return 'network'
+  if (error.code === 'NOT_FOUND') return 'notFound'
+  if (error.code === 'FORBIDDEN') return 'forbidden'
+  if (error.code === 'CONFLICT') return 'conflict'
   return 'generic'
 }
 
@@ -453,7 +456,7 @@ defineExpose({ load })
           role="alert"
           class="m-2 rounded-xl bg-error-container px-3 py-2 text-sm text-on-error-container"
         >
-          {{ t(`teacher.errors.${errorKey === 'network' ? 'network' : 'generic'}`) }}
+          {{ t(`teacher.errors.${errorKey}`) }}
         </p>
         <SkeletonList v-else-if="loading && sessions.length === 0" :rows="4" />
         <p v-else-if="sessions.length === 0" class="p-6 text-center text-sm text-on-surface-variant">

@@ -112,16 +112,29 @@ const selected = computed(
 const selectedTest = computed(
   () => props.tests.find((test) => test.id === selected.value?.testId) ?? null,
 )
-/** What a session is called on screen: the teacher's own name, or the test's. */
-const sessionName = (session: SessionSummary): string => session.name ?? session.title
+/**
+ * What a run is called on screen: the teacher's own name, or the paper's with
+ * the day the run started, so two unnamed runs of one test read apart. A run
+ * that has not started has no day to stamp yet.
+ */
+function sessionName(session: SessionSummary): string {
+  if (session.name) return session.name
+  if (!session.startedAt) return session.title
+  const mark = new Intl.DateTimeFormat(locale.value, { month: 'long', day: 'numeric' }).format(
+    new Date(session.startedAt),
+  )
+  return `${session.title} ${mark}`
+}
 const selectedName = computed(() => (selected.value ? sessionName(selected.value) : ''))
-/** "10 questions · 15 min", the one fact the test row and the name share. */
+/** "10q · 11m", the short facts the pill beside the paper keeps. */
 const selectedTestMeta = computed(() => {
   const test = selectedTest.value
   if (test === null) return ''
-  const parts = [t('teacher.tests.questionCount', { count: test.questionCount })]
+  const parts = [t('teacher.live.questionShort', { count: test.questionCount })]
   if (selected.value?.timeLimitSec) {
-    parts.push(`${Math.round(selected.value.timeLimitSec / 60)} ${t('teacher.tests.minutes')}`)
+    parts.push(
+      t('teacher.live.minuteShort', { count: Math.round(selected.value.timeLimitSec / 60) }),
+    )
   }
   return parts.join(' · ')
 })
@@ -580,24 +593,15 @@ onMounted(() => {
                in the same breath. -->
           <div class="flex flex-col gap-3 sm:flex-row sm:items-stretch">
             <div class="min-w-0 flex-1 rounded-2xl bg-surface-container-high p-3 sm:p-4" data-run-data>
-              <!-- Reading order does the labelling: what a teacher opening this
-                   board looks for - which run, which paper, since when - is the
-                   order the lines already stand in. -->
-              <dl class="space-y-1.5">
+              <!-- The panel's order is fixed: the run's name, the paper it ran
+                   with its counts, the marks of its life, the labels on it.
+                   Every line is here even where its fact is not - a run on the
+                   field reads "--:--" for a mark not made yet. -->
+              <div class="space-y-1.5">
                 <div class="flex min-w-0 items-center justify-between gap-2">
-                  <dd class="flex min-w-0 flex-wrap items-center gap-2">
-                    <span class="min-w-0 truncate text-base font-semibold text-on-surface">
-                      {{ selectedName }}
-                    </span>
-                    <!-- An unnamed run is the paper itself, so the counts belong
-                         on the name; a named one gets a row of its own below. -->
-                    <span
-                      v-if="!selected.name && selectedTestMeta"
-                      class="text-xs text-on-surface-variant"
-                    >
-                      ({{ selectedTestMeta }})
-                    </span>
-                  </dd>
+                  <span class="min-w-0 truncate text-lg font-semibold text-on-surface">
+                    {{ selectedName }}
+                  </span>
                   <!-- The state sits where an eye lands last: out of the read
                        line, pressed to the panel's own edge on the right. -->
                   <span
@@ -609,49 +613,47 @@ onMounted(() => {
                   </span>
                 </div>
 
-                <!-- A run the teacher named shows the paper it ran as well: the
-                     name says which lesson this was, the title says what was
-                     asked. -->
-                <div
-                  v-if="selected.name && selected.title"
-                  class="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1"
-                >
-                  <dd class="min-w-0 text-sm text-on-surface">
-                    <span class="truncate">{{ selected.title }}</span>
-                    <span v-if="selectedTestMeta" class="text-xs text-on-surface-variant">
-                      ({{ selectedTestMeta }})
-                    </span>
-                  </dd>
+                <!-- The paper is always named, with its counts beside it in the
+                     same pill the test's own summary keeps. -->
+                <div class="flex min-w-0 items-center gap-2">
+                  <span class="min-w-0 truncate text-sm text-on-surface">{{ selected.title }}</span>
+                  <span
+                    v-if="selectedTestMeta"
+                    class="shrink-0 rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant"
+                  >
+                    {{ selectedTestMeta }}
+                  </span>
                 </div>
 
-                <div
-                  v-if="selected.startedAt"
-                  class="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1"
-                >
-                  <dd class="text-sm tabular-nums text-on-surface">
-                    {{ formatTime(selected.startedAt) }}
-                  </dd>
-                </div>
-              </dl>
+                <p class="text-sm tabular-nums text-on-surface">
+                  {{ formatTime(selected.startedAt) || t('teacher.live.noTime') }}
+                  /
+                  {{
+                    selected.finishedAt
+                      ? formatTime(selected.finishedAt)
+                      : t('teacher.live.noTime')
+                  }}
+                </p>
 
-              <div
-                v-if="roomNameOf(selected.roomId) || selected.tags.length > 0"
-                class="mt-2 flex flex-wrap items-center gap-1.5"
-              >
-                <span
-                  v-if="roomNameOf(selected.roomId)"
-                  class="inline-flex items-center gap-1 rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant"
+                <div
+                  v-if="roomNameOf(selected.roomId) || selected.tags.length > 0"
+                  class="flex flex-wrap items-center gap-1.5"
                 >
-                  <Users class="size-3" aria-hidden="true" />
-                  {{ roomNameOf(selected.roomId) }}
-                </span>
-                <span
-                  v-for="tag in selected.tags"
-                  :key="tag.id"
-                  class="rounded-full bg-secondary-container px-2 py-0.5 text-[11px] font-semibold text-on-secondary-container"
-                >
-                  {{ tag.name }}
-                </span>
+                  <span
+                    v-if="roomNameOf(selected.roomId)"
+                    class="inline-flex items-center gap-1 rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant"
+                  >
+                    <Users class="size-3" aria-hidden="true" />
+                    {{ roomNameOf(selected.roomId) }}
+                  </span>
+                  <span
+                    v-for="tag in selected.tags"
+                    :key="tag.id"
+                    class="rounded-full bg-secondary-container px-2 py-0.5 text-[11px] font-semibold text-on-secondary-container"
+                  >
+                    {{ tag.name }}
+                  </span>
+                </div>
               </div>
             </div>
 
