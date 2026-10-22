@@ -744,16 +744,27 @@ onMounted(() => {
               </div>
               <!-- The two ways in that are not the code: how a phone that cannot
                    see the code the way a phone on the wall does gets in. -->
-              <div class="flex flex-wrap items-center gap-2 sm:justify-end">
-                <AppButton variant="secondary" @click="copyLink">
-                  <CircleCheck v-if="linkCopied" class="size-3.5" aria-hidden="true" />
-                  <Link2 v-else class="size-3.5" aria-hidden="true" />
+              <!-- The same pair as Print and Export: one control cut in two, a
+                   5px gap of empty panel, square where the halves meet. -->
+              <div class="grid grid-cols-2 gap-[5px]">
+                <button
+                  type="button"
+                  class="state-layer flex min-h-11 items-center justify-center gap-1.5 rounded-l-[var(--radius-control)] border border-outline bg-surface px-3 text-sm font-semibold text-on-surface"
+                  @click="copyLink"
+                >
+                  <CircleCheck v-if="linkCopied" class="size-4" aria-hidden="true" />
+                  <Link2 v-else class="size-4" aria-hidden="true" />
                   {{ linkCopied ? t('teacher.live.copied') : t('teacher.live.copyLink') }}
-                </AppButton>
-                <AppButton variant="secondary" :aria-pressed="showQr" @click="showQr = !showQr">
-                  <QrCode class="size-3.5" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  class="state-layer flex min-h-11 items-center justify-center gap-1.5 rounded-r-[var(--radius-control)] border border-outline bg-surface px-3 text-sm font-semibold text-on-surface"
+                  :aria-pressed="showQr"
+                  @click="showQr = !showQr"
+                >
+                  <QrCode class="size-4" aria-hidden="true" />
                   {{ showQr ? t('teacher.live.hideQr') : t('teacher.live.showQr') }}
-                </AppButton>
+                </button>
               </div>
             </div>
 
@@ -836,35 +847,40 @@ onMounted(() => {
                 <Play class="size-3.5" aria-hidden="true" />
                 {{ t('teacher.live.begin') }}
               </AppButton>
-              <AppButton
+              <!-- The row's actions come in the same shape the results pair and
+                   the join pair are cut in: 44px of control, a 14px semibold
+                   label, a state layer, and the press handed to the compositor. -->
+              <button
                 v-if="boardStatus === 'active'"
-                variant="secondary"
+                type="button"
+                class="state-layer flex min-h-11 items-center justify-center gap-1.5 rounded-[var(--radius-control)] border border-outline bg-surface px-3.5 text-sm font-semibold text-on-surface"
                 @click="changeStatus('paused')"
               >
-                <Pause class="size-3.5" aria-hidden="true" />
+                <Pause class="size-4" aria-hidden="true" />
                 {{ t('teacher.live.pause') }}
-              </AppButton>
-              <AppButton
+              </button>
+              <button
                 v-else-if="boardStatus === 'paused'"
-                variant="secondary"
+                type="button"
+                class="state-layer flex min-h-11 items-center justify-center gap-1.5 rounded-[var(--radius-control)] border border-outline bg-surface px-3.5 text-sm font-semibold text-on-surface"
                 @click="changeStatus('active')"
               >
-                <Play class="size-3.5" aria-hidden="true" />
+                <Play class="size-4" aria-hidden="true" />
                 {{ t('teacher.live.resume') }}
-              </AppButton>
-              <AppButton
+              </button>
+              <button
                 v-if="boardStatus !== 'finished'"
-                variant="danger"
+                type="button"
+                class="state-layer flex min-h-11 items-center justify-center gap-1.5 rounded-[var(--radius-control)] border border-outline bg-surface px-3.5 text-sm font-semibold text-error"
                 @click="changeStatus('finished')"
               >
-                <Square class="size-3.5" aria-hidden="true" />
+                <Square class="size-4" aria-hidden="true" />
                 {{ t('teacher.live.finish') }}
-              </AppButton>
-              <AppButton
+              </button>
+              <button
                 v-if="boardStatus !== 'finished'"
-                variant="ghost"
-                icon
-                size="sm"
+                type="button"
+                class="state-layer grid size-11 place-items-center rounded-[var(--radius-control)] border border-outline bg-surface text-on-surface-variant"
                 :aria-pressed="selected.entryLocked"
                 :aria-label="
                   selected.entryLocked ? t('teacher.live.entryUnlock') : t('teacher.live.entryLock')
@@ -876,50 +892,54 @@ onMounted(() => {
               >
                 <Lock v-if="selected.entryLocked" class="size-4" aria-hidden="true" />
                 <LockOpen v-else class="size-4" aria-hidden="true" />
-              </AppButton>
-              <!-- Held results: the teacher lets them out when the room is done. -->
-              <AppButton
-                v-if="selected.settings.releaseResults === 'teacher' && !selected.resultsReleased"
-                variant="secondary"
-                @click="release()"
-              >
-                <Trophy class="size-3.5" aria-hidden="true" />
-                {{ t('teacher.sessionSettings.releaseAction') }}
-              </AppButton>
-              <span
-                v-else-if="selected.settings.releaseResults === 'teacher'"
-                class="inline-flex items-center gap-1.5 rounded-full bg-success-container px-2.5 py-1 text-[11px] font-semibold text-on-success-container"
-              >
-                <CircleCheck class="size-3.5" aria-hidden="true" />
-                {{ t('teacher.sessionSettings.released') }}
-              </span>
+              </button>
               <!-- Printing reads what is on the screen, so it works while the room
                    is still working. The export writes finished results, so it waits
                    for the run to be over; the hint lives on the wrapper, because a
                    disabled button ignores the pointer and its own tooltip never
-                   appears. A caption and two quiet buttons - the pair the dense
-                   rows use - so the row's right end reads as one thing. -->
+                   appears. The buttons carry the height and the letterform of the
+                   nudge pair on the clock, with the fills they already had. -->
               <div class="ms-auto flex items-center gap-2">
                 <span class="text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant">
                   {{ t('teacher.live.resultsLabel') }}
                 </span>
-                <AppButton variant="secondaryPlain" size="sm" @click="printResults">
-                  <Printer class="size-3.5" aria-hidden="true" />
-                  {{ t('teacher.live.print') }}
-                </AppButton>
-                <span
-                  :title="boardStatus === 'finished' ? '' : t('teacher.live.exportNeedsFinished')"
+                <!-- Results held back: one press lets them out, and the pair takes
+                     its place, so the right end is never idle. -->
+                <button
+                  type="button"
+                  class="state-layer flex min-h-11 items-center justify-center gap-1.5 rounded-[var(--radius-control)] border border-outline bg-surface px-3.5 text-sm font-semibold text-on-surface"
+                  v-if="selected.settings.releaseResults === 'teacher' && !selected.resultsReleased"
+                  @click="release()"
                 >
-                  <AppButton
-                    variant="secondaryPlain"
-                    size="sm"
-                    :disabled="exporting || boardStatus !== 'finished'"
-                    @click="exportResults"
+                  <Trophy class="size-4" aria-hidden="true" />
+                  {{ t('teacher.sessionSettings.releaseAction') }}
+                </button>
+                <!-- The pair is one control, cut in half by the grid: the gap
+                     between the halves is empty panel, and only the outward
+                     corners round - the sides the two buttons share stay square. -->
+                <div v-else class="grid grid-cols-2 gap-[5px]">
+                  <button
+                    type="button"
+                    class="state-layer flex min-h-11 items-center justify-center gap-1.5 rounded-l-[var(--radius-control)] border border-outline bg-surface px-3 text-sm font-semibold text-on-surface"
+                    @click="printResults"
                   >
-                    <Download class="size-3.5" aria-hidden="true" />
-                    {{ t('teacher.live.export') }}
-                  </AppButton>
-                </span>
+                    <Printer class="size-4" aria-hidden="true" />
+                    {{ t('teacher.live.print') }}
+                  </button>
+                  <span
+                    :title="boardStatus === 'finished' ? '' : t('teacher.live.exportNeedsFinished')"
+                  >
+                    <button
+                      type="button"
+                      class="state-layer flex min-h-11 w-full items-center justify-center gap-1.5 rounded-r-[var(--radius-control)] border border-outline bg-surface px-3 text-sm font-semibold text-on-surface disabled:pointer-events-none disabled:opacity-60"
+                      :disabled="exporting || boardStatus !== 'finished'"
+                      @click="exportResults"
+                    >
+                      <Download class="size-4" aria-hidden="true" />
+                      {{ t('teacher.live.export') }}
+                    </button>
+                  </span>
+                </div>
               </div>
             </div>
           </div>

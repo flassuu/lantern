@@ -170,13 +170,14 @@ watch(
 
     <!--
       The library button opens a list rather than a run, so it is not a tab: it
-      is a pill, round on all sides, sitting in the middle of the strip with the
-      same room above it as below - it belongs to the strip, not to the board.
-      The tonal fill is what keeps it from being mistaken for the open tab.
+      is a control as wide as the start action above the board, cut with the
+      same corners, but carrying the strip's own letterform and height so it
+      sits level with the tabs around it. The tonal fill is what keeps it from
+      being mistaken for the open tab.
     -->
     <button
       type="button"
-      class="state-layer inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-outline-variant bg-secondary-container px-3 text-xs font-semibold text-on-secondary-container transition-colors duration-200"
+      class="state-layer inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-transparent bg-secondary-container px-3.5 py-2 text-xs font-semibold text-on-secondary-container transition-colors duration-200"
       :aria-label="t('teacher.live.tabs.all')"
       @click="emit('library')"
     >
