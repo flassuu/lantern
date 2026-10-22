@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Timer } from '@lucide/vue'
 import type { LiveSessionStatus } from '../../api/sessions'
 
 /**
@@ -27,15 +26,51 @@ const { t } = useI18n()
 const now = ref(Date.now())
 let ticker: number | undefined
 
-onMounted(() => {
+function startTicker(): void {
+  if (ticker !== undefined) return
   ticker = window.setInterval(() => {
     now.value = Date.now()
   }, 1000)
+}
+
+function stopTicker(): void {
+  if (ticker === undefined) return
+  window.clearInterval(ticker)
+  ticker = undefined
+}
+
+/**
+ * The moment the board heard the run finish.
+ *
+ * `finishedAt` is the server's mark and wins when it is there, but a frame can
+ * arrive without it. This is then the best mark there is - and it is what keeps
+ * a finished clock from counting on after the run is over.
+ */
+const seenFinishedAt = ref<number | null>(null)
+
+function freeze(): void {
+  seenFinishedAt.value = Date.now()
+  stopTicker()
+}
+
+onMounted(() => {
+  if (props.status === 'finished') freeze()
+  else startTicker()
 })
 
-onBeforeUnmount(() => {
-  if (ticker !== undefined) window.clearInterval(ticker)
-})
+onBeforeUnmount(stopTicker)
+
+watch(
+  () => props.status,
+  (status) => {
+    if (status === 'finished') {
+      freeze()
+      return
+    }
+    seenFinishedAt.value = null
+    startTicker()
+  },
+)
 
 /** Time since the run started, frozen at the finish mark once it is over. */
 const elapsedSeconds = computed(() => {
@@ -50,9 +85,11 @@ const elapsedSeconds = computed(() => {
   const end =
     props.finishedAt !== null
       ? Date.parse(props.finishedAt)
-      : props.status === 'paused' && props.pausedAt !== null
-        ? Date.parse(props.pausedAt)
-        : now.value
+      : seenFinishedAt.value !== null
+        ? seenFinishedAt.value
+        : props.status === 'paused' && props.pausedAt !== null
+          ? Date.parse(props.pausedAt)
+          : now.value
   return Math.max(0, Math.floor((end - start) / 1000))
 })
 
@@ -60,17 +97,29 @@ const remainingSeconds = computed(() =>
   props.timeLimitSec == null ? null : props.timeLimitSec - elapsedSeconds.value,
 )
 
-const isShort = computed(() => remainingSeconds.value !== null && remainingSeconds.value <= 60)
+const isFinished = computed(() => props.status === 'finished')
+
+const isShort = computed(
+  () => !isFinished.value && remainingSeconds.value !== null && remainingSeconds.value <= 60,
+)
 
 const label = computed(() => {
+  // A closed run, or one that ran into its limit, says so: the mark is the
+  // message, and a stale run's length reads as a number nobody can use.
+  if (isFinished.value) return t('teacher.live.timeUp')
   const remaining = remainingSeconds.value
   if (remaining !== null && remaining <= 0) return t('teacher.live.timeUp')
   return formatClock(remaining ?? elapsedSeconds.value)
 })
 
-const caption = computed(() => {
-  if (props.status === 'finished') return t('teacher.live.duration')
-  return remainingSeconds.value !== null ? t('teacher.live.timeLeft') : t('teacher.live.elapsed')
+const caption = computed(() =>
+  remainingSeconds.value !== null ? t('teacher.live.timeLeft') : t('teacher.live.elapsed'),
+)
+
+/** A live overrun is an alarm; a closed run is just history, so it greys out. */
+const tone = computed(() => {
+  if (isFinished.value) return 'text-on-surface-variant'
+  return isShort.value ? 'text-error' : 'text-on-surface'
 })
 
 function formatClock(totalSeconds: number): string {
@@ -84,24 +133,12 @@ function formatClock(totalSeconds: number): string {
 </script>
 
 <template>
-  <div
-    class="flex shrink-0 items-center gap-2 rounded-2xl border border-outline-variant bg-surface-container-high px-3 py-2"
-  >
-    <span class="grid size-9 place-items-center rounded-full bg-surface-container-highest text-on-surface-variant">
-      <Timer class="size-4" aria-hidden="true" />
+  <div class="flex shrink-0 flex-col gap-0.5 leading-tight">
+    <span class="text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant">
+      {{ caption }}
     </span>
-    <span class="leading-tight">
-      <span
-        class="block text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant"
-      >
-        {{ caption }}
-      </span>
-      <span
-        class="block font-mono text-base font-semibold tabular-nums"
-        :class="isShort ? 'text-error' : 'text-on-surface'"
-      >
-        {{ label }}
-      </span>
+    <span class="font-mono text-2xl font-semibold tabular-nums" :class="tone">
+      {{ label }}
     </span>
   </div>
 </template>

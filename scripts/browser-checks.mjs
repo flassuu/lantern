@@ -2879,7 +2879,7 @@ async function liveHeaderPath(session, fixtures) {
     'teacher: a wide header puts the add-time button under the clock',
     wide.ok === true &&
       wide.extend.top >= wide.clock.bottom - 1 &&
-      Math.abs(wide.extend.right - wide.clock.right) <= 2,
+      Math.abs(wide.extend.left - wide.clock.left) <= 2,
     wide.why ?? `clock=${JSON.stringify(wide.clock)} extend=${JSON.stringify(wide.extend)}`,
   )
 
@@ -2890,8 +2890,8 @@ async function liveHeaderPath(session, fixtures) {
     phone.why ?? `data=${JSON.stringify(phone.data)} clock=${JSON.stringify(phone.clock)}`,
   )
   check(
-    'teacher: a phone header puts the add-time button above the clock',
-    phone.ok === true && phone.extend.bottom <= phone.clock.top + 1,
+    'teacher: a phone header puts the add-time control under the clock',
+    phone.ok === true && phone.extend.top >= phone.clock.bottom - 1,
     phone.why ?? `clock=${JSON.stringify(phone.clock)} extend=${JSON.stringify(phone.extend)}`,
   )
   check(

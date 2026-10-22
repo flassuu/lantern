@@ -118,7 +118,7 @@ watch(
 <template>
   <div
     ref="strip"
-    class="flex items-center gap-2 px-3"
+    class="flex items-center gap-2"
   >
     <!--
       The strip must not clip: the open tab has a skirt that reaches below its
@@ -141,9 +141,6 @@ watch(
         they are what drew the two stripes down the tab's edges. The corner
         itself is the card's to round, except when the open tab is the first one
         and stands on it, and then the card squares that corner (see the board).
-        `px-3` on the strip is the other half of the alignment - it is the card's
-        padding, so the first tab's left border lines up with the card's left
-        border.
       -->
       <button
         v-for="session in visibleSessions"

@@ -115,6 +115,16 @@ const selectedTest = computed(
 /** What a session is called on screen: the teacher's own name, or the test's. */
 const sessionName = (session: SessionSummary): string => session.name ?? session.title
 const selectedName = computed(() => (selected.value ? sessionName(selected.value) : ''))
+/** "10 questions · 15 min", the one fact the test row and the name share. */
+const selectedTestMeta = computed(() => {
+  const test = selectedTest.value
+  if (test === null) return ''
+  const parts = [t('teacher.tests.questionCount', { count: test.questionCount })]
+  if (selected.value?.timeLimitSec) {
+    parts.push(`${Math.round(selected.value.timeLimitSec / 60)} ${t('teacher.tests.minutes')}`)
+  }
+  return parts.join(' · ')
+})
 const rooms = getRoomsState()
 const roomNameOf = (id: string | null): string =>
   rooms.rooms.find((room) => room.id === id)?.name ?? ''
@@ -525,9 +535,10 @@ onMounted(() => {
         One unit. The tabs are the sheet's top edge and the board below them
         belongs to the tab that is open; the alternative - a row of tabs beside a
         board of unknown ownership - made the teacher count cards to be sure
-        which one they were looking at.
+        which one they were looking at. The wrapper draws nothing itself: it is
+        here so the page rhythm does not push the tabs off the board.
       -->
-      <div class="overflow-hidden rounded-2xl border border-outline-variant bg-surface">
+      <div>
         <SessionTabs
           :sessions="sessions"
           :selected-id="selectedId"
@@ -535,9 +546,9 @@ onMounted(() => {
           @library="showLibrary = true"
         />
 
-        <!-- No top padding: the board card is flush under the tabs, so an open
-             tab's fill runs into it instead of stopping above a gap. -->
-        <div class="space-y-3 px-3 pb-3 pt-0">
+        <!-- No top gap: the board card is flush under the tabs, so an open tab's
+             fill runs into it instead of stopping above a strip of background. -->
+        <div class="space-y-3">
           <p
             v-if="actionError"
             role="alert"
@@ -548,86 +559,112 @@ onMounted(() => {
 
 
       <template v-if="selected">
-        <!-- Who the session is, how long it has run, and how students get in.
-             An open tab covers this card's top edge under itself, so the tab and
-             the panel read as one. The card keeps its rounded corners except the
-             top-left when the open run is the first tab: there the tab stands on
-             that corner and is the corner, so the card squares it off to avoid a
-             step between the two. -->
+        <!--
+          The board is four blocks: what the run is, the clock that governs it,
+          how students get in, and what the teacher can do about it. An open tab
+          covers this card's top edge under itself, so the tab and the panel read
+          as one; the card squares that corner off when the tab opens on it.
+        -->
         <AppCard
           as="section"
           :class="sessions[0]?.id === selectedId ? 'rounded-tl-none' : ''"
         >
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <!-- The run, and immediately to its right what it is and what it
-                 asks: the chips are the footnote to the run, so they stand
-                 beside it rather than being pushed to the far edge of the row. -->
-            <div class="flex min-w-0 items-start gap-3" data-run-data>
-              <div class="min-w-0">
-                <h4 class="truncate text-lg font-semibold text-on-surface">{{ selectedName }}</h4>
+          <!-- What the run is, and the clock that governs it: two blocks side
+               by side, because a teacher reads the name and looks at the clock
+               in the same breath. -->
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-stretch">
+            <div class="min-w-0 flex-1 rounded-2xl bg-surface-container-high p-3 sm:p-4" data-run-data>
+              <!-- A label-and-value list: a teacher opening this board looks for
+                   three facts - which run, which paper, since when. -->
+              <dl class="space-y-1.5">
+                <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+                  <dt
+                    class="w-16 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant"
+                  >
+                    {{ t('teacher.live.nameLabel') }}
+                  </dt>
+                  <dd class="flex min-w-0 flex-wrap items-center gap-2">
+                    <span class="min-w-0 truncate text-base font-semibold text-on-surface">
+                      {{ selectedName }}
+                    </span>
+                    <span
+                      class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                      :class="statusChip[boardStatus]"
+                    >
+                      <span class="size-1.5 rounded-full" :class="statusDot[boardStatus]" />
+                      {{ t(`teacher.live.status.${boardStatus}`) }}
+                    </span>
+                    <!-- An unnamed run is the paper itself, so the counts belong
+                         on the name; a named one gets a row of its own below. -->
+                    <span
+                      v-if="!selected.name && selectedTestMeta"
+                      class="text-xs text-on-surface-variant"
+                    >
+                      ({{ selectedTestMeta }})
+                    </span>
+                  </dd>
+                </div>
+
                 <!-- A run the teacher named shows the paper it ran as well: the
                      name says which lesson this was, the title says what was
                      asked. -->
-                <p
-                  v-if="selected.name && selected.title"
-                  class="mt-0.5 truncate text-xs text-on-surface-variant"
-                >
-                  {{ selected.title }}
-                </p>
                 <div
-                  v-if="roomNameOf(selected.roomId) || selected.tags.length"
-                  class="mt-1.5 flex flex-wrap items-center gap-1.5"
+                  v-if="selected.name && selected.title"
+                  class="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1"
                 >
-                  <span
-                    v-if="roomNameOf(selected.roomId)"
-                    class="inline-flex items-center gap-1 rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant"
+                  <dt
+                    class="w-16 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant"
                   >
-                    <Users class="size-3" aria-hidden="true" />
-                    {{ roomNameOf(selected.roomId) }}
-                  </span>
-                  <span
-                    v-for="tag in selected.tags"
-                    :key="tag.id"
-                    class="rounded-full bg-secondary-container px-2 py-0.5 text-[11px] font-semibold text-on-secondary-container"
-                  >
-                    {{ tag.name }}
-                  </span>
+                    {{ t('teacher.live.testLabel') }}
+                  </dt>
+                  <dd class="min-w-0 text-sm text-on-surface">
+                    <span class="truncate">{{ selected.title }}</span>
+                    <span v-if="selectedTestMeta" class="text-xs text-on-surface-variant">
+                      ({{ selectedTestMeta }})
+                    </span>
+                  </dd>
                 </div>
-                <p v-if="selected.startedAt" class="mt-0.5 text-xs text-on-surface-variant">
-                  {{ t('teacher.live.startedAt', { time: formatTime(selected.startedAt) }) }}
-                </p>
-              </div>
 
-              <div class="flex shrink-0 flex-col items-start gap-1.5 pt-0.5">
-                <span
-                  class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                  :class="statusChip[boardStatus]"
+                <div
+                  v-if="selected.startedAt"
+                  class="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1"
                 >
-                  <span class="size-1.5 rounded-full" :class="statusDot[boardStatus]" />
-                  {{ t(`teacher.live.status.${boardStatus}`) }}
+                  <dt
+                    class="w-16 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant"
+                  >
+                    {{ t('teacher.live.startedLabel') }}
+                  </dt>
+                  <dd class="text-sm tabular-nums text-on-surface">
+                    {{ formatTime(selected.startedAt) }}
+                  </dd>
+                </div>
+              </dl>
+
+              <div
+                v-if="roomNameOf(selected.roomId) || selected.tags.length > 0"
+                class="mt-2 flex flex-wrap items-center gap-1.5 pl-19"
+              >
+                <span
+                  v-if="roomNameOf(selected.roomId)"
+                  class="inline-flex items-center gap-1 rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant"
+                >
+                  <Users class="size-3" aria-hidden="true" />
+                  {{ roomNameOf(selected.roomId) }}
                 </span>
                 <span
-                  v-if="selectedTest"
-                  class="whitespace-nowrap text-[11px] text-on-surface-variant"
+                  v-for="tag in selected.tags"
+                  :key="tag.id"
+                  class="rounded-full bg-secondary-container px-2 py-0.5 text-[11px] font-semibold text-on-secondary-container"
                 >
-                  {{ t('teacher.tests.questionCount', { count: selectedTest.questionCount }) }}
-                  <template v-if="selected.timeLimitSec">
-                    · {{ Math.round(selected.timeLimitSec / 60) }}
-                    {{ t('teacher.tests.minutes') }}
-                  </template>
+                  {{ tag.name }}
                 </span>
               </div>
             </div>
 
-            <!-- The clock, and the one thing a teacher reaches for when a class
-                 is running out of time. A lobby has no clock to show; the tiles
-                 below are all zero anyway. The column is reversed rather than
-                 the DOM: the clock is read first, and only its place changes -
-                 above the button on a wide screen, under it on a phone, where
-                 the thumb reaches the button before the numbers. -->
+            <!-- The clock and its two nudges. A lobby has no clock to show. -->
             <div
               v-if="boardStatus !== 'lobby'"
-              class="flex shrink-0 flex-col-reverse items-start gap-2 sm:flex-col sm:items-end"
+              class="flex shrink-0 flex-col gap-2 rounded-2xl bg-surface-container-high p-3 sm:min-w-48 sm:p-4"
             >
               <!-- The clock keeps its own second, so a run ticking does not
                    re-render the rest of the board. -->
@@ -639,22 +676,38 @@ onMounted(() => {
                 :status="boardStatus"
                 :paused-at="selected.pausedAt"
               />
-              <!-- Time is a nudge, not the screen's main action, so it keeps
-                   the width of its label and the floor a thumb needs. -->
-              <button
-                type="button"
+              <!-- One control with two equal presses: the grid cuts it in half,
+                   and the 10px gap reads as a pause, not as two actions. A
+                   closed run keeps the pair, greyed: the shape of the board does
+                   not jump when the run ends. -->
+              <div
                 data-run-extend
-                class="state-layer grid min-h-11 min-w-11 place-items-center rounded-[var(--radius-control)] bg-primary px-2 text-xs font-semibold text-on-primary transition-colors duration-200 disabled:pointer-events-none disabled:opacity-60"
-                :disabled="!canExtend"
-                :title="t('teacher.live.addTimeTitle')"
-                @click="extend(15)"
+                class="mt-auto grid grid-cols-2 gap-[5px] overflow-hidden rounded-[var(--radius-control)] transition-opacity duration-200"
+                :class="canExtend ? '' : 'opacity-40'"
               >
-                {{ t('teacher.live.addTime', { seconds: 15 }) }}
-              </button>
+                <button
+                  type="button"
+                  class="state-layer grid min-h-11 place-items-center bg-primary text-sm font-semibold text-on-primary disabled:pointer-events-none"
+                  :disabled="!canExtend"
+                  :title="t('teacher.live.addTimeTitle')"
+                  @click="extend(15)"
+                >
+                  {{ t('teacher.live.addTime', { seconds: 15 }) }}
+                </button>
+                <button
+                  type="button"
+                  class="state-layer grid min-h-11 place-items-center bg-primary text-sm font-semibold text-on-primary disabled:pointer-events-none"
+                  :disabled="!canExtend"
+                  :title="t('teacher.live.addTimeTitle')"
+                  @click="extend(60)"
+                >
+                  {{ t('teacher.live.addMinute') }}
+                </button>
+              </div>
             </div>
           </div>
 
-          <div class="mt-4 rounded-2xl border border-outline-variant bg-surface-container-high p-3 sm:p-4">
+          <div class="mt-4 rounded-2xl bg-surface-container-high p-3 sm:p-4">
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div class="min-w-0">
                 <p class="text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant">
@@ -749,7 +802,7 @@ onMounted(() => {
                is handed out at the start. -->
           <div
             v-if="boardStatus === 'lobby'"
-            class="mt-3 rounded-2xl border border-outline-variant bg-surface-container-high p-3"
+            class="mt-3 rounded-2xl bg-surface-container-high p-3"
           >
             <p class="text-xs font-semibold text-on-surface-variant">
               {{ t('teacher.sessionSettings.title') }}
@@ -762,98 +815,113 @@ onMounted(() => {
             </div>
           </div>
 
-          <div class="mt-4 flex flex-wrap items-center gap-2">
-            <!-- The one action that leaves the lobby. -->
-            <AppButton
-              v-if="boardStatus === 'lobby'"
-              variant="primary"
-              :disabled="lobbyStarting"
-              @click="begin()"
-            >
-              <Play class="size-3.5" aria-hidden="true" />
-              {{ t('teacher.live.begin') }}
-            </AppButton>
-            <AppButton
-              v-if="boardStatus === 'active'"
-              variant="secondary"
-              @click="changeStatus('paused')"
-            >
-              <Pause class="size-3.5" aria-hidden="true" />
-              {{ t('teacher.live.pause') }}
-            </AppButton>
-            <AppButton
-              v-else-if="boardStatus === 'paused'"
-              variant="secondary"
-              @click="changeStatus('active')"
-            >
-              <Play class="size-3.5" aria-hidden="true" />
-              {{ t('teacher.live.resume') }}
-            </AppButton>
-            <AppButton
-              v-if="boardStatus !== 'finished'"
-              variant="danger"
-              @click="changeStatus('finished')"
-            >
-              <Square class="size-3.5" aria-hidden="true" />
-              {{ t('teacher.live.finish') }}
-            </AppButton>
-            <AppButton
-              v-if="boardStatus !== 'finished'"
-              variant="ghost"
-              icon
-              size="sm"
-              :aria-pressed="selected.entryLocked"
-              :aria-label="
-                selected.entryLocked ? t('teacher.live.entryUnlock') : t('teacher.live.entryLock')
-              "
-              v-tip="
-                selected.entryLocked ? t('teacher.live.entryUnlock') : t('teacher.live.entryLock')
-              "
-              @click="toggleEntryLock()"
-            >
-              <Lock v-if="selected.entryLocked" class="size-4" aria-hidden="true" />
-              <LockOpen v-else class="size-4" aria-hidden="true" />
-            </AppButton>
-            <!-- Held results: the teacher lets them out when the room is done. -->
-            <AppButton
-              v-if="selected.settings.releaseResults === 'teacher' && !selected.resultsReleased"
-              variant="secondary"
-              @click="release()"
-            >
-              <Trophy class="size-3.5" aria-hidden="true" />
-              {{ t('teacher.sessionSettings.releaseAction') }}
-            </AppButton>
-            <span
-              v-else-if="selected.settings.releaseResults === 'teacher'"
-              class="inline-flex items-center gap-1.5 rounded-full bg-success-container px-2.5 py-1 text-[11px] font-semibold text-on-success-container"
-            >
-              <CircleCheck class="size-3.5" aria-hidden="true" />
-              {{ t('teacher.sessionSettings.released') }}
-            </span>
-            <!-- Printing reads what is on the screen, so it works while the room
-                 is still working. The export writes finished results, so it waits
-                 for the run to be over; the hint lives on the wrapper, because a
-                 disabled button ignores the pointer and its own tooltip never
-                 appears. Two buttons, wrapping, because a 320px teacher screen
-                 has no room for either of them beside the clock. -->
-            <span class="ms-auto flex flex-wrap items-center justify-end gap-2">
-              <AppButton variant="secondary" @click="printResults">
-                <Printer class="size-3.5" aria-hidden="true" />
-                {{ t('teacher.live.printResults') }}
+          <div class="mt-3 rounded-2xl bg-surface-container-high p-3 sm:p-4">
+            <div class="flex flex-wrap items-center gap-2">
+              <!-- A closed run has no run controls left; the row says so rather
+                   than standing empty, and points at the results on its right. -->
+              <p
+                v-if="boardStatus === 'finished'"
+                class="flex items-center gap-1.5 text-sm text-on-surface-variant"
+              >
+                <CircleCheck class="size-4" aria-hidden="true" />
+                {{ t('teacher.live.finishedHint') }}
+              </p>
+              <!-- The one action that leaves the lobby. -->
+              <AppButton
+                v-if="boardStatus === 'lobby'"
+                variant="primary"
+                :disabled="lobbyStarting"
+                @click="begin()"
+              >
+                <Play class="size-3.5" aria-hidden="true" />
+                {{ t('teacher.live.begin') }}
+              </AppButton>
+              <AppButton
+                v-if="boardStatus === 'active'"
+                variant="secondary"
+                @click="changeStatus('paused')"
+              >
+                <Pause class="size-3.5" aria-hidden="true" />
+                {{ t('teacher.live.pause') }}
+              </AppButton>
+              <AppButton
+                v-else-if="boardStatus === 'paused'"
+                variant="secondary"
+                @click="changeStatus('active')"
+              >
+                <Play class="size-3.5" aria-hidden="true" />
+                {{ t('teacher.live.resume') }}
+              </AppButton>
+              <AppButton
+                v-if="boardStatus !== 'finished'"
+                variant="danger"
+                @click="changeStatus('finished')"
+              >
+                <Square class="size-3.5" aria-hidden="true" />
+                {{ t('teacher.live.finish') }}
+              </AppButton>
+              <AppButton
+                v-if="boardStatus !== 'finished'"
+                variant="ghost"
+                icon
+                size="sm"
+                :aria-pressed="selected.entryLocked"
+                :aria-label="
+                  selected.entryLocked ? t('teacher.live.entryUnlock') : t('teacher.live.entryLock')
+                "
+                v-tip="
+                  selected.entryLocked ? t('teacher.live.entryUnlock') : t('teacher.live.entryLock')
+                "
+                @click="toggleEntryLock()"
+              >
+                <Lock v-if="selected.entryLocked" class="size-4" aria-hidden="true" />
+                <LockOpen v-else class="size-4" aria-hidden="true" />
+              </AppButton>
+              <!-- Held results: the teacher lets them out when the room is done. -->
+              <AppButton
+                v-if="selected.settings.releaseResults === 'teacher' && !selected.resultsReleased"
+                variant="secondary"
+                @click="release()"
+              >
+                <Trophy class="size-3.5" aria-hidden="true" />
+                {{ t('teacher.sessionSettings.releaseAction') }}
               </AppButton>
               <span
-                :title="boardStatus === 'finished' ? '' : t('teacher.live.exportNeedsFinished')"
+                v-else-if="selected.settings.releaseResults === 'teacher'"
+                class="inline-flex items-center gap-1.5 rounded-full bg-success-container px-2.5 py-1 text-[11px] font-semibold text-on-success-container"
               >
-                <AppButton
-                  variant="secondary"
-                  :disabled="exporting || boardStatus !== 'finished'"
-                  @click="exportResults"
-                >
-                  <Download class="size-3.5" aria-hidden="true" />
-                  {{ t('teacher.live.exportResults') }}
-                </AppButton>
+                <CircleCheck class="size-3.5" aria-hidden="true" />
+                {{ t('teacher.sessionSettings.released') }}
               </span>
-            </span>
+              <!-- Printing reads what is on the screen, so it works while the room
+                   is still working. The export writes finished results, so it waits
+                   for the run to be over; the hint lives on the wrapper, because a
+                   disabled button ignores the pointer and its own tooltip never
+                   appears. A caption and two quiet buttons - the pair the dense
+                   rows use - so the row's right end reads as one thing. -->
+              <div class="ms-auto flex items-center gap-2">
+                <span class="text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant">
+                  {{ t('teacher.live.resultsLabel') }}
+                </span>
+                <AppButton variant="secondaryPlain" size="sm" @click="printResults">
+                  <Printer class="size-3.5" aria-hidden="true" />
+                  {{ t('teacher.live.print') }}
+                </AppButton>
+                <span
+                  :title="boardStatus === 'finished' ? '' : t('teacher.live.exportNeedsFinished')"
+                >
+                  <AppButton
+                    variant="secondaryPlain"
+                    size="sm"
+                    :disabled="exporting || boardStatus !== 'finished'"
+                    @click="exportResults"
+                  >
+                    <Download class="size-3.5" aria-hidden="true" />
+                    {{ t('teacher.live.export') }}
+                  </AppButton>
+                </span>
+              </div>
+            </div>
           </div>
         </AppCard>
 
