@@ -6,13 +6,13 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Nine changes after 0.7.0, each found by using the thing rather than by reading
+Ten changes after 0.7.0, each found by using the thing rather than by reading
 it: a clock that lied, a student screen that grew, a server panel nobody could
 reach, a paper that emptied itself when the phone reloaded, a gradebook nobody
 could take a copy of, a client a phone could not install or keep offline, a PDF
 that could not spell a Ukrainian name, a run screen whose clock and search box
-did not do what they looked like they did, and three screens that were read
-rather than used.
+did not do what they looked like they did, three screens that were read rather
+than used, and a scrollbar that was bigger than the thing it moved.
 
 ### A paper that survives the phone
 
@@ -228,6 +228,22 @@ rather than used.
   nothing at all about the control a teacher uses. The new path sets a file on
   the editor's own input — the same handler the button calls — saves the test,
   joins the run and reads the picture on the paper at 390px.
+
+### A scrollbar in a gutter of its own
+
+- **The bar starts below the header, not beside it.** It was the engine's overlay
+  scrollbar: it reserves no room of its own, is painted over whatever sits at the
+  top of the page, and brings a full-height background a shade off the page
+  (`#1e1e1e` on the dark theme) — that band, not the thumb, was the bar that read
+  as huge. The workbench screens now scroll inside a box that begins under the
+  header, and the bar is drawn in a gutter of its own, so it starts at the
+  header's bottom edge and never covers it.
+- **It is not there until the pointer comes to the edge.** WebKitGTK ignores
+  `:hover` on every part of a scrollbar — measured by screenshotting the thumb
+  under the pointer — so the reveal is a class on `<html>` that
+  `composables/scrollbarReveal.ts` raises while the pointer is within 24px of a
+  scrolling area's right edge. The thumb is 50% of the outline inside an eleven
+  pixel hit area, and fades in and out over 260ms.
 
 ### Fixed
 

@@ -4,9 +4,11 @@ import App from './App.vue'
 import i18n from './i18n'
 import { registerServiceWorker } from './pwa/register'
 import { applyTheme } from './composables/theme'
+import { watchScrollbarReveal } from './composables/scrollbarReveal'
 import { vTip } from './directives/tooltip'
 
 applyTheme()
+watchScrollbarReveal()
 
 createApp(App).use(i18n).directive('tip', vTip).mount('#app')
 

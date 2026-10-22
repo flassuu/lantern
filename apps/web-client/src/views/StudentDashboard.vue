@@ -183,104 +183,106 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="min-h-dvh bg-surface">
+  <div class="flex h-dvh flex-col overflow-hidden bg-surface">
     <AppHeader />
 
-    <main class="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
-      <!-- The name is here rather than in the header because this is a shared
-           family phone: "Check Student" is what tells the next person at this
-           screen whose results they are looking at. -->
-      <h2 class="text-xl font-semibold text-on-surface">
-        {{ t('student.greeting', { name: user?.fullName ?? '' }) }}
-      </h2>
-      <p class="mt-1 text-sm text-on-surface-variant">{{ t('student.subheading') }}</p>
+    <div class="min-h-0 flex-1 overflow-y-auto">
+      <main class="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
+        <!-- The name is here rather than in the header because this is a shared
+             family phone: "Check Student" is what tells the next person at this
+             screen whose results they are looking at. -->
+        <h2 class="text-xl font-semibold text-on-surface">
+          {{ t('student.greeting', { name: user?.fullName ?? '' }) }}
+        </h2>
+        <p class="mt-1 text-sm text-on-surface-variant">{{ t('student.subheading') }}</p>
 
-      <p
-        v-if="loadError"
-        role="alert"
-        class="mt-4 rounded-xl bg-error-container px-3 py-2 text-sm text-on-error-container"
-      >
-        {{ loadError }}
-      </p>
-
-      <SkeletonList v-if="loading" class="mt-6" :rows="3" />
-
-      <template v-else-if="held">
-        <AppCard as="section" class="mt-6">
-          <p class="text-sm text-on-surface-variant">{{ t('student.paged.held') }}</p>
-        </AppCard>
-        <AppButton variant="primary" class="mt-4 rounded-xl" @click="resume()">
-          {{ t('student.result.back') }}
-        </AppButton>
-      </template>
-
-      <template v-else-if="result">
-        <SessionResult class="mt-6" :result="result" />
-        <AppButton variant="secondary" class="mt-4 rounded-xl" @click="result = null">
-          {{ t('student.result.back') }}
-        </AppButton>
-        <AppButton variant="primary" class="mt-2 rounded-xl" @click="resume()">
-          {{ t('student.result.joinAnother') }}
-        </AppButton>
-      </template>
-
-      <template v-else-if="state">
-        <div class="mt-6">
-          <!-- The waiting room, until the teacher starts the run. The fade is
-               the point: the paper arriving is the teacher's press, and a hard
-               cut would read as the screen breaking. -->
-          <Transition name="view" mode="out-in">
-            <LobbyScreen v-if="liveStatus === 'lobby'" :state="state" />
-            <SessionRunner
-              v-else
-              :state="state"
-              :left-once="presence.leftOnce.value"
-              :report-progress="presence.reportProgress"
-              @submitted="showResult"
-            />
-          </Transition>
-        </div>
-        <button
-          type="button"
-          @click="leaveRunner"
-          class="mt-4 text-xs text-on-surface-variant underline"
+        <p
+          v-if="loadError"
+          role="alert"
+          class="mt-4 rounded-xl bg-error-container px-3 py-2 text-sm text-on-error-container"
         >
-          {{ t('student.runner.leave') }}
-        </button>
-      </template>
+          {{ loadError }}
+        </p>
 
-      <template v-else>
-        <TabStrip
-          v-model="activeTab"
-          class="mt-5"
-          :aria-label="t('student.heading')"
-          :items="[
-            { value: 'join', label: t('student.tabs.join'), icon: LogIn },
-            { value: 'courses', label: t('student.tabs.courses'), icon: Library },
-            { value: 'results', label: t('student.tabs.results'), icon: History },
-          ]"
-        />
+        <SkeletonList v-if="loading" class="mt-6" :rows="3" />
 
-        <!--
-          `:key` remounts the sheet on a tab change and the transition fades it
-          in and out: the same swap as the teacher's workbench, so the two sides
-          of the app move the same way.
-        -->
-        <Transition mode="out-in" name="view">
-          <div :key="activeTab" class="mt-5">
-            <JoinSessionCard
-              v-if="activeTab === 'join'"
-              v-model="code"
-              v-model:busy="joining"
-              v-model:error="joinError"
-              @joined="join"
-            />
-            <StudentCourses v-else-if="activeTab === 'courses'" />
-            <StudentResults v-else @open="showResult" />
+        <template v-else-if="held">
+          <AppCard as="section" class="mt-6">
+            <p class="text-sm text-on-surface-variant">{{ t('student.paged.held') }}</p>
+          </AppCard>
+          <AppButton variant="primary" class="mt-4 rounded-xl" @click="resume()">
+            {{ t('student.result.back') }}
+          </AppButton>
+        </template>
+
+        <template v-else-if="result">
+          <SessionResult class="mt-6" :result="result" />
+          <AppButton variant="secondary" class="mt-4 rounded-xl" @click="result = null">
+            {{ t('student.result.back') }}
+          </AppButton>
+          <AppButton variant="primary" class="mt-2 rounded-xl" @click="resume()">
+            {{ t('student.result.joinAnother') }}
+          </AppButton>
+        </template>
+
+        <template v-else-if="state">
+          <div class="mt-6">
+            <!-- The waiting room, until the teacher starts the run. The fade is
+                 the point: the paper arriving is the teacher's press, and a hard
+                 cut would read as the screen breaking. -->
+            <Transition name="view" mode="out-in">
+              <LobbyScreen v-if="liveStatus === 'lobby'" :state="state" />
+              <SessionRunner
+                v-else
+                :state="state"
+                :left-once="presence.leftOnce.value"
+                :report-progress="presence.reportProgress"
+                @submitted="showResult"
+              />
+            </Transition>
           </div>
-        </Transition>
-      </template>
+          <button
+            type="button"
+            @click="leaveRunner"
+            class="mt-4 text-xs text-on-surface-variant underline"
+          >
+            {{ t('student.runner.leave') }}
+          </button>
+        </template>
 
-    </main>
+        <template v-else>
+          <TabStrip
+            v-model="activeTab"
+            class="mt-5"
+            :aria-label="t('student.heading')"
+            :items="[
+              { value: 'join', label: t('student.tabs.join'), icon: LogIn },
+              { value: 'courses', label: t('student.tabs.courses'), icon: Library },
+              { value: 'results', label: t('student.tabs.results'), icon: History },
+            ]"
+          />
+
+          <!--
+            `:key` remounts the sheet on a tab change and the transition fades it
+            in and out: the same swap as the teacher's workbench, so the two sides
+            of the app move the same way.
+          -->
+          <Transition mode="out-in" name="view">
+            <div :key="activeTab" class="mt-5">
+              <JoinSessionCard
+                v-if="activeTab === 'join'"
+                v-model="code"
+                v-model:busy="joining"
+                v-model:error="joinError"
+                @joined="join"
+              />
+              <StudentCourses v-else-if="activeTab === 'courses'" />
+              <StudentResults v-else @open="showResult" />
+            </div>
+          </Transition>
+        </template>
+
+      </main>
+    </div>
   </div>
 </template>

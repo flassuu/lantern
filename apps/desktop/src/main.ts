@@ -3,6 +3,7 @@ import App from './App.vue'
 import i18n from './i18n'
 import './main.css'
 import { applyTheme } from './composables/theme'
+import { watchScrollbarReveal } from './composables/scrollbarReveal'
 import { vTip } from './directives/tooltip'
 import {
   restoreDecorations,
@@ -11,6 +12,7 @@ import {
 } from './composables/desktop'
 
 applyTheme()
+watchScrollbarReveal()
 
 createApp(App).use(i18n).directive('tip', vTip).mount('#app')
 

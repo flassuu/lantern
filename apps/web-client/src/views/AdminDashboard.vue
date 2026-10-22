@@ -37,58 +37,60 @@ onMounted(countPending)
 </script>
 
 <template>
-  <div class="min-h-dvh bg-surface">
+  <div class="flex h-dvh flex-col overflow-hidden bg-surface">
     <AppHeader />
 
-    <main class="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
-      <h2 class="text-xl font-semibold text-on-surface">
-        {{ t('admin.heading') }}
-      </h2>
-      <p class="mt-1 text-sm text-on-surface-variant">{{ t('admin.subheading') }}</p>
+    <div class="min-h-0 flex-1 overflow-y-auto">
+      <main class="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
+        <h2 class="text-xl font-semibold text-on-surface">
+          {{ t('admin.heading') }}
+        </h2>
+        <p class="mt-1 text-sm text-on-surface-variant">{{ t('admin.subheading') }}</p>
 
-      <div
-        v-if="pendingCount > 0"
-        class="mt-4 flex flex-col gap-3 rounded-2xl border border-outline-variant bg-warning-container p-4 sm:flex-row sm:items-center sm:justify-between"
-      >
-        <p class="flex items-center gap-2 text-sm font-semibold text-on-warning-container">
-          <UserCheck class="size-4 shrink-0" aria-hidden="true" />
-          {{ t('admin.pendingBanner', { count: pendingCount }) }}
-        </p>
-        <AppButton variant="warning" class="shrink-0 self-start sm:self-auto" @click="reviewPending">
-          {{ t('admin.pendingReview') }}
-        </AppButton>
-      </div>
-
-      <TabStrip
-        v-model="activeTab"
-        class="mt-5"
-        :aria-label="t('admin.heading')"
-        :items="[
-          { value: 'users', label: t('admin.tabs.users'), icon: Users, badge: pendingCount || null },
-          { value: 'participants', label: t('admin.tabs.participants'), icon: Activity },
-          { value: 'system', label: t('admin.tabs.system'), icon: HardDrive },
-          { value: 'server', label: t('admin.tabs.server'), icon: Server },
-        ]"
-      />
-
-      <!--
-        `:key` remounts the sheet on a tab change and the transition fades it
-        in and out: a swap that teleports reads as a glitch, one that fades
-        reads as a page turning.
-      -->
-      <Transition mode="out-in" name="view">
-        <div :key="activeTab" class="mt-5">
-          <UsersTab
-            v-if="activeTab === 'users'"
-            :focus-status="focusStatus"
-            @changed="countPending"
-          />
-          <ParticipantsTab v-else-if="activeTab === 'participants'" />
-          <SystemTab v-else-if="activeTab === 'system'" />
-          <ServerTab v-else />
+        <div
+          v-if="pendingCount > 0"
+          class="mt-4 flex flex-col gap-3 rounded-2xl border border-outline-variant bg-warning-container p-4 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p class="flex items-center gap-2 text-sm font-semibold text-on-warning-container">
+            <UserCheck class="size-4 shrink-0" aria-hidden="true" />
+            {{ t('admin.pendingBanner', { count: pendingCount }) }}
+          </p>
+          <AppButton variant="warning" class="shrink-0 self-start sm:self-auto" @click="reviewPending">
+            {{ t('admin.pendingReview') }}
+          </AppButton>
         </div>
-      </Transition>
 
-    </main>
+        <TabStrip
+          v-model="activeTab"
+          class="mt-5"
+          :aria-label="t('admin.heading')"
+          :items="[
+            { value: 'users', label: t('admin.tabs.users'), icon: Users, badge: pendingCount || null },
+            { value: 'participants', label: t('admin.tabs.participants'), icon: Activity },
+            { value: 'system', label: t('admin.tabs.system'), icon: HardDrive },
+            { value: 'server', label: t('admin.tabs.server'), icon: Server },
+          ]"
+        />
+
+        <!--
+          `:key` remounts the sheet on a tab change and the transition fades it
+          in and out: a swap that teleports reads as a glitch, one that fades
+          reads as a page turning.
+        -->
+        <Transition mode="out-in" name="view">
+          <div :key="activeTab" class="mt-5">
+            <UsersTab
+              v-if="activeTab === 'users'"
+              :focus-status="focusStatus"
+              @changed="countPending"
+            />
+            <ParticipantsTab v-else-if="activeTab === 'participants'" />
+            <SystemTab v-else-if="activeTab === 'system'" />
+            <ServerTab v-else />
+          </div>
+        </Transition>
+
+      </main>
+    </div>
   </div>
 </template>
