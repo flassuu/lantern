@@ -49,7 +49,11 @@ onMounted(async () => {
   <div class="flex h-dvh flex-col overflow-hidden bg-surface">
     <AppHeader hosted @server="emit('server')" />
 
-    <div class="min-h-0 flex-1 overflow-y-auto">
+    <!-- `overflow-y: scroll` keeps the gutter of its 11px scrollbar in the
+         layout at all times: without it the gutter appears only when the page
+         grows taller, and the whole board - the strip of tabs with it - jumps
+         sideways when a tall panel opens. -->
+    <div class="min-h-0 flex-1 overflow-y-scroll">
       <main class="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
         <h2 class="text-xl font-semibold text-on-surface">
           {{ t('teacher.heading') }}

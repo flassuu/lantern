@@ -6,13 +6,14 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Ten changes after 0.7.0, each found by using the thing rather than by reading
+Eleven changes after 0.7.0, each found by using the thing rather than by reading
 it: a clock that lied, a student screen that grew, a server panel nobody could
 reach, a paper that emptied itself when the phone reloaded, a gradebook nobody
 could take a copy of, a client a phone could not install or keep offline, a PDF
 that could not spell a Ukrainian name, a run screen whose clock and search box
 did not do what they looked like they did, three screens that were read rather
-than used, and a scrollbar that was bigger than the thing it moved.
+than used, a scrollbar that was bigger than the thing it moved, and a live
+board whose controls were more kinds than one run needs.
 
 ### A paper that survives the phone
 
@@ -244,6 +245,34 @@ than used, and a scrollbar that was bigger than the thing it moved.
   `composables/scrollbarReveal.ts` raises while the pointer is within 24px of a
   scrolling area's right edge. The thumb is 50% of the outline inside an eleven
   pixel hit area, and fades in and out over 260ms.
+
+### The live board, settled
+
+- **Four tonal panels, no captions.** What the run is, the clock that governs
+  it, how students get in and what the teacher can do about it — each a
+  `surface-container-high` card of its own, read by position alone. The data
+  panel speaks in values: the run's name with the state chip pressed to its
+  own edge at the top right, the paper it ran, the mark it started, the room
+  and the teacher's tags as chips on the left margin.
+- **One frame for the buttons.** 44px of control, 14px semibold labels, a state
+  layer on press: Print and Export are one control split by a 5px gap of empty
+  panel, and Copy link, Show QR, Resume/Pause, Finish and the entry lock are
+  cut the same way. Finish voices danger in its label and error-coloured text
+  on the shared neutral body, not in a fill that shouted in both themes.
+  `All sessions` takes the start action's width and corners with the tab
+  strip's height and letterform; the nudge pair `+15s | +1m` fades, rather
+  than vanishes, on a run that cannot take more time.
+- **Releasing held results is a press of its own.** While the results are
+  held, the results row's right end is a Release button; once let out or
+  already released, the Print and Export pair sits there again.
+- **Opening the QR no longer shifts the strip.** The dashboards scroll inside
+  boxes that reserve the scrollbar's eleven pixels at all times, so a page
+  that grows taller never jerks the tabs sideways when the bar appears.
+- **An action no longer erases a run's tags.** The answers a press gets back -
+  pause, resume, extend, the entry lock, a release - used to arrive without
+  the run's labels; folding them over the list wiped the teacher's own tags
+  until a manual reload. The action payloads carry the tags now, and a client
+  faced with an empty set keeps the ones the list showed.
 
 ### Fixed
 

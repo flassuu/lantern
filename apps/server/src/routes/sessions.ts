@@ -4,7 +4,7 @@ import { sendError } from '../lib/http'
 import { scoreSubmission, type ScoredQuestion } from '../lib/scoring'
 import { findTestRow, listQuestions } from '../lib/tests'
 import { findRoomById } from '../lib/rooms'
-import { entityIdsWithTag, findTagById, setEntityTags, tagsByEntity } from '../lib/tags'
+import { entityIdsWithTag, findTagById, setEntityTags, tagsByEntity, type Tag } from '../lib/tags'
 import {
   parseSettings,
   SETTINGS_BODY_SCHEMA,
@@ -171,7 +171,11 @@ interface AnswersBody {
 }
 
 interface SessionResponse {
-  session: LiveSession & { test: { id: string; title: string; questionCount: number } }
+  session: LiveSession & {
+    /** What the run is labelled with; every screen that shows one wants it. */
+    tags: Tag[]
+    test: { id: string; title: string; questionCount: number }
+  }
 }
 
 interface ParticipationResponse {
@@ -334,6 +338,11 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
     return {
       session: {
         ...session,
+        // The list and the single read both carry the run's tags; an action
+        // response has to match, or `toSession` - which reads only the row -
+        // would hand the board an unlabelled session to fold over the one on
+        // screen, and the teacher's own labels would vanish on every press.
+        tags: tagsByEntity(db, 'session', [session.id]).get(session.id) ?? [],
         test: {
           id: session.testId,
           title: test ? test.title : '',

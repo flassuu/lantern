@@ -3,7 +3,6 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { History, Library, LogIn } from '@lucide/vue'
 import AppHeader from '../components/AppHeader.vue'
-import { useAuth } from '../stores/auth'
 import TabStrip from '../components/common/TabStrip.vue'
 import JoinSessionCard from '../components/student/JoinSessionCard.vue'
 import SessionResult from '../components/student/SessionResult.vue'
@@ -25,7 +24,6 @@ import SkeletonList from '../components/common/SkeletonList.vue'
 import { usePresence } from '../composables/presence'
 
 const { t } = useI18n()
-const { user } = useAuth()
 
 const code = ref('')
 const joining = ref(false)
@@ -186,13 +184,12 @@ onMounted(() => {
   <div class="flex h-dvh flex-col overflow-hidden bg-surface">
     <AppHeader />
 
-    <div class="min-h-0 flex-1 overflow-y-auto">
+    <!-- An always-reserved gutter, so a taller page never shifts the layout
+         sideways when the scrollbar appears. -->
+    <div class="min-h-0 flex-1 overflow-y-scroll">
       <main class="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
-        <!-- The name is here rather than in the header because this is a shared
-             family phone: "Check Student" is what tells the next person at this
-             screen whose results they are looking at. -->
         <h2 class="text-xl font-semibold text-on-surface">
-          {{ t('student.greeting', { name: user?.fullName ?? '' }) }}
+          {{ t('student.heading') }}
         </h2>
         <p class="mt-1 text-sm text-on-surface-variant">{{ t('student.subheading') }}</p>
 

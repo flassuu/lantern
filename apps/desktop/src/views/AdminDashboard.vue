@@ -44,7 +44,9 @@ onMounted(countPending)
   <div class="flex h-dvh flex-col overflow-hidden bg-surface">
     <AppHeader hosted @server="emit('server')" />
 
-    <div class="min-h-0 flex-1 overflow-y-auto">
+    <!-- An always-reserved gutter, so a taller page never shifts the layout
+         sideways when the scrollbar appears. -->
+    <div class="min-h-0 flex-1 overflow-y-scroll">
       <main class="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
         <h2 class="text-xl font-semibold text-on-surface">
           {{ t('admin.heading') }}

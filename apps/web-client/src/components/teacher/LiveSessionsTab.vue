@@ -34,10 +34,10 @@ import {
   setSessionSettings,
   setSessionStatus,
   startSession,
-  type LiveSession,
   type LiveSessionStatus,
   type ParticipantEntry,
   type SessionSummary,
+  type SessionWritten,
 } from '../../api/sessions'
 import type { TestSummary } from '../../api/types'
 import EmptyState from '../common/EmptyState.vue'
@@ -308,10 +308,16 @@ async function start(testId: string): Promise<void> {
 }
 
 /** Folds a session the server just returned back into the list, in place. */
-function applySession(updated: LiveSession): void {
-  sessions.value = sessions.value.map((session) =>
-    session.id === updated.id ? { ...session, ...updated } : session,
-  )
+function applySession(updated: SessionWritten): void {
+  sessions.value = sessions.value.map((session) => {
+    if (session.id !== updated.id) return session
+    // A server that does not send tags answers with an empty set, not with an
+    // absent field - and an action never clears a run's labels (there is no
+    // untag press), so an empty set can only mean "not sent". Keeping the ones
+    // the list showed is what keeps the labels through pause, extend or lock.
+    const tags = updated.tags.length > 0 ? updated.tags : session.tags
+    return { ...session, ...updated, tags }
+  })
 }
 
 /** Leaves the lobby: stamps the clock and opens the doors. */
@@ -574,25 +580,14 @@ onMounted(() => {
                in the same breath. -->
           <div class="flex flex-col gap-3 sm:flex-row sm:items-stretch">
             <div class="min-w-0 flex-1 rounded-2xl bg-surface-container-high p-3 sm:p-4" data-run-data>
-              <!-- A label-and-value list: a teacher opening this board looks for
-                   three facts - which run, which paper, since when. -->
+              <!-- Reading order does the labelling: what a teacher opening this
+                   board looks for - which run, which paper, since when - is the
+                   order the lines already stand in. -->
               <dl class="space-y-1.5">
-                <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
-                  <dt
-                    class="w-16 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant"
-                  >
-                    {{ t('teacher.live.nameLabel') }}
-                  </dt>
+                <div class="flex min-w-0 items-center justify-between gap-2">
                   <dd class="flex min-w-0 flex-wrap items-center gap-2">
                     <span class="min-w-0 truncate text-base font-semibold text-on-surface">
                       {{ selectedName }}
-                    </span>
-                    <span
-                      class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                      :class="statusChip[boardStatus]"
-                    >
-                      <span class="size-1.5 rounded-full" :class="statusDot[boardStatus]" />
-                      {{ t(`teacher.live.status.${boardStatus}`) }}
                     </span>
                     <!-- An unnamed run is the paper itself, so the counts belong
                          on the name; a named one gets a row of its own below. -->
@@ -603,6 +598,15 @@ onMounted(() => {
                       ({{ selectedTestMeta }})
                     </span>
                   </dd>
+                  <!-- The state sits where an eye lands last: out of the read
+                       line, pressed to the panel's own edge on the right. -->
+                  <span
+                    class="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
+                    :class="statusChip[boardStatus]"
+                  >
+                    <span class="size-1.5 rounded-full" :class="statusDot[boardStatus]" />
+                    {{ t(`teacher.live.status.${boardStatus}`) }}
+                  </span>
                 </div>
 
                 <!-- A run the teacher named shows the paper it ran as well: the
@@ -612,11 +616,6 @@ onMounted(() => {
                   v-if="selected.name && selected.title"
                   class="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1"
                 >
-                  <dt
-                    class="w-16 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant"
-                  >
-                    {{ t('teacher.live.testLabel') }}
-                  </dt>
                   <dd class="min-w-0 text-sm text-on-surface">
                     <span class="truncate">{{ selected.title }}</span>
                     <span v-if="selectedTestMeta" class="text-xs text-on-surface-variant">
@@ -629,11 +628,6 @@ onMounted(() => {
                   v-if="selected.startedAt"
                   class="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1"
                 >
-                  <dt
-                    class="w-16 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-on-surface-variant"
-                  >
-                    {{ t('teacher.live.startedLabel') }}
-                  </dt>
                   <dd class="text-sm tabular-nums text-on-surface">
                     {{ formatTime(selected.startedAt) }}
                   </dd>
@@ -642,7 +636,7 @@ onMounted(() => {
 
               <div
                 v-if="roomNameOf(selected.roomId) || selected.tags.length > 0"
-                class="mt-2 flex flex-wrap items-center gap-1.5 pl-19"
+                class="mt-2 flex flex-wrap items-center gap-1.5"
               >
                 <span
                   v-if="roomNameOf(selected.roomId)"

@@ -127,6 +127,11 @@ export interface SessionSummary extends LiveSession {
 /** The columns a session list can be ordered by; `created` unless asked. */
 export type SessionSort = 'created' | 'name' | 'status' | 'submitted'
 
+/** What a run looks like after an action wrote to it: with the labels it has on. */
+export interface SessionWritten extends LiveSession {
+  tags: Tag[]
+}
+
 /** What a session list can be narrowed by; every field is optional. */
 export interface SessionFilter {
   roomId?: string | null
@@ -208,7 +213,7 @@ export async function startSession(
     tags?: string[]
     settings?: Partial<TestSettings>
   } = {},
-): Promise<LiveSession> {
+): Promise<SessionWritten> {
   const result = await apiFetch<{ session: LiveSession }>('/api/sessions', {
     method: 'POST',
     body: JSON.stringify({ testId, ...input }),
@@ -233,7 +238,7 @@ export async function getParticipants(sessionId: string): Promise<{
  * Named `beginSession` rather than `startSession` because that name is already
  * taken by the call that *creates* a run - and the two are different acts now.
  */
-export async function beginSession(sessionId: string): Promise<LiveSession> {
+export async function beginSession(sessionId: string): Promise<SessionWritten> {
   const result = await apiFetch<{ session: LiveSession }>(
     `/api/sessions/${sessionId}/start`,
     { method: 'POST' },
@@ -245,7 +250,7 @@ export async function beginSession(sessionId: string): Promise<LiveSession> {
 export async function setSessionSettings(
   sessionId: string,
   settings: Partial<TestSettings>,
-): Promise<LiveSession> {
+): Promise<SessionWritten> {
   const result = await apiFetch<{ session: LiveSession }>(`/api/sessions/${sessionId}`, {
     method: 'PATCH',
     body: JSON.stringify({ settings }),
@@ -265,7 +270,7 @@ export async function sessionResultsBlob(
 }
 
 /** Gives the run more time. Only a run with a clock has one to give. */
-export async function extendSession(sessionId: string, seconds: number): Promise<LiveSession> {
+export async function extendSession(sessionId: string, seconds: number): Promise<SessionWritten> {
   const result = await apiFetch<{ session: LiveSession }>(`/api/sessions/${sessionId}/extend`, {
     method: 'POST',
     body: JSON.stringify({ seconds }),
@@ -274,7 +279,7 @@ export async function extendSession(sessionId: string, seconds: number): Promise
 }
 
 /** Lets held results out, so students can see how they did. */
-export async function releaseSessionResults(sessionId: string): Promise<LiveSession> {
+export async function releaseSessionResults(sessionId: string): Promise<SessionWritten> {
   const result = await apiFetch<{ session: LiveSession }>(
     `/api/sessions/${sessionId}/release`,
     { method: 'POST' },
@@ -283,7 +288,7 @@ export async function releaseSessionResults(sessionId: string): Promise<LiveSess
 }
 
 /** Closes or opens the door to new students; whoever is inside is untouched. */
-export async function setEntryLocked(sessionId: string, locked: boolean): Promise<LiveSession> {
+export async function setEntryLocked(sessionId: string, locked: boolean): Promise<SessionWritten> {
   const result = await apiFetch<{ session: LiveSession }>(`/api/sessions/${sessionId}`, {
     method: 'PATCH',
     body: JSON.stringify({ entryLocked: locked }),
@@ -295,7 +300,7 @@ export async function setEntryLocked(sessionId: string, locked: boolean): Promis
 export async function setSessionStatus(
   sessionId: string,
   status: LiveSessionStatus,
-): Promise<LiveSession> {
+): Promise<SessionWritten> {
   const result = await apiFetch<{ session: LiveSession }>(`/api/sessions/${sessionId}`, {
     method: 'PATCH',
     body: JSON.stringify({ status }),
