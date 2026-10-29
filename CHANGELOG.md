@@ -6,14 +6,16 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Eleven changes after 0.7.0, each found by using the thing rather than by reading
+Thirteen changes after 0.7.0, each found by using the thing rather than by reading
 it: a clock that lied, a student screen that grew, a server panel nobody could
 reach, a paper that emptied itself when the phone reloaded, a gradebook nobody
 could take a copy of, a client a phone could not install or keep offline, a PDF
 that could not spell a Ukrainian name, a run screen whose clock and search box
 did not do what they looked like they did, three screens that were read rather
-than used, a scrollbar that was bigger than the thing it moved, and a live
-board whose controls were more kinds than one run needs.
+than used, a scrollbar that was bigger than the thing it moved, a live board
+whose controls were more kinds than one run needs, a start dialog that did
+not know what had been written a minute earlier, and a demo with no
+administrator to sign its panel in with.
 
 ### A paper that survives the phone
 
@@ -279,8 +281,50 @@ board whose controls were more kinds than one run needs.
   from the server is now shown, and the delete button reads the reason rather
   than asking to try again.
 
+### Starting a run, gathered in one place
+
+- **The start dialog sees today's workshop.** The tests, rooms and labels it
+  offers were a snapshot taken when the window opened, so a test written a
+  minute ago was missing until the app restarted, and a room created after the
+  first load never appeared at all. All three are refetched as the dialog
+  opens, and a failed refresh keeps the previous list rather than emptying it.
+- **The chosen test and the chosen room say so.** Picking a paper marks the row
+  with a check and a tonal fill, and the dialog's footer repeats which paper the
+  Start button would start, with its counts. Rooms are pills with the same
+  check, instead of two buttons whose pressed state the theme cascade could
+  swallow.
+- **Labels complete from the teacher's own vocabulary.** Typing in the labels
+  field narrows the labels already in use into a list under it; Enter takes the
+  highlighted one, the arrow keys move through it, and a name typed twice in
+  different case is still one label.
+- **Session settings fold away, in the dialog and on the board.** Both used to
+  unfold six switches above the main action; each is now a header with the
+  non-default decisions on its line - or "Standard run" - and a chevron, folded
+  until asked.
+
+### The demo's administrator
+
+- **The demo seeds an admin alongside the teacher.** The admin panel had no
+  account to open with: the seed made a teacher and students only, and the one
+  route that creates an admin needs an admin already signed in. A demo database
+  now also gets `admin` / `admin` (`ADMIN_PASSWORD` overrides the password), and
+  the boot log prints it the way it prints the teacher's. Production installs
+  are unchanged - an empty database still seeds a teacher, never an admin; the
+  console `admin` command remains the way an institution makes one.
+
 ### Fixed
 
+- **The screens scroll as one page.** Every shell kept a scrolling box of its
+  own below the header (`h-dvh` + `overflow-hidden` + an inner
+  `overflow-y-scroll`). Three things followed from it: the runner's top bar,
+  sticky at 56px inside a box that already began below the header, hung a header
+  height off the top and let the paper scroll through the gap; the submit bar of
+  a paper shorter than the screen stopped where its section ended, mid-page with
+  white below; and a phone, whose `dvh` moves as the address bar hides, showed a
+  second bar on the right while the page jumped. The document is the scrolling
+  box now (`min-h-dvh`, no inner scroller), the gutter is reserved once in
+  `theme.css`, and `scrollbarReveal` knows the document's bar, which a walk up
+  the tree cannot reach.
 - **Each single-choice question is its own radio group.** Every option on the
   paper shared `name="choice"`, so two single-choice questions were one group
   and answering the second unticked the first. The group is the question's id
