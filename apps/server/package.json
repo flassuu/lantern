@@ -5,7 +5,7 @@
   "type": "module",
   "description": "LANtern server: local REST/WebSocket API (Fastify + node:sqlite), compiles to a single binary",
   "scripts": {
-    "dev": "bun --watch src/index.ts",
+    "dev": "bun --watch src/index.ts --data \"$HOME/.local/share/com.lantern.teacher/data\"",
     "start": "bun src/index.ts",
     "build": "bun build --compile src/index.ts --outfile dist/lantern-server",
     "typecheck": "tsc --noEmit",
