@@ -335,6 +335,11 @@ const uk: typeof en = {
       start: 'Почати сесію',
       startTitle: 'Почати сесію з тесту',
       startHint: 'Студенти приєднуються за кодом нижче. Тест можна редагувати й далі.',
+      pickTest: 'Оберіть тест',
+      testCount: 'Тестів: {count}',
+      chosen: 'Обрано',
+      noTestChosen: 'Оберіть тест вище, щоб почати',
+      runDetails: 'Цей запуск',
       startRun: 'Почати',
       standardRun: 'Звичайний запуск',
       runName: 'Назва запуску',
@@ -531,6 +536,7 @@ const uk: typeof en = {
       label: 'Мітки',
       placeholder: 'Введіть мітку та натисніть Enter',
       remove: 'Прибрати мітку {name}',
+      suggestions: 'Наявні мітки',
     },
     editor: {
       media: {

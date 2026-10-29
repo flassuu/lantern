@@ -2,6 +2,8 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
+  Check,
+  ChevronDown,
   CircleCheck,
   CircleX,
   Copy,
@@ -40,6 +42,8 @@ import {
   type SessionWritten,
 } from '../../api/sessions'
 import type { TestSummary } from '../../api/types'
+import { listTests } from '../../api/tests'
+import { listTags } from '../../api/tags'
 import EmptyState from '../common/EmptyState.vue'
 import QrCodeCard from '../common/QrCode.vue'
 import SkeletonList from '../common/SkeletonList.vue'
@@ -58,6 +62,7 @@ import { useSessionChannel } from '../../composables/sessionChannel'
 import { saveExport } from '../../composables/exporter'
 import { getRoomsState, loadRooms } from '../../composables/rooms'
 import { normalizeSettings } from '../../api/normalize'
+import { changedSettings, SETTING_LABEL } from '../../utils/settings'
 import type { TestSettings } from '../../api/types'
 import { useToast } from '../../composables/toast'
 import AppButton from '../../components/common/AppButton.vue'
@@ -72,6 +77,22 @@ const props = defineProps<{
 const { t, locale } = useI18n()
 const confirm = useConfirm()
 const toast = useToast()
+
+/**
+ * The papers this screen can start.
+ *
+ * Seeded from the parent and refreshed every time the start dialog opens: a
+ * test written a minute ago sits in the Tests tab, and the parent loaded its own
+ * list once when the window did. Without the refresh the picker kept offering
+ * yesterday's list until the app restarted.
+ */
+const tests = ref<TestSummary[]>([...props.tests])
+watch(
+  () => props.tests,
+  (value) => {
+    tests.value = value
+  },
+)
 
 const sessions = ref<SessionSummary[]>([])
 const selectedId = ref('')
@@ -110,7 +131,7 @@ const selected = computed(
  * was already handed.
  */
 const selectedTest = computed(
-  () => props.tests.find((test) => test.id === selected.value?.testId) ?? null,
+  () => tests.value.find((test) => test.id === selected.value?.testId) ?? null,
 )
 /**
  * What a run is called on screen: the teacher's own name, or the paper's with
@@ -148,6 +169,36 @@ const sessionRoomId = ref<string | null>(null)
 const sessionTags = ref<string[]>([])
 /** What the run will be like; prefilled from the test, overridable here. */
 const sessionSettings = ref<TestSettings>(normalizeSettings(null))
+/** The teacher's own label vocabulary, offered under the labels field. */
+const tagSuggestions = ref<string[]>([])
+/**
+ * Both settings blocks start folded: a run usually keeps its paper's defaults,
+ * and six switches above the Start button read as a form to fill in rather than
+ * as something that is already decided.
+ */
+const runSettingsOpen = ref(false)
+const boardSettingsOpen = ref(false)
+
+/** The paper the Start button would start, or null while none is picked. */
+const chosenTest = computed(
+  () => tests.value.find((test) => test.id === startingTestId.value) ?? null,
+)
+/** "10q · 15m" for the chosen paper, beside its title in the dialog's footer. */
+const chosenTestMeta = computed(() => {
+  const test = chosenTest.value
+  if (test === null) return ''
+  const parts = [t('teacher.live.questionShort', { count: test.questionCount })]
+  if (test.timeLimitSec) {
+    parts.push(t('teacher.live.minuteShort', { count: Math.round(test.timeLimitSec / 60) }))
+  }
+  return parts.join(' · ')
+})
+
+/** The non-default decisions of a set, as words; empty means "standard run". */
+function settingsLabels(settings: TestSettings): string[] {
+  return changedSettings(settings).map((key) => t(SETTING_LABEL[key]))
+}
+const runSettingsLabels = computed(() => settingsLabels(sessionSettings.value))
 const joinedCount = computed(() => participants.value.length)
 const workingCount = computed(
   () => participants.value.filter((entry) => entry.status === 'joined').length,
@@ -276,13 +327,34 @@ function openStart(): void {
   sessionTags.value = []
   sessionRoomId.value = null
   sessionSettings.value = normalizeSettings(null)
+  runSettingsOpen.value = false
   showStart.value = true
+  void refreshStartSources()
+}
+
+/**
+ * The three lists the dialog is built from, refetched as it opens.
+ *
+ * The screen was handed a snapshot of all three when it mounted, and a teacher
+ * who writes a test, adds a room or renames a label in the meantime expects the
+ * dialog to know it. Failures are silent here: an offline server leaves the
+ * previous list, which is better than an empty picker.
+ */
+async function refreshStartSources(): Promise<void> {
+  const [freshTests, freshRooms, freshTags] = await Promise.allSettled([
+    listTests(),
+    loadRooms(true),
+    listTags(),
+  ])
+  if (freshTests.status === 'fulfilled') tests.value = freshTests.value
+  if (freshTags.status === 'fulfilled') tagSuggestions.value = freshTags.value.map((tag) => tag.name)
+  void freshRooms
 }
 
 /** Picking a test pre-fills the room that test belongs to, if any. */
 function chooseTestForStart(testId: string): void {
   startingTestId.value = testId
-  const test = props.tests.find((entry) => entry.id === testId)
+  const test = tests.value.find((entry) => entry.id === testId)
   if (test) {
     sessionRoomId.value = test.roomId ?? null
     // The run starts from the test's defaults; the teacher can still change them
@@ -354,8 +426,7 @@ const canExtend = computed(
 )
 
 /** The lobby's own copy of the settings; saving is optimistic on the response. */
-const lobbySettings = computed({
-  get: () => selected.value?.settings ?? normalizeSettings(null),
+const lobbySettings = computed({  get: () => selected.value?.settings ?? normalizeSettings(null),
   set: (value: TestSettings) => {
     const session = selected.value
     if (!session) return
@@ -369,6 +440,11 @@ const lobbySettings = computed({
     })()
   },
 })
+
+/** What the open run does differently from a standard one, for the folded header. */
+const boardSettingsLabels = computed(() =>
+  selected.value ? settingsLabels(lobbySettings.value) : [],
+)
 
 /** Gives the run more time; only a run with a clock has one to give. */
 async function extend(seconds: number): Promise<void> {
@@ -806,18 +882,41 @@ onMounted(() => {
           </p>
 
           <!-- The lobby is the only place the rules can still change: the paper
-               is handed out at the start. -->
+               is handed out at the start. Folded, because most runs keep the
+               defaults the paper was written with. -->
           <div
             v-if="boardStatus === 'lobby'"
             class="mt-3 rounded-2xl bg-surface-container-high p-3"
           >
-            <p class="text-xs font-semibold text-on-surface-variant">
-              {{ t('teacher.sessionSettings.title') }}
-            </p>
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 text-left"
+              :aria-expanded="boardSettingsOpen"
+              aria-controls="board-session-settings"
+              @click="boardSettingsOpen = !boardSettingsOpen"
+            >
+              <span class="shrink-0 text-xs font-semibold text-on-surface-variant">
+                {{ t('teacher.sessionSettings.title') }}
+              </span>
+              <span
+                v-if="boardSettingsLabels.length > 0"
+                class="min-w-0 flex-1 truncate text-right text-[11px] font-semibold text-on-surface"
+              >
+                {{ boardSettingsLabels.join(' · ') }}
+              </span>
+              <span v-else class="min-w-0 flex-1 truncate text-right text-[11px] text-on-surface-variant">
+                {{ t('teacher.live.standardRun') }}
+              </span>
+              <ChevronDown
+                class="size-4 shrink-0 text-on-surface-variant transition-transform duration-200"
+                :class="boardSettingsOpen ? 'rotate-180' : ''"
+                aria-hidden="true"
+              />
+            </button>
             <p class="mt-0.5 text-[11px] text-on-surface-variant">
               {{ t('teacher.sessionSettings.lobbyOnly') }}
             </p>
-            <div class="mt-3">
+            <div v-if="boardSettingsOpen" id="board-session-settings" class="mt-3">
               <SessionSettingsFields v-model="lobbySettings" />
             </div>
           </div>
@@ -1127,7 +1226,7 @@ onMounted(() => {
       @close="closeStart"
     >
       <div ref="panel" class="flex max-h-[92dvh] flex-col">
-        <header class="flex items-start justify-between gap-3 border-b border-outline-variant p-4">
+        <header class="flex items-start justify-between gap-3 border-b border-outline-variant px-4 py-3.5">
           <div class="min-w-0">
             <h3 class="text-base font-semibold text-on-surface">
               {{ t('teacher.live.startTitle') }}
@@ -1144,102 +1243,182 @@ onMounted(() => {
           </AppButton>
         </header>
 
-        <div class="flex-1 space-y-4 overflow-y-auto p-4">
+        <div class="flex-1 space-y-4 overflow-y-auto px-4 py-4">
+          <!-- A failed start is about this dialog, so it says so here rather
+               than on the board behind it. -->
+          <p
+            v-if="actionError"
+            role="alert"
+            class="rounded-xl bg-error-container px-3 py-2 text-sm text-on-error-container"
+          >
+            {{ actionError }}
+          </p>
+
           <!-- The chips under each test are what a run of it would do; picking
                one loads those rules into the fields below, and what is sent is an
                override for this run only. -->
-          <TestPicker
-            :tests="props.tests"
-            :busy="starting"
-            show-settings
-            :room-name-of="roomNameOf"
-            @select="chooseTestForStart"
-          />
+          <section>
+            <div class="flex items-baseline justify-between gap-2">
+              <h4 class="text-sm font-semibold text-on-surface">
+                {{ t('teacher.live.pickTest') }}
+              </h4>
+              <span class="text-[11px] text-on-surface-variant">
+                {{ t('teacher.live.testCount', { count: tests.length }) }}
+              </span>
+            </div>
+            <TestPicker
+              :tests="tests"
+              :busy="starting"
+              show-settings
+              :room-name-of="roomNameOf"
+              :selected-id="startingTestId"
+              @select="chooseTestForStart"
+            />
+          </section>
 
           <!-- Three optionals, all of which make the archive usable later: what
                the run was called, which group sat it, what it covered. -->
-          <label class="block">
-            <span class="text-xs font-semibold text-on-surface-variant">
-              {{ t('teacher.live.runName') }}
-            </span>
-            <AppInput
-              v-model="sessionNameDraft"
-              class="mt-1"
-              :placeholder="t('teacher.live.runNamePlaceholder')"
-              maxlength="120"
-            />
-          </label>
+          <section class="space-y-3 rounded-2xl bg-surface-container-high p-3 sm:p-4">
+            <h4 class="text-sm font-semibold text-on-surface">
+              {{ t('teacher.live.runDetails') }}
+            </h4>
 
-          <div>
-            <p class="text-xs font-semibold text-on-surface-variant">
-              {{ t('teacher.live.runRoom') }}
-            </p>
-            <p class="mt-0.5 text-[11px] text-on-surface-variant">
-              {{ t('teacher.live.runRoomHint') }}
-            </p>
-            <ul v-if="rooms.rooms.length" class="mt-2 flex flex-wrap gap-1.5">
-              <li>
-                <AppButton
-                  variant="secondaryPlain"
-                  size="sm"
+            <label class="block">
+              <span class="text-xs font-semibold text-on-surface-variant">
+                {{ t('teacher.live.runName') }}
+              </span>
+              <AppInput
+                v-model="sessionNameDraft"
+                class="mt-1"
+                :placeholder="t('teacher.live.runNamePlaceholder')"
+                maxlength="120"
+              />
+            </label>
+
+            <div>
+              <p class="text-xs font-semibold text-on-surface-variant">
+                {{ t('teacher.live.runRoom') }}
+              </p>
+              <p class="mt-0.5 text-[11px] text-on-surface-variant">
+                {{ t('teacher.live.runRoomHint') }}
+              </p>
+              <div v-if="rooms.rooms.length" class="mt-2 flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  class="state-layer inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors duration-200"
+                  :class="
+                    sessionRoomId === null
+                      ? 'border-transparent bg-secondary-container text-on-secondary-container'
+                      : 'border-outline-variant bg-surface text-on-surface-variant'
+                  "
                   :aria-pressed="sessionRoomId === null"
-                  :class="sessionRoomId === null ? 'bg-secondary-container text-on-secondary-container' : ''"
                   @click="sessionRoomId = null"
                 >
+                  <Check v-if="sessionRoomId === null" class="size-3.5" aria-hidden="true" />
                   {{ t('teacher.tests.roomNone') }}
-                </AppButton>
-              </li>
-              <li v-for="room in rooms.rooms" :key="room.id">
-                <AppButton
-                  variant="secondaryPlain"
-                  size="sm"
+                </button>
+                <button
+                  v-for="room in rooms.rooms"
+                  :key="room.id"
+                  type="button"
+                  class="state-layer inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors duration-200"
+                  :class="
+                    sessionRoomId === room.id
+                      ? 'border-transparent bg-secondary-container text-on-secondary-container'
+                      : 'border-outline-variant bg-surface text-on-surface-variant'
+                  "
                   :aria-pressed="sessionRoomId === room.id"
-                  :class="sessionRoomId === room.id ? 'bg-secondary-container text-on-secondary-container' : ''"
                   @click="sessionRoomId = room.id"
                 >
+                  <Check v-if="sessionRoomId === room.id" class="size-3.5" aria-hidden="true" />
                   {{ room.name }}
-                </AppButton>
-              </li>
-            </ul>
-            <p v-else class="mt-2 text-[11px] text-on-surface-variant">
-              {{ t('teacher.tests.roomNoneHint') }}
-            </p>
-          </div>
+                </button>
+              </div>
+              <p v-else class="mt-2 text-[11px] text-on-surface-variant">
+                {{ t('teacher.tests.roomNoneHint') }}
+              </p>
+            </div>
 
-          <TagInput v-model="sessionTags" :label="t('teacher.tags.label')" />
+            <TagInput
+              v-model="sessionTags"
+              :label="t('teacher.tags.label')"
+              :suggestions="tagSuggestions"
+            />
+          </section>
 
-          <div class="rounded-xl border border-outline-variant bg-surface p-3">
-            <p class="text-xs font-semibold text-on-surface-variant">
-              {{ t('teacher.sessionSettings.title') }}
-            </p>
+          <!-- Folded: a run usually keeps the paper's defaults, and six switches
+               above the Start button read as a form to fill in. The folded line
+               still says what the run will do. -->
+          <section class="rounded-2xl border border-outline-variant bg-surface p-3 sm:p-4">
+            <button
+              type="button"
+              class="flex w-full items-center gap-2 text-left"
+              :aria-expanded="runSettingsOpen"
+              aria-controls="run-session-settings"
+              @click="runSettingsOpen = !runSettingsOpen"
+            >
+              <span class="shrink-0 text-xs font-semibold text-on-surface-variant">
+                {{ t('teacher.sessionSettings.title') }}
+              </span>
+              <span
+                v-if="runSettingsLabels.length > 0"
+                class="min-w-0 flex-1 truncate text-right text-[11px] font-semibold text-on-surface"
+              >
+                {{ runSettingsLabels.join(' · ') }}
+              </span>
+              <span v-else class="min-w-0 flex-1 truncate text-right text-[11px] text-on-surface-variant">
+                {{ t('teacher.live.standardRun') }}
+              </span>
+              <ChevronDown
+                class="size-4 shrink-0 text-on-surface-variant transition-transform duration-200"
+                :class="runSettingsOpen ? 'rotate-180' : ''"
+                aria-hidden="true"
+              />
+            </button>
             <p class="mt-0.5 text-[11px] text-on-surface-variant">
               {{ t('teacher.sessionSettings.forThisRun') }}
             </p>
-            <div class="mt-3">
+            <div v-if="runSettingsOpen" id="run-session-settings" class="mt-3">
               <SessionSettingsFields v-model="sessionSettings" />
             </div>
-          </div>
+          </section>
         </div>
 
-        <footer class="flex justify-end gap-2 border-t border-outline-variant p-4">
-          <AppButton variant="secondary" ref="cancelRef" @click="closeStart">
-            {{ t('common.cancel') }}
-          </AppButton>
-          <AppButton
-            variant="primary"
-            :disabled="!startingTestId || starting"
-            @click="start(startingTestId)"
-          >
-            <Play class="size-3.5" aria-hidden="true" />
-            {{ starting ? t('common.loading') : t('teacher.live.startRun') }}
-          </AppButton>
+        <footer
+          class="flex flex-wrap items-center justify-between gap-2 border-t border-outline-variant px-4 py-3"
+        >
+          <div class="min-w-0 flex-1">
+            <template v-if="chosenTest">
+              <p class="flex items-center gap-1.5 text-xs font-semibold text-on-surface">
+                <Check class="size-3.5 shrink-0 text-primary" aria-hidden="true" />
+                <span class="truncate">{{ chosenTest.title }}</span>
+              </p>
+              <p class="text-[11px] text-on-surface-variant">{{ chosenTestMeta }}</p>
+            </template>
+            <p v-else class="text-xs text-on-surface-variant">
+              {{ t('teacher.live.noTestChosen') }}
+            </p>
+          </div>
+          <div class="flex shrink-0 items-center gap-2">
+            <AppButton variant="secondary" ref="cancelRef" @click="closeStart">
+              {{ t('common.cancel') }}
+            </AppButton>
+            <AppButton
+              variant="primary"
+              :disabled="!startingTestId || starting"
+              @click="start(startingTestId)"
+            >
+              <Play class="size-3.5" aria-hidden="true" />
+              {{ starting ? t('common.loading') : t('teacher.live.startRun') }}
+            </AppButton>
+          </div>
         </footer>
       </div>
     </AppDialog>
 
     <SessionLibraryDialog
       v-if="showLibrary"
-      :tests="props.tests"
+      :tests="tests"
       :selected-id="selectedId"
       @select="selectedId = $event"
       @close="showLibrary = false"

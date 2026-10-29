@@ -14,6 +14,10 @@ interface RoomsState {
  * small and changes rarely. A shared fetch keeps them from racing each other,
  * and a failure leaves an empty list rather than a spinner that never ends:
  * every one of them has something to show without it.
+ *
+ * `force` exists for the one screen that is about to offer the list as a choice:
+ * a room created a minute ago in the Rooms tab has to be there when the start
+ * dialog opens, and the cache would otherwise keep it out until a restart.
  */
 const state = reactive<RoomsState>({ rooms: [], loaded: false })
 
@@ -21,8 +25,8 @@ export function getRoomsState(): RoomsState {
   return state
 }
 
-export async function loadRooms(): Promise<Room[]> {
-  if (state.loaded) return state.rooms
+export async function loadRooms(force = false): Promise<Room[]> {
+  if (state.loaded && !force) return state.rooms
   try {
     state.rooms = await listRooms()
   } catch {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { CheckCircle2, Search } from '@lucide/vue'
+import { Check, CheckCircle2, Search } from '@lucide/vue'
 import type { TestSummary } from '../../api/types'
 import { changedSettings, SETTING_LABEL } from '../../utils/settings'
 
@@ -22,8 +22,14 @@ const props = withDefaults(
      * say; the course picker attaches a paper to a course, not to a room.
      */
     roomNameOf?: (roomId: string | null) => string
+    /**
+     * The test the caller has already chosen. Only the start dialog passes it:
+     * picking a test there does not close anything, so the row has to say that
+     * the press landed before the teacher fills in the rest of the form.
+     */
+    selectedId?: string
   }>(),
-  { busy: false, showSettings: false, roomNameOf: undefined },
+  { busy: false, showSettings: false, roomNameOf: undefined, selectedId: '' },
 )
 
 const emit = defineEmits<{ select: [testId: string] }>()
@@ -112,7 +118,8 @@ const summaries = computed(() => {
           type="button"
           :disabled="busy"
           :data-picker-row="test.id"
-          class="state-layer flex w-full items-center justify-between gap-2 rounded-xl bg-surface px-3 py-2 text-left disabled:opacity-60"
+          class="state-layer flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2 text-left disabled:opacity-60"
+          :class="test.id === selectedId ? 'bg-secondary-container' : 'bg-surface'"
           @click="emit('select', test.id)"
         >
           <span class="min-w-0 flex-1">
@@ -147,6 +154,14 @@ const summaries = computed(() => {
             </span>
           </span>
           <span
+            v-if="test.id === selectedId"
+            class="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[11px] font-semibold text-on-primary"
+          >
+            <Check class="size-3" aria-hidden="true" />
+            {{ t('teacher.live.chosen') }}
+          </span>
+          <span
+            v-else
             class="shrink-0 rounded-full bg-primary-container px-2 py-0.5 text-[11px] font-semibold text-on-primary-container"
           >
             {{ t('teacher.courses.attach') }}

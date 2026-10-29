@@ -333,6 +333,11 @@ export default {
       start: 'Start a session',
       startTitle: 'Start a session from a test',
       startHint: 'Students join with the code below. The test can still be edited afterwards.',
+      pickTest: 'Choose a test',
+      testCount: 'Tests: {count}',
+      chosen: 'Chosen',
+      noTestChosen: 'Pick a test above to start',
+      runDetails: 'This run',
       startRun: 'Start',
       standardRun: 'Standard run',
       runName: 'Run name',
@@ -529,6 +534,7 @@ export default {
       label: 'Labels',
       placeholder: 'Type a label and press Enter',
       remove: 'Remove label {name}',
+      suggestions: 'Existing labels',
     },
     editor: {
       media: {
