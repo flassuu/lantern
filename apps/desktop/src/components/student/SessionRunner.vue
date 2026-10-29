@@ -12,7 +12,6 @@ import {
   isAnswered,
   matchingChoices,
   paperOptions,
-  remainingMs,
   type PaperOption,
   type QuestionResponse,
   type Responses,
@@ -55,28 +54,43 @@ const current = computed(() => questions.value[page.value])
 const lastPage = computed(() => Math.max(questions.value.length - 1, 0))
 const onLastPage = computed(() => page.value >= lastPage.value)
 const submitting = ref(false)
-const now = ref(Date.now())
 let ticker: number | undefined
+
+const frameAt = ref(Date.now())
+watch(
+  () => props.state.session.serverNow,
+  () => { frameAt.value = Date.now() },
+)
 
 const totalPoints = computed(() =>
   questions.value.reduce((sum, question) => sum + question.points, 0),
 )
 const answered = computed(() => answeredCount(questions.value, responses.value))
 
-const deadline = computed(() =>
-  // No start mark means the run is still a lobby, and a lobby has no clock.
-  props.state.session.startedAt === null
-    ? null
-    : remainingMs(
-        props.state.session.startedAt,
-        props.state.session.timeLimitSec,
-        props.state.session.serverNow,
-        now.value,
-        props.state.session.pausedAt,
-      ),
+const deadlineMs = ref<number | null>(null)
+
+function recalcDeadline(): void {
+  const s = props.state.session
+  if (s.startedAt === null || s.timeLimitSec === null) {
+    clock.value = ''
+    expired.value = false
+    return
+  }
+  const startedMs = Date.parse(s.startedAt)
+  const limitMs = s.timeLimitSec * 1000
+  const deadlineMs = startedMs + limitMs
+  const referenceMs = s.pausedAt ? Date.parse(s.pausedAt) : Date.now()
+  const rem = Math.max(0, deadlineMs - referenceMs)
+  clock.value = formatClock(rem)
+  expired.value = rem <= 0
+}
+watch(
+  [() => props.state.session.serverNow, () => props.state.session.pausedAt],
+  recalcDeadline,
 )
-const clock = computed(() => (deadline.value === null ? '' : formatClock(deadline.value)))
-const expired = computed(() => deadline.value !== null && deadline.value <= 0)
+
+const clock = ref('')
+const expired = ref(false)
 const paused = computed(() => props.state.session.status === 'paused')
 const hasLimit = computed(() => props.state.session.timeLimitSec !== null)
 
@@ -255,11 +269,10 @@ watch(
 )
 
 onMounted(() => {
+  recalcDeadline()
   ticker = window.setInterval(() => {
-    now.value = Date.now()
+    recalcDeadline()
   }, 1000)
-  // A reload, a closed tab or a phone put in a pocket can arrive before the
-  // debounce does; the draft is written on the way out.
   window.addEventListener('pagehide', flushDraft)
   document.addEventListener('visibilitychange', onHidden)
 })
@@ -283,9 +296,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <section class="space-y-4">
+  <!-- A column that fills the room the screen gives it: the submit bar has to be
+       able to rest at the bottom even when the paper is one short question. -->
+  <section class="flex flex-1 flex-col gap-4">
     <div
-      class="sticky top-0 z-10 -mx-4 flex flex-wrap items-center justify-between gap-2 border-b border-outline-variant bg-surface-container px-4 py-3 sm:-mx-0 sm:rounded-2xl sm:border"
+      class="sticky top-14 z-10 -mx-4 flex flex-wrap items-center justify-between gap-2 border-b border-outline-variant bg-surface-container px-4 py-3 sm:-mx-0 sm:rounded-2xl sm:border"
     >
       <div class="min-w-0">
         <p class="truncate text-sm font-semibold text-on-surface">
@@ -301,7 +316,7 @@ onBeforeUnmount(() => {
         :class="
           expired
             ? 'bg-error-container text-on-error-container'
-            : deadline !== null && deadline < 60_000
+            : deadlineMs !== null && deadlineMs < 60_000
               ? 'bg-warning-container text-on-warning-container'
               : 'bg-surface-container-highest text-on-surface'
         "
@@ -401,27 +416,39 @@ onBeforeUnmount(() => {
       </AppCard>
     </ol>
 
+    <!-- The submit is the one action a paper cannot scroll away from: it rides
+         at the bottom edge, above the phone's home bar, for the whole run. On a
+         wide screen it drops back into the page as a plain row. -->
     <div
-      v-if="submitError"
-      role="alert"
-      class="flex flex-wrap items-center gap-2 rounded-xl bg-error-container px-3 py-2 text-sm text-on-error-container"
+      class="sticky bottom-0 z-20 mt-auto -mx-4 border-t border-outline-variant bg-surface-container px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0"
     >
-      <TriangleAlert class="size-4 shrink-0" aria-hidden="true" />
-      <span class="min-w-0 flex-1">{{ t('student.runner.notSent') }}</span>
-      <AppButton variant="secondary" size="sm" :disabled="submitting" @click="send">
-        {{ t('student.runner.retry') }}
-      </AppButton>
-    </div>
-
-    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-      <p class="text-xs text-on-surface-variant">
-        {{ t('student.runner.hint') }}
+      <p
+        v-if="submitError"
+        role="alert"
+        class="mb-2 flex flex-wrap items-center gap-2 rounded-xl bg-error-container px-3 py-2 text-sm text-on-error-container"
+      >
+        <TriangleAlert class="size-4 shrink-0" aria-hidden="true" />
+        <span class="min-w-0 flex-1">{{ t('student.runner.notSent') }}</span>
+        <AppButton variant="secondary" size="sm" :disabled="submitting" @click="send">
+          {{ t('student.runner.retry') }}
+        </AppButton>
       </p>
-      <AppButton variant="success" class="rounded-xl" :disabled="submitting" @click="send">
-        <Check v-if="expired" class="size-4" aria-hidden="true" />
-        <Send v-else class="size-4" aria-hidden="true" />
-        {{ submitting ? t('common.loading') : t('student.runner.submit') }}
-      </AppButton>
+
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p class="text-[11px] leading-snug text-on-surface-variant sm:text-xs">
+          {{ t('student.runner.hint') }}
+        </p>
+        <AppButton
+          variant="success"
+          class="w-full rounded-xl sm:w-auto"
+          :disabled="submitting"
+          @click="send"
+        >
+          <Check v-if="expired" class="size-4" aria-hidden="true" />
+          <Send v-else class="size-4" aria-hidden="true" />
+          {{ submitting ? t('common.loading') : t('student.runner.submit') }}
+        </AppButton>
+      </div>
     </div>
   </section>
 </template>

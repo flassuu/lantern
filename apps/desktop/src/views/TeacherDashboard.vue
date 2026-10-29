@@ -46,15 +46,12 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex h-dvh flex-col overflow-hidden bg-surface">
+  <!-- The document is the scrolling box. Its gutter is reserved in theme.css, so
+       a tall panel opening still never shifts the board sideways. -->
+  <div class="flex min-h-dvh flex-col bg-surface">
     <AppHeader hosted @server="emit('server')" />
 
-    <!-- `overflow-y: scroll` keeps the gutter of its 11px scrollbar in the
-         layout at all times: without it the gutter appears only when the page
-         grows taller, and the whole board - the strip of tabs with it - jumps
-         sideways when a tall panel opens. -->
-    <div class="min-h-0 flex-1 overflow-y-scroll">
-      <main class="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
+    <main class="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
         <h2 class="text-xl font-semibold text-on-surface">
           {{ t('teacher.heading') }}
         </h2>
@@ -90,8 +87,6 @@ onMounted(async () => {
             <JournalTab v-else :target="journalTarget" />
           </div>
         </Transition>
-
-      </main>
-    </div>
+    </main>
   </div>
 </template>

@@ -435,6 +435,17 @@
 }
 
 @layer base {
+  /*
+   * The document is the only scrolling box: the shells used to keep one of their
+   * own below the header, which put a second bar on screen and made the sticky
+   * bars measure from an edge that was not the window's. The gutter is reserved
+   * here instead, so a long list appearing still never shifts the page sideways,
+   * and it is the gutter the bar in `composables/scrollbarReveal.ts` reveals.
+   */
+  html {
+    overflow-y: scroll;
+  }
+
   body {
     @apply bg-surface text-on-surface antialiased;
   }
@@ -473,8 +484,8 @@
    *   - `scrollbar-width`/`scrollbar-color` do not fix that: WebKit honours
    *     them, keeps the overlay and ignores everything below.
    *   - `::-webkit-scrollbar` with a width does: the bar takes a gutter of its
-   *     own and is painted inside it, never over the header. The shells scroll
-   *     inside a box below the header, so the gutter starts there too.
+   *     own and is painted inside it, never over the header. The document
+   *     scrolls now, so that gutter runs the full height of the window.
    *   - WebKitGTK ignores `:hover` on every part of a scrollbar, but a class on
    *     <html> does repaint it. Hence `composables/scrollbarReveal.ts`, which
    *     raises the class while the pointer is at the edge of a scrolling area.

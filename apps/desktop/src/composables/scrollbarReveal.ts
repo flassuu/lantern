@@ -14,7 +14,24 @@ const REVEALED_CLASS = 'scrollbar-revealed'
 let frame = 0
 let pending: { x: number; y: number } | null = null
 
+/**
+ * The document's own bar, which a walk up the tree never reaches: `<html>`
+ * reports `overflow: visible`, because its overflow is applied to the viewport.
+ * Without this the one box the app actually scrolls - now that the shells no
+ * longer keep a scrolling box of their own - would be the one bar that never
+ * reveals.
+ */
+function isAtDocumentBar(x: number): boolean {
+  const doc = document.documentElement
+  const gutter = window.innerWidth - doc.clientWidth
+  if (gutter <= 0 || doc.scrollHeight <= window.innerHeight) return false
+  // The bar itself ignores hover in WebKitGTK, so the hit area is the strip just
+  // inside it, the same way the loop below measures a shell's box.
+  return x >= doc.clientWidth - REVEAL_MARGIN && x <= window.innerWidth
+}
+
 function isAtScrollbar(x: number, y: number, from: Element | null): boolean {
+  if (isAtDocumentBar(x)) return true
   for (let node = from; node instanceof HTMLElement; node = node.parentElement) {
     const overflow = getComputedStyle(node).overflowY
     // Only a box that scrolls and reserves a gutter has an edge to aim at.

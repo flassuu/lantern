@@ -155,6 +155,12 @@ export function buildAnswers(questions: StudentQuestion[], responses: Responses)
 /**
  * Milliseconds left on the session clock, corrected for the round trip to the
  * server, or null when the test has no limit. Never negative.
+ *
+ * `serverNow` is a snapshot taken when the frame was built, so it is only the
+ * server's time at the instant `receivedAtClientMs` names. Measuring a stale
+ * snapshot against a live client clock cancels the round trip out and leaves
+ * the same number on screen forever - the countdown has to anchor the pair once
+ * and advance it with the device's own elapsed time.
  */
 export function remainingMs(
   startedAt: string,
@@ -162,9 +168,11 @@ export function remainingMs(
   serverNow: string,
   clientNow: number = Date.now(),
   pausedAt: string | null = null,
+  /** When the frame carrying `serverNow` arrived; `clientNow` means "just now". */
+  receivedAtClientMs: number = clientNow,
 ): number | null {
   if (timeLimitSec === null) return null
-  const clockSkewMs = Date.parse(serverNow) - clientNow
+  const clockSkewMs = Date.parse(serverNow) - receivedAtClientMs
   const deadline = Date.parse(startedAt) + timeLimitSec * 1000
   // While the run is on hold the remaining time stops shrinking: it is read as
   // of the moment the hold began rather than as of now. `pausedAt` is already

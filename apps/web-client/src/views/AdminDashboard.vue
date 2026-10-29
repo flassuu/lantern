@@ -41,13 +41,12 @@ onMounted(countPending)
 </script>
 
 <template>
-  <div class="flex h-dvh flex-col overflow-hidden bg-surface">
+  <!-- The document is the scrolling box. Its gutter is reserved in theme.css, so
+       a tall panel opening still never shifts the board sideways. -->
+  <div class="flex min-h-dvh flex-col bg-surface">
     <AppHeader hosted @server="emit('server')" />
 
-    <!-- An always-reserved gutter, so a taller page never shifts the layout
-         sideways when the scrollbar appears. -->
-    <div class="min-h-0 flex-1 overflow-y-scroll">
-      <main class="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
+    <main class="mx-auto w-full max-w-3xl flex-1 px-4 py-6 sm:px-6">
         <h2 class="text-xl font-semibold text-on-surface">
           {{ t('admin.heading') }}
         </h2>
@@ -95,8 +94,6 @@ onMounted(countPending)
             <ServerTab v-else />
           </div>
         </Transition>
-
-      </main>
-    </div>
+    </main>
   </div>
 </template>

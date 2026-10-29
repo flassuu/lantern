@@ -181,13 +181,13 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex h-dvh flex-col overflow-hidden bg-surface">
+  <!-- The document is the scrolling box, not a shell inside the shell: a second
+       one below the header put a second bar on the screen and made every sticky
+       bar measure from an edge that was not the window's. -->
+  <div class="flex min-h-dvh flex-col bg-surface">
     <AppHeader />
 
-    <!-- An always-reserved gutter, so a taller page never shifts the layout
-         sideways when the scrollbar appears. -->
-    <div class="min-h-0 flex-1 overflow-y-scroll">
-      <main class="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
+    <main class="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 py-6 sm:px-6">
         <h2 class="text-xl font-semibold text-on-surface">
           {{ t('student.heading') }}
         </h2>
@@ -223,7 +223,10 @@ onMounted(() => {
         </template>
 
         <template v-else-if="state">
-          <div class="mt-6">
+          <!-- The run fills the height the header leaves, so a paper shorter than
+               the screen ends where the screen ends and its submit bar can rest
+               at the bottom instead of mid-page. -->
+          <div class="mt-6 flex flex-1 flex-col">
             <!-- The waiting room, until the teacher starts the run. The fade is
                  the point: the paper arriving is the teacher's press, and a hard
                  cut would read as the screen breaking. -->
@@ -237,14 +240,14 @@ onMounted(() => {
                 @submitted="showResult"
               />
             </Transition>
+            <button
+              type="button"
+              @click="leaveRunner"
+              class="mt-4 self-start text-xs text-on-surface-variant underline"
+            >
+              {{ t('student.runner.leave') }}
+            </button>
           </div>
-          <button
-            type="button"
-            @click="leaveRunner"
-            class="mt-4 text-xs text-on-surface-variant underline"
-          >
-            {{ t('student.runner.leave') }}
-          </button>
         </template>
 
         <template v-else>
@@ -278,8 +281,6 @@ onMounted(() => {
             </div>
           </Transition>
         </template>
-
-      </main>
-    </div>
+    </main>
   </div>
 </template>
