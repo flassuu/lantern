@@ -56,6 +56,8 @@ export interface DemoSeedResult {
   reason?: string
   /** The teacher's password is only known when the seed created the account. */
   teacher?: { username: string; password?: string }
+  /** Likewise for the demo's administrator. */
+  admin?: { username: string; password?: string }
   students?: Array<{ username: string; password: string }>
   courseId?: string
   roomId?: string
@@ -263,8 +265,8 @@ export function seedDemo(db: DatabaseSync, options: DemoSeedOptions): DemoSeedRe
 
 function build(db: DatabaseSync, options: DemoSeedOptions): DemoSeedResult {
   // The built-in teacher, or one made here if the console was never used to set
-  // a password. The demo does not invent an admin: the project seeds a teacher
-  // on purpose.
+  // a password. A production install still seeds no admin - only the demo makes
+  // one, so the admin screens have somebody to sign in as.
   const existingTeacher = findUserByUsername(db, 'teacher')
   const teacherPassword = process.env.TEACHER_PASSWORD ?? 'teacher'
   const teacher =
@@ -275,6 +277,18 @@ function build(db: DatabaseSync, options: DemoSeedOptions): DemoSeedResult {
       username: 'teacher',
       password: teacherPassword,
       fullName: 'Demo Teacher',
+    })
+
+  const existingAdmin = findUserByUsername(db, 'admin')
+  const adminPassword = process.env.ADMIN_PASSWORD ?? 'admin'
+  const admin =
+    existingAdmin ??
+    createUser(db, {
+      role: 'admin',
+      status: 'approved',
+      username: 'admin',
+      password: adminPassword,
+      fullName: 'Demo Administrator',
     })
 
   const students = STUDENTS.map((student) =>
@@ -367,6 +381,10 @@ function build(db: DatabaseSync, options: DemoSeedOptions): DemoSeedResult {
     teacher: {
       username: teacher.username,
       ...(existingTeacher === null ? { password: teacherPassword } : {}),
+    },
+    admin: {
+      username: admin.username,
+      ...(existingAdmin === null ? { password: adminPassword } : {}),
     },
     students: students.map((student) => ({
       username: student.username,

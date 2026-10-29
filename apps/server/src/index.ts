@@ -47,11 +47,14 @@ if (config.seedDemo) {
     logs.logger.info(
       {
         teacher: result.teacher?.username,
+        admin: result.admin?.username,
         students: result.students?.map((student) => student.username),
         roomKey: result.roomKey,
       },
       `demo data seeded - sign in as ${result.teacher?.username}${
         result.teacher?.password ? ` / ${result.teacher.password}` : ' (your own password)'
+      }${
+        result.admin?.password ? `, admin as ${result.admin.username} / ${result.admin.password}` : ''
       }, students share ${result.students?.[0]?.password}`,
     )
   } else {
