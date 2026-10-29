@@ -6,7 +6,7 @@ versioning follows [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
-Thirteen changes after 0.7.0, each found by using the thing rather than by reading
+Fourteen changes after 0.7.0, each found by using the thing rather than by reading
 it: a clock that lied, a student screen that grew, a server panel nobody could
 reach, a paper that emptied itself when the phone reloaded, a gradebook nobody
 could take a copy of, a client a phone could not install or keep offline, a PDF
@@ -14,8 +14,9 @@ that could not spell a Ukrainian name, a run screen whose clock and search box
 did not do what they looked like they did, three screens that were read rather
 than used, a scrollbar that was bigger than the thing it moved, a live board
 whose controls were more kinds than one run needs, a start dialog that did
-not know what had been written a minute earlier, and a demo with no
-administrator to sign its panel in with.
+not know what had been written a minute earlier, a demo with no
+administrator to sign its panel in with, and a paper that kept taking answers
+after the run it belonged to was over.
 
 ### A paper that survives the phone
 
@@ -311,6 +312,32 @@ administrator to sign its panel in with.
   the boot log prints it the way it prints the teacher's. Production installs
   are unchanged - an empty database still seeds a teacher, never an admin; the
   console `admin` command remains the way an institution makes one.
+
+### A run that stops taking answers
+
+- **A run that is over stops taking answers.** Finishing a run or running out of
+  time left the paper editable: the fields still took text and the submit button
+  still sent it, for a result the server had already decided. The paper now blurs
+  and goes `inert` behind a window that cannot be dismissed - the scrim and the
+  close button are gone on purpose - and says how many questions were answered.
+  A finished run waits for the student's submit, so the answers still on their
+  screen reach the server rather than being replaced by an empty sheet; a clock
+  that runs out sends that paper itself, because the server's own sweep would
+  otherwise grade the blank one first. Ten seconds of grace on the server let a
+  send that is already on the wire land before the sweep takes the run.
+- **A hold looks like a hold.** Pausing used to be a thin banner above a paper
+  that kept taking answers. The same window now covers a paused run, with no
+  button - there is nothing to send while the teacher has the class waiting - and
+  the blur arrives with the panel.
+- **Leaving a paper asks first.** The draft survives on the device either way,
+  but walking off a run with one tap was not what that link looked like.
+- **The end of the paper has its buttons in one row.** Back and Next were a
+  wrapping row with a right-floated Next: one of them ended up under the other on
+  a narrow phone. They share the row and fill it on small screens.
+- **A result the teacher has not announced says so.** The student's results list
+  showed the percentage and Passed/Failed for a paper whose score was being held
+  back - the number the result screen refuses to show. `released` now travels
+  with every row and a held attempt wears "Not announced yet" instead of a mark.
 
 ### Fixed
 

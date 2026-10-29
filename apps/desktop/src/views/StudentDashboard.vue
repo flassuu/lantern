@@ -22,8 +22,10 @@ import AppButton from '../components/common/AppButton.vue'
 import AppCard from '../components/common/AppCard.vue'
 import SkeletonList from '../components/common/SkeletonList.vue'
 import { usePresence } from '../composables/presence'
+import { useConfirm } from '../composables/confirm'
 
 const { t } = useI18n()
+const confirm = useConfirm()
 
 const code = ref('')
 const joining = ref(false)
@@ -165,7 +167,13 @@ async function resume(): Promise<void> {
   }
 }
 
-function leaveRunner(): void {
+/**
+ * Leaving is one tap away from a paper that only lives in this tab, so it asks
+ * first. The draft stays on the device either way - the confirmation is about
+ * not walking off by accident, not about the answers being lost.
+ */
+async function leaveRunner(): Promise<void> {
+  if (!(await confirm({ message: t('student.runner.leaveConfirm') }))) return
   state.value = null
   void resume()
 }
@@ -235,6 +243,7 @@ onMounted(() => {
               <SessionRunner
                 v-else
                 :state="state"
+                :status="liveStatus"
                 :left-once="presence.leftOnce.value"
                 :report-progress="presence.reportProgress"
                 @submitted="showResult"

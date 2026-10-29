@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Check, Clock, Send, TriangleAlert } from '@lucide/vue'
 import { ApiError } from '../../api/client'
-import { submitSession, type SessionState, type StudentQuestion } from '../../api/sessions'
+import { submitSession, type LiveSessionStatus, type SessionState, type StudentQuestion } from '../../api/sessions'
 import {
   answeredCount,
   buildAnswers,
@@ -23,9 +23,12 @@ import { useAuth } from '../../stores/auth'
 import QuestionAnswerInput from './QuestionAnswerInput.vue'
 import AppButton from '../../components/common/AppButton.vue'
 import AppCard from '../../components/common/AppCard.vue'
+import AppDialog from '../../components/common/AppDialog.vue'
 
 const props = defineProps<{
   state: SessionState
+  /** What the room says the run is doing now; the copy in `state` is frozen at join. */
+  status?: LiveSessionStatus
   /** True once the student has looked away; the paper says so, it does not scold. */
   leftOnce?: boolean
   /** Tells the room how far the student is; the teacher's board shows it. */
@@ -67,21 +70,22 @@ const totalPoints = computed(() =>
 )
 const answered = computed(() => answeredCount(questions.value, responses.value))
 
-const deadlineMs = ref<number | null>(null)
+/** True once the limit is closer than a minute; the badge turns amber. */
+const nearlyUp = ref(false)
 
 function recalcDeadline(): void {
   const s = props.state.session
   if (s.startedAt === null || s.timeLimitSec === null) {
+    nearlyUp.value = false
     clock.value = ''
     expired.value = false
     return
   }
-  const startedMs = Date.parse(s.startedAt)
-  const limitMs = s.timeLimitSec * 1000
-  const deadlineMs = startedMs + limitMs
-  const referenceMs = s.pausedAt ? Date.parse(s.pausedAt) : Date.now()
-  const rem = Math.max(0, deadlineMs - referenceMs)
+  const deadline = Date.parse(s.startedAt) + s.timeLimitSec * 1000
+  const reference = s.pausedAt ? Date.parse(s.pausedAt) : Date.now()
+  const rem = Math.max(0, deadline - reference)
   clock.value = formatClock(rem)
+  nearlyUp.value = rem > 0 && rem < 60_000
   expired.value = rem <= 0
 }
 watch(
@@ -91,8 +95,29 @@ watch(
 
 const clock = ref('')
 const expired = ref(false)
-const paused = computed(() => props.state.session.status === 'paused')
+const paused = computed(() => props.status === 'paused')
+const finished = computed(() => props.status === 'finished')
 const hasLimit = computed(() => props.state.session.timeLimitSec !== null)
+
+/** Answering stops here: the run is over, the clock is out, or it is on hold. */
+const veiled = computed(() => paused.value || finished.value || expired.value)
+/** A hold has nothing to send; a paper the run has ended on does. */
+const canSend = computed(() => !paused.value && (finished.value || expired.value))
+const veilTitle = computed(() =>
+  paused.value
+    ? t('student.runner.pausedTitle')
+    : finished.value
+      ? t('student.runner.finishedTitle')
+      : t('student.runner.timeUpTitle'),
+)
+const veilBody = computed(() =>
+  paused.value
+    ? t('student.runner.paused')
+    : t('student.runner.overlayAnswered', {
+        answered: answered.value,
+        total: questions.value.length,
+      }),
+)
 
 function optionsOf(question: StudentQuestion): PaperOption[] {
   return paperOptions(question)
@@ -281,10 +306,10 @@ function onHidden(): void {
   if (document.visibilityState === 'hidden') flushDraft()
 }
 
-// A zero on the clock submits whatever is on the paper, exactly like the
-// server-side sweep does when the teacher forgets to end the session.
+// A zero on the clock sends the paper without asking: the window explains why,
+// and the server's own sweep would otherwise grade an empty sheet in its place.
 watch(expired, (isExpired) => {
-  if (isExpired && !submitting.value) void send()
+  if (isExpired && !submitting.value) void submit()
 })
 
 onBeforeUnmount(() => {
@@ -297,8 +322,14 @@ onBeforeUnmount(() => {
 
 <template>
   <!-- A column that fills the room the screen gives it: the submit bar has to be
-       able to rest at the bottom even when the paper is one short question. -->
-  <section class="flex flex-1 flex-col gap-4">
+       able to rest at the bottom even when the paper is one short question.
+       Under a hold, a finished run or an expired clock the whole column blurs
+       and goes inert, so the window above it is the only thing that answers. -->
+  <section
+    class="flex flex-1 flex-col gap-4 transition-[filter] duration-300"
+    :class="veiled ? 'blur-[3px]' : ''"
+    :inert="veiled"
+  >
     <div
       class="sticky top-14 z-10 -mx-4 flex flex-wrap items-center justify-between gap-2 border-b border-outline-variant bg-surface-container px-4 py-3 sm:-mx-0 sm:rounded-2xl sm:border"
     >
@@ -316,7 +347,7 @@ onBeforeUnmount(() => {
         :class="
           expired
             ? 'bg-error-container text-on-error-container'
-            : deadlineMs !== null && deadlineMs < 60_000
+            : nearlyUp
               ? 'bg-warning-container text-on-warning-container'
               : 'bg-surface-container-highest text-on-surface'
         "
@@ -326,15 +357,6 @@ onBeforeUnmount(() => {
         {{ clock }}
       </p>
     </div>
-
-    <p
-      v-if="paused"
-      role="status"
-      class="flex items-center gap-2 rounded-xl bg-warning-container px-3 py-2 text-sm text-on-warning-container"
-    >
-      <TriangleAlert class="size-4 shrink-0" aria-hidden="true" />
-      {{ t('student.runner.paused') }}
-    </p>
 
     <p
       v-if="props.leftOnce"
@@ -383,11 +405,21 @@ onBeforeUnmount(() => {
         />
       </AppCard>
 
-      <div class="flex flex-wrap items-center gap-2">
-        <AppButton v-if="allowBack && page > 0" variant="secondary" @click="page -= 1">
+      <div class="flex items-center gap-2">
+        <AppButton
+          v-if="allowBack && page > 0"
+          variant="secondary"
+          class="flex-1 sm:flex-none"
+          @click="page -= 1"
+        >
           {{ t('student.paged.back') }}
         </AppButton>
-        <AppButton v-if="!onLastPage" variant="primary" class="ml-auto" @click="page += 1">
+        <AppButton
+          v-if="!onLastPage"
+          variant="primary"
+          class="flex-1 sm:flex-none"
+          @click="page += 1"
+        >
           {{ t('student.paged.next') }}
         </AppButton>
       </div>
@@ -450,5 +482,32 @@ onBeforeUnmount(() => {
         </AppButton>
       </div>
     </div>
+
+    <!-- The window a run ends behind, or waits behind. It cannot be dismissed:
+         no close button and no scrim click, because a hold or a finish a student
+         could tap away would be neither. -->
+    <AppDialog v-if="veiled" :label="veilTitle">
+      <div class="p-5">
+        <p class="text-base font-semibold text-on-surface">{{ veilTitle }}</p>
+        <p class="mt-2 text-sm text-on-surface-variant">{{ veilBody }}</p>
+        <AppButton
+          v-if="canSend"
+          variant="success"
+          class="mt-4 w-full rounded-xl"
+          :disabled="submitting"
+          @click="submit"
+        >
+          <Check class="size-4" aria-hidden="true" />
+          {{ submitting ? t('common.loading') : t('student.runner.submit') }}
+        </AppButton>
+        <p
+          v-if="submitError"
+          role="alert"
+          class="mt-3 rounded-xl bg-error-container px-3 py-2 text-sm text-on-error-container"
+        >
+          {{ t('student.runner.notSent') }}
+        </p>
+      </div>
+    </AppDialog>
   </section>
 </template>

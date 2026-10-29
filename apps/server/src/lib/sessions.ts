@@ -702,6 +702,8 @@ export interface StudentResult {
   percent: number | null
   passed: boolean | null
   submittedAt: string | null
+  /** False while the teacher holds the score back; the row exists, the mark does not. */
+  released: boolean
 }
 
 /**
@@ -721,6 +723,8 @@ export function listStudentResults(db: DatabaseSync, userId: string, limit = 50)
               p.submitted_at    AS submitted_at,
               s.join_code       AS join_code,
               s.test_id         AS test_id,
+              s.settings        AS settings,
+              s.results_released AS results_released,
               t.title           AS test_title,
               (SELECT COUNT(*) FROM questions q WHERE q.test_id = s.test_id) AS question_count
          FROM participations p
@@ -741,6 +745,8 @@ export function listStudentResults(db: DatabaseSync, userId: string, limit = 50)
     submitted_at: string | null
     join_code: string
     test_id: string
+    settings: string
+    results_released: number
     test_title: string
     question_count: number
   }>
@@ -757,6 +763,8 @@ export function listStudentResults(db: DatabaseSync, userId: string, limit = 50)
     percent: row.percent,
     passed: row.passed === null ? null : row.passed === 1,
     submittedAt: row.submitted_at,
+    released:
+      parseSettings(row.settings).releaseResults !== 'teacher' || row.results_released === 1,
   }))
 }
 

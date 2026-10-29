@@ -416,6 +416,8 @@ export interface StudentResult {
   percent: number | null
   passed: boolean | null
   submittedAt: string | null
+  /** False while the teacher holds the score back: no mark, no percentage. */
+  released: boolean
 }
 
 /** Student only: every finished attempt, newest first. */

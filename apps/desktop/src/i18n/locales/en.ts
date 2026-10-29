@@ -775,6 +775,7 @@ export default {
       passed: 'Passed',
       failed: 'Not passed',
       autoSubmitted: 'Auto',
+      notReleased: 'Not announced yet',
       emptyTitle: 'No results yet',
       emptyHint: 'Finish a test and it will show up here with your score.',
     },
@@ -820,6 +821,12 @@ export default {
       points: '{points} points in total',
       timeLeft: 'Time left',
       paused: 'Your teacher paused this test. Answers are kept safe while you wait.',
+      pausedTitle: 'The test is paused',
+      finishedTitle: 'The test is over',
+      timeUpTitle: 'Time is up',
+      overlayAnswered: 'You answered {answered} of {total} questions.',
+      leaveConfirm:
+        'Leave the test? Your answers stay on this device, and you can come back to them.',
       hint: 'Unanswered questions count as zero, so submit before the clock runs out.',
       submit: 'Submit answers',
       submitConfirm:

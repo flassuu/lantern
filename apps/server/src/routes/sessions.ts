@@ -268,11 +268,30 @@ export const sessionRoutes: FastifyPluginAsync<SessionRoutesDeps> = async (
   }
 
   /**
+   * How long past the deadline a paper is still taken.
+   *
+   * The runner sends its own paper the moment its clock reaches zero, and the
+   * sweep must not beat a send that is already on the wire - grading an empty
+   * sheet over answers the student did give. Ten seconds is far longer than a
+   * request needs and short enough that a class that walked away is settled
+   * before the teacher looks twice.
+   */
+  const EXPIRY_GRACE_MS = 10_000
+
+  /**
    * Closes a session that ran out of time, grading everyone who is still
    * working so nobody loses an attempt to a forgotten timer.
+   *
+   * Only the clock sweeps. A run the teacher ended is not a clock running out:
+   * the paper of whoever is mid-answer lives in their browser, and the runner
+   * hands it back to them in a window so they can send it themselves. Grading
+   * the empty sheet here would throw that work away, so a finished run is left
+   * to those students - whoever never comes back stays on the board as not
+   * submitted, which is what happened.
    */
   function autoSubmitExpired(session: LiveSession): LiveSession {
-    if (!isSessionOver(session)) return session
+    if (session.status === 'finished') return session
+    if (!isSessionOver(session, Date.now() - EXPIRY_GRACE_MS)) return session
     const test = findTestRow(db, session.testId)
     if (!test) return session
     const questions = listQuestions(db, session.testId)

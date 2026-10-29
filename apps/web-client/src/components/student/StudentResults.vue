@@ -87,20 +87,31 @@ onMounted(load)
             >
               {{ t('student.history.autoSubmitted') }}
             </span>
+            <!-- The teacher holds the score back: the attempt is here, the mark
+                 is not, and a number would be the one thing the server refused
+                 to say. -->
             <span
-              v-if="entry.passed !== null"
-              class="rounded-full px-2 py-0.5 text-[11px] font-semibold"
-              :class="
-                entry.passed
-                  ? 'bg-success-container text-on-success-container'
-                  : 'bg-error-container text-on-error-container'
-              "
+              v-if="!entry.released"
+              class="rounded-full bg-surface-container-highest px-2 py-0.5 text-[11px] font-semibold text-on-surface-variant"
             >
-              {{ entry.passed ? t('student.history.passed') : t('student.history.failed') }}
+              {{ t('student.history.notReleased') }}
             </span>
-            <span class="text-base font-bold tabular-nums text-on-surface">
-              {{ entry.percent ?? 0 }}%
-            </span>
+            <template v-else>
+              <span
+                v-if="entry.passed !== null"
+                class="rounded-full px-2 py-0.5 text-[11px] font-semibold"
+                :class="
+                  entry.passed
+                    ? 'bg-success-container text-on-success-container'
+                    : 'bg-error-container text-on-error-container'
+                "
+              >
+                {{ entry.passed ? t('student.history.passed') : t('student.history.failed') }}
+              </span>
+              <span class="text-base font-bold tabular-nums text-on-surface">
+                {{ entry.percent ?? 0 }}%
+              </span>
+            </template>
           </span>
         </button>
       </li>
