@@ -179,4 +179,4 @@ always opens an older database.
 
 ## License
 
-MIT (see repository root).
+GNU GENERAL PUBLIC LICENSE.
